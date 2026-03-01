@@ -3,17 +3,16 @@ package knuthplass
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/dimen"
 	"github.com/npillmayer/khipu/linebreak"
-	"github.com/npillmayer/khipu/parameters"
-	"github.com/npillmayer/schuko/gtrace"
-	"github.com/npillmayer/schuko/tracing"
 	"github.com/npillmayer/schuko/tracing/gotestingadapter"
+	"github.com/npillmayer/uax/bidi"
+	"golang.org/x/text/language"
 )
 
 var graphviz = false // globally switches GraphViz output on/off
@@ -22,7 +21,6 @@ func TestGraph1(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "tyse.frame")
 	defer teardown()
 	//
-	gtrace.CoreTracer.SetTraceLevel(tracing.LevelDebug)
 	parshape := linebreak.RectangularParShape(10 * 10 * dimen.BP)
 	g := newLinebreaker(parshape, nil)
 	g.newBreakpointAtMark(provisionalMark(1))
@@ -32,25 +30,24 @@ func TestGraph1(t *testing.T) {
 }
 
 func setupKPTest(t *testing.T, paragraph string, hyphens bool) (*khipu.Khipu, linebreak.Cursor, io.Writer) {
-	regs := parameters.NewTypesettingRegisters()
+	regs := newParameters()
 	if hyphens {
-		regs.Push(parameters.P_MINHYPHENLENGTH, 3) // allow hyphenation
+		regs.Minhyphenlength = 3
 	} else {
-		regs.Push(parameters.P_MINHYPHENLENGTH, 100) // inhibit hyphenation
+		regs.Minhyphenlength = 100
 	}
 	kh := khipu.KnotEncode(strings.NewReader(paragraph), 0, nil, regs)
 	if kh == nil {
 		t.Errorf("no Khipu to test; input is %s", paragraph)
 	}
 	kh.AppendKnot(khipu.Penalty(linebreak.InfinityMerits))
-	gtrace.CoreTracer.Infof("input khipu=%s", kh.String())
 	cursor := linebreak.NewFixedWidthCursor(khipu.NewCursor(kh), 10*dimen.BP, 0)
 	var dotfile io.Writer
 	var err error
 	if graphviz {
-		dotfile, err = ioutil.TempFile(".", "knuthplass-*.dot")
+		dotfile, err = os.CreateTemp(".", "knuthplass-*.dot")
 		if err != nil {
-			t.Errorf(err.Error())
+			t.Error(err)
 		}
 	}
 	return kh, cursor, dotfile
@@ -61,7 +58,6 @@ func TestKPUnderfull(t *testing.T) {
 	defer teardown()
 	//
 	kh, cursor, dotfile := setupKPTest(t, " ", false)
-	gtrace.CoreTracer.SetTraceLevel(tracing.LevelDebug)
 	parshape := linebreak.RectangularParShape(10 * 10 * dimen.BP)
 	v, breaks, err := FindBreakpoints(cursor, parshape, nil, dotfile)
 	t.Logf("%d linebreaking-variants for empty line found, error = %v", len(v), err)
@@ -83,7 +79,6 @@ func TestKPExactFit(t *testing.T) {
 	defer teardown()
 	//
 	kh, cursor, dotfile := setupKPTest(t, "The quick.", false)
-	gtrace.CoreTracer.SetTraceLevel(tracing.LevelDebug)
 	parshape := linebreak.RectangularParShape(10 * 10 * dimen.BP)
 	v, breaks, err := FindBreakpoints(cursor, parshape, nil, dotfile)
 	t.Logf("%d linebreaking-variants found, error = %v", len(v), err)
@@ -108,7 +103,6 @@ func TestKPOverfull(t *testing.T) {
 	params := NewKPDefaultParameters()
 	params.EmergencyStretch = dimen.DU(0)
 	params.Tolerance = 400
-	gtrace.CoreTracer.SetTraceLevel(tracing.LevelDebug)
 	parshape := linebreak.RectangularParShape(10 * 10 * dimen.BP)
 	v, breaks, err := FindBreakpoints(cursor, parshape, params, dotfile)
 	t.Logf("%d linebreaking-variants found, error = %v", len(v), err)
@@ -136,7 +130,6 @@ func TestKPParaKing(t *testing.T) {
 	cursor := linebreak.NewFixedWidthCursor(khipu.NewCursor(kh), 10*dimen.BP, 3)
 	params := NewKPDefaultParameters()
 	parshape := linebreak.RectangularParShape(45 * 10 * dimen.BP)
-	gtrace.CoreTracer.SetTraceLevel(tracing.LevelDebug)
 	v, breaks, err := FindBreakpoints(cursor, parshape, params, dotfile)
 	t.Logf("%d linebreaking-variants found, error = %v", len(v), err)
 	for linecnt, breakpoints := range breaks {
@@ -161,7 +154,6 @@ func TestKPParaPrincess(t *testing.T) {
 	cursor := linebreak.NewFixedWidthCursor(khipu.NewCursor(kh), 10*dimen.BP, 2)
 	params := NewKPDefaultParameters()
 	parshape := linebreak.RectangularParShape(45 * 10 * dimen.BP)
-	//gtrace.CoreTracer.SetTraceLevel(tracing.LevelDebug)
 	breakpoints, err := BreakParagraph(cursor, parshape, params)
 	//v, breaks, err := FindBreakpoints(cursor, parshape, params, dotfile)
 	//t.Logf("%d linebreaking-variants found, error = %v", len(v), err)
@@ -175,7 +167,7 @@ func TestKPParaPrincess(t *testing.T) {
 		j = breakpoints[i].Position()
 	}
 	if err != nil {
-		t.Errorf(err.Error())
+		t.Error(err)
 	}
 }
 
@@ -203,30 +195,44 @@ func justify(text string, l int, even bool) string {
 	b.WriteString(s[0])
 	if even {
 		for j := 1; j < r; j++ {
-			for i := 0; i < ws+1; i++ {
+			for range ws + 1 {
 				b.WriteString(" ")
 			}
 			b.WriteString(s[j])
 		}
 		for j := r; j < len(s); j++ {
-			for i := 0; i < ws; i++ {
+			for range ws {
 				b.WriteString(" ")
 			}
 			b.WriteString(s[j])
 		}
 	} else {
 		for j := 1; j <= len(s)-r; j++ {
-			for i := 0; i < ws; i++ {
+			for range ws {
 				b.WriteString(" ")
 			}
 			b.WriteString(s[j])
 		}
 		for j := len(s) - r + 1; j < len(s); j++ {
-			for i := 0; i < ws+1; i++ {
+			for range ws + 1 {
 				b.WriteString(" ")
 			}
 			b.WriteString(s[j])
 		}
 	}
 	return b.String()
+}
+
+func newParameters() *khipu.Params {
+	var params khipu.Params
+	params.Language = language.English
+	params.Script = language.MustParseScript("Latn")
+	params.BidiDir = bidi.LeftToRight
+	params.Baselineskip = 12 * dimen.PT
+	params.Lineskip = 0
+	params.Lineskiplimit = 0
+	params.Hypenchar = rune('-')
+	params.Hyphenpenalty = 10
+	params.Minhyphenlength = 2
+	return &params
 }

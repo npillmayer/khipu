@@ -19,10 +19,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/npillmayer/cords/styled"
+	"github.com/npillmayer/hyphenate"
 	"github.com/npillmayer/khipu/dimen"
-	"github.com/npillmayer/khipu/hyphenation"
-	params "github.com/npillmayer/khipu/parameters"
-	"github.com/npillmayer/opentype"
 	"github.com/npillmayer/opentype/otshape"
 	"github.com/npillmayer/uax"
 	"github.com/npillmayer/uax/bidi"
@@ -45,8 +43,9 @@ type TypesettingPipeline struct {
 type typEnv struct { // typesetting environment
 	shaper   otshape.Shaper
 	pipeline *TypesettingPipeline
-	regs     *params.TypesettingRegisters
-	levels   *bidi.ResolvedLevels
+	//regs     *params.TypesettingRegisters
+	params *Params
+	levels *bidi.ResolvedLevels
 }
 
 type styledItem struct {
@@ -57,15 +56,15 @@ type styledItem struct {
 }
 
 func EncodeParagraph(para *styled.Paragraph, startpos uint64, shaper otshape.Shaper,
-	pipeline *TypesettingPipeline, regs *params.TypesettingRegisters) (*Khipu, error) {
+	pipeline *TypesettingPipeline, regs *Params) (*Khipu, error) {
 	//
 	if regs == nil {
-		regs = params.NewTypesettingRegisters()
+		regs = newParameters()
 	}
 	env := typEnv{
 		shaper:   shaper,
 		pipeline: pipeline,
-		regs:     regs,
+		params:   regs,
 		levels:   para.BidiLevels(),
 	}
 	text := para.Raw().Reader()
@@ -123,7 +122,7 @@ func encodeRun(text io.Reader, item styledItem, env typEnv) (k *Khipu, err error
 func encodeSegment(segm string, p penalties, item styledItem, env typEnv) (*Khipu, error) {
 	//
 	if p.breaksAtSpace() && isspace(segm) {
-		return encodeSpace(segm, p, item.styles, env.regs), nil
+		return encodeSpace(segm, p, item.styles, env.params), nil
 	}
 	if p.canWrapLine() && p.breaksAtSpace() {
 		// line wrap at space
@@ -136,7 +135,8 @@ func encodeSegment(segm string, p penalties, item styledItem, env typEnv) (*Khip
 	if p.canWrapLine() { // line wrap without space
 		// identified as a possible line break, but no space
 		// insert explicit discretionary '\-' penalty
-		k := NewKhipu().AppendKnot(Penalty(env.regs.N(params.P_HYPHENPENALTY)))
+		k := NewKhipu().AppendKnot(Penalty(env.params.Hyphenpenalty))
+		//k := NewKhipu().AppendKnot(Penalty(env.regs.N(params.P_HYPHENPENALTY)))
 		return k, nil
 	}
 	// no line wrap and no break at space: inhibit break with infinite penalty
@@ -151,7 +151,7 @@ func encodeSegment(segm string, p penalties, item styledItem, env typEnv) (*Khip
 }
 
 func encodeSpace(fragm string, p penalties, styles styled.Style,
-	regs *params.TypesettingRegisters) *Khipu {
+	regs *Params) *Khipu {
 	//
 	tracer().Debugf("khipukamayuq: encode space with penalites %v", p)
 	k := NewKhipu()
@@ -206,13 +206,14 @@ func encodeText(fragm string, item styledItem, env typEnv) *Khipu {
 		// 2. configure shaper
 		// TODO: de-couple from package "frame"
 		//styleset := item.styles.(frame.StyleSet)
-		shapingParams := opentype.Params{
+		shapingParams := otshape.Params{
 			//Font:      styleset.Font(), // TODO: de-couple from package "frame"
-			Script: scriptForText(item.styles, env.regs),
+			Script: scriptForText(item.styles, env.params),
 			// TODO use bidi
 			//Direction: directionForText(item.styles, bidiDir, env.regs),
-			Language: matchLang(item.styles, env.regs.S(params.P_LANGUAGE)),
+			Language: matchLang(item.styles, env.params.Language),
 		}
+		_ = shapingParams.Script
 		// env.shaper.SetDirection(directionForText(item.styles, bidiDir, env.regs))
 		// env.shaper.SetScript(scriptForText(item.styles, env.regs))
 		// env.shaper.SetLanguage(env.regs.S(params.P_LANGUAGE))
@@ -221,11 +222,11 @@ func encodeText(fragm string, item styledItem, env typEnv) *Khipu {
 		// 4. attach glyph sequences to text boxes
 		box := NewTextBox(word, pos)
 		//
-		wordrd := strings.NewReader(word)
-		box.glyphs, _ = env.shaper.Shape(wordrd, nil, nil, shapingParams)
+		//wordrd := strings.NewReader(word)
+		//box.glyphs, _ = env.shaper.Shape(wordrd, nil, nil, shapingParams)
 		//
 		// 5. measure text of glyph sequence
-		box.Width, box.Height, box.Depth = box.glyphs.BoundingBox()
+		//box.Width, box.Height, box.Depth = box.glyphs.BoundingBox()
 		pos = end
 		wordsKhipu.AppendKnot(box)
 	}
@@ -246,18 +247,15 @@ func encodeText(fragm string, item styledItem, env typEnv) *Khipu {
 // 	return glyphing.LeftToRight
 // }
 
-func scriptForText(styles styled.Style, regs *params.TypesettingRegisters) language.Script {
-	scr := regs.S(params.P_SCRIPT)
-	if scr == "" {
+func scriptForText(styles styled.Style, regs *Params) language.Script {
+	scr := regs.Script
+	if scr.String() == "Zzzz" {
 		return language.MustParseScript("Latn")
 	}
-	if script, err := language.ParseScript(scr); err == nil {
-		return script
-	}
-	return language.MustParseScript("Latn")
+	return scr
 }
 
-func matchLang(styles styled.Style, l string) language.Tag {
+func matchLang(styles styled.Style, lang language.Tag) language.Tag {
 	// TODO use langauage Matcher derived for styles
 	// matcher := language.NewMatcher([]language.Tag{
 	// 	language.English, language.Dutch, language.German,
@@ -268,10 +266,10 @@ func matchLang(styles styled.Style, l string) language.Tag {
 
 // KnotEncode transforms an input text into a khipu.
 func KnotEncode(text io.Reader, startpos uint64, pipeline *TypesettingPipeline,
-	regs *params.TypesettingRegisters) *Khipu {
+	regs *Params) *Khipu {
 	//
 	if regs == nil {
-		regs = params.NewTypesettingRegisters()
+		regs = newParameters()
 	}
 	pipeline = PrepareTypesettingPipeline(text, pipeline)
 	textpos := startpos
@@ -282,7 +280,7 @@ func KnotEncode(text io.Reader, startpos uint64, pipeline *TypesettingPipeline,
 		p := penlty(seg.Penalties())
 		tracer().Debugf("next segment = '%s'\twith penalties %d|%d", fragment, p.p1, p.p2)
 		k := createPartialKhipuFromSegment(seg, textpos, pipeline, regs)
-		if regs.N(params.P_MINHYPHENLENGTH) < dimen.Infinity {
+		if regs.Hyphenpenalty < dimen.Infinity {
 			HyphenateTextBoxes(k, pipeline, regs)
 		}
 		khipu.AppendKhipu(k)
@@ -299,8 +297,8 @@ func KnotEncode(text io.Reader, startpos uint64, pipeline *TypesettingPipeline,
 // arguments is invalid.
 //
 // Returns a khipu consisting of text-boxes, glues and penalties.
-func createPartialKhipuFromSegment(seg *segment.Segmenter, textpos uint64, pipeline *TypesettingPipeline,
-	regs *params.TypesettingRegisters) *Khipu {
+func createPartialKhipuFromSegment(seg *segment.Segmenter, textpos uint64,
+	pipeline *TypesettingPipeline, regs *Params) *Khipu {
 	//
 	khipu := NewKhipu()
 	p := penlty(seg.Penalties())
@@ -318,7 +316,7 @@ func createPartialKhipuFromSegment(seg *segment.Segmenter, textpos uint64, pipel
 		} else { // identified as a possible line break, but no space
 			// insert explicit discretionary '\-' penalty
 			b := NewTextBox(seg.Text(), textpos)
-			pen := Penalty(regs.N(params.P_HYPHENPENALTY))
+			pen := Penalty(regs.Hyphenpenalty)
 			khipu.AppendKnot(b).AppendKnot(pen)
 		}
 	} else { // segment is broken by secondary breaker
@@ -345,8 +343,7 @@ func createPartialKhipuFromSegment(seg *segment.Segmenter, textpos uint64, pipel
 //
 // Hyphenation is governed by the typesetting registers.
 // If regs is nil, no hyphenation is done.
-func HyphenateTextBoxes(khipu *Khipu, pipeline *TypesettingPipeline,
-	regs *params.TypesettingRegisters) {
+func HyphenateTextBoxes(khipu *Khipu, pipeline *TypesettingPipeline, regs *Params) {
 	//
 	if regs == nil || khipu == nil {
 		return
@@ -368,8 +365,8 @@ func HyphenateTextBoxes(khipu *Khipu, pipeline *TypesettingPipeline,
 			tracer().Debugf("   word = '%s'", word)
 			var syllables []string
 			isHyphenated := false
-			if len(word) >= regs.N(params.P_MINHYPHENLENGTH) {
-				if syllables, isHyphenated = HyphenateWord(word, regs); isHyphenated {
+			if len(word) >= int(regs.Minhyphenlength) {
+				if syllables, isHyphenated = HyphenateWord(word, nil); isHyphenated {
 					hyphen := NewKnot(KTDiscretionary)
 					pos := textpos
 					for _, sy := range syllables[:len(syllables)-1] {
@@ -420,7 +417,7 @@ func PrepareTypesettingPipeline(text io.Reader, pipeline *TypesettingPipeline) *
 
 // HyphenateWord hyphenates a single word.
 // Returns true if word was hyphenated.
-func HyphenateWord(word string, dict *hyphenation.TypesettingRegisters) (splitWord []string, ok bool) {
+func HyphenateWord(word string, dict *hyphenate.Dictionary) (splitWord []string, ok bool) {
 	// dict := locate.Dictionary(regs.S(params.P_LANGUAGE))
 	// ok := false
 	// if dict == nil {
@@ -471,6 +468,6 @@ func isspace(text string) bool {
 	return unicode.IsSpace(r)
 }
 
-func spaceglue(regs *params.TypesettingRegisters) Glue {
+func spaceglue(regs *Params) Glue {
 	return NewGlue(5*dimen.PT, 1*dimen.PT, 2*dimen.PT)
 }

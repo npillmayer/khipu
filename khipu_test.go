@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/npillmayer/khipu/dimen"
-	"github.com/npillmayer/khipu/parameters"
 	"github.com/npillmayer/schuko/tracing/gotestingadapter"
 )
 
@@ -35,9 +34,7 @@ func TestBreaking1(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "tyse.khipu")
 	defer teardown()
 	//
-	regs := parameters.NewTypesettingRegisters()
-	regs.Push(parameters.P_MINHYPHENLENGTH, 3)
-	kh := KnotEncode(strings.NewReader("Hello World "), 0, nil, regs)
+	kh := KnotEncode(strings.NewReader("Hello World "), 0, nil, nil)
 	if kh.Length() != 10 {
 		t.Logf("khipu = %s", kh)
 		t.Errorf("khipu length is %d, should be 10", kh.Length())
@@ -48,9 +45,7 @@ func TestBreaking2(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "tyse.khipu")
 	defer teardown()
 	//
-	regs := parameters.NewTypesettingRegisters()
-	regs.Push(parameters.P_MINHYPHENLENGTH, 3)
-	kh := KnotEncode(strings.NewReader("The quick !"), 0, nil, regs)
+	kh := KnotEncode(strings.NewReader("The quick !"), 0, nil, nil)
 	if kh.Length() != 10 {
 		t.Logf("khipu = %s", kh)
 		t.Errorf("khipu length is %d, should be 10", kh.Length())
@@ -62,9 +57,7 @@ func TestText(t *testing.T) {
 	defer teardown()
 	//
 	text := "The quick brown fox jumps over the lazy dog!"
-	regs := parameters.NewTypesettingRegisters()
-	regs.Push(parameters.P_MINHYPHENLENGTH, 3)
-	kh := KnotEncode(strings.NewReader(text), 0, nil, regs)
+	kh := KnotEncode(strings.NewReader(text), 0, nil, nil)
 	out := kh.Text(0, kh.Length())
 	if out != text {
 		t.Logf("Text: %s", out)
@@ -77,9 +70,7 @@ func TestExHyphen(t *testing.T) {
 	defer teardown()
 	//
 	text := "lime-tree"
-	regs := parameters.NewTypesettingRegisters()
-	regs.Push(parameters.P_MINHYPHENLENGTH, 3)
-	kh := KnotEncode(strings.NewReader(text), 0, nil, regs)
+	kh := KnotEncode(strings.NewReader(text), 0, nil, nil)
 	out := kh.Text(0, kh.Length())
 	if out != text {
 		t.Logf("Text: %s", out)

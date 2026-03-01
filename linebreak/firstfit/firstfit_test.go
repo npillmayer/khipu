@@ -3,16 +3,17 @@ package firstfit
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/dimen"
 	"github.com/npillmayer/khipu/linebreak"
-	"github.com/npillmayer/khipu/parameters"
 	"github.com/npillmayer/schuko/tracing"
 	"github.com/npillmayer/schuko/tracing/gotestingadapter"
+	"github.com/npillmayer/uax/bidi"
+	"golang.org/x/text/language"
 )
 
 var graphviz = false // global switch for GraphViz DOT output
@@ -61,10 +62,10 @@ func TestLinebreak(t *testing.T) {
 	lb, kh := newTestLinebreaker(t, "the quick brown fox jumps over the lazy dog.", 30)
 	breakpoints, err := lb.FindBreakpoints()
 	if err != nil {
-		t.Errorf(err.Error())
+		t.Error(err)
 	}
 	if len(breakpoints)-1 != 2 {
-		t.Errorf("exptected 'princess' to occupy 2 lines, got %d", len(breakpoints)-1)
+		t.Errorf("expected 'princess' to occupy 2 lines, got %d", len(breakpoints)-1)
 	}
 	t.Logf("# Paragraph with %d lines: %v", len(breakpoints)-1, breakpoints)
 	t.Logf("    |---------+---------+---------+|")
@@ -87,10 +88,10 @@ func TestPrincess(t *testing.T) {
 	kh.AppendKnot(khipu.Penalty(-10000)) // TODO: add parfillskip
 	breakpoints, err := lb.FindBreakpoints()
 	if err != nil {
-		t.Errorf(err.Error())
+		t.Error(err)
 	}
 	if len(breakpoints)-1 != 14 {
-		t.Errorf("exptected 'princess' to occupy 14 lines, got %d", len(breakpoints)-1)
+		t.Errorf("expected 'princess' to occupy 14 lines, got %d", len(breakpoints)-1)
 	}
 	t.Logf("# Paragraph with %d lines: %v", len(breakpoints)-1, breakpoints)
 	t.Logf("     |---------+---------+---------+---------+-----|")
@@ -117,11 +118,11 @@ func newTestLinebreaker(t *testing.T, text string, len int) (*linebreaker, *khip
 
 func setupFFTest(t *testing.T, paragraph string, hyphens bool) (*khipu.Khipu, linebreak.Cursor, io.Writer) {
 	tracing.Select("tyse.frame").SetTraceLevel(tracing.LevelError)
-	regs := parameters.NewTypesettingRegisters()
+	regs := newParameters()
 	if hyphens {
-		regs.Push(parameters.P_MINHYPHENLENGTH, 3) // allow hyphenation
+		regs.Minhyphenlength = 3
 	} else {
-		regs.Push(parameters.P_MINHYPHENLENGTH, 100) // inhibit hyphenation
+		regs.Minhyphenlength = 100
 	}
 	kh := khipu.KnotEncode(strings.NewReader(paragraph), 0, nil, regs)
 	if kh == nil {
@@ -132,9 +133,9 @@ func setupFFTest(t *testing.T, paragraph string, hyphens bool) (*khipu.Khipu, li
 	var dotfile io.Writer
 	var err error
 	if graphviz {
-		dotfile, err = ioutil.TempFile(".", "firstfit-*.dot")
+		dotfile, err = os.CreateTemp(".", "firstfit-*.dot")
 		if err != nil {
-			t.Errorf(err.Error())
+			t.Error(err)
 		}
 	}
 	tracing.Select("tyse.frame").SetTraceLevel(tracing.LevelDebug)
@@ -167,30 +168,44 @@ func justify(text string, l int, even bool) string {
 	b.WriteString(s[0])
 	if even {
 		for j := 1; j < r; j++ {
-			for i := 0; i < ws+1; i++ {
+			for range ws + 1 {
 				b.WriteString(" ")
 			}
 			b.WriteString(s[j])
 		}
 		for j := r; j < len(s); j++ {
-			for i := 0; i < ws; i++ {
+			for range ws {
 				b.WriteString(" ")
 			}
 			b.WriteString(s[j])
 		}
 	} else {
 		for j := 1; j <= len(s)-r; j++ {
-			for i := 0; i < ws; i++ {
+			for range ws {
 				b.WriteString(" ")
 			}
 			b.WriteString(s[j])
 		}
 		for j := len(s) - r + 1; j < len(s); j++ {
-			for i := 0; i < ws+1; i++ {
+			for range ws + 1 {
 				b.WriteString(" ")
 			}
 			b.WriteString(s[j])
 		}
 	}
 	return b.String()
+}
+
+func newParameters() *khipu.Params {
+	var params khipu.Params
+	params.Language = language.English
+	params.Script = language.MustParseScript("Latn")
+	params.BidiDir = bidi.LeftToRight
+	params.Baselineskip = 12 * dimen.PT
+	params.Lineskip = 0
+	params.Lineskiplimit = 0
+	params.Hypenchar = rune('-')
+	params.Hyphenpenalty = 10
+	params.Minhyphenlength = 2
+	return &params
 }

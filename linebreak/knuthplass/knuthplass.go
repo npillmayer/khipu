@@ -162,7 +162,7 @@ type cost struct {
 
 type provisionalMark int64 // provisional mark from an integer position
 
-func (m provisionalMark) Position() int64  { return int64(m) }
+func (m provisionalMark) Position() int64    { return int64(m) }
 func (m provisionalMark) Knot() khipu.Knot { return khipu.Penalty(-10000) }
 
 func (fb *feasibleBreakpoint) String() string {

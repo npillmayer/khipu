@@ -93,7 +93,7 @@ func T() tracing.Trace {
 // We do not expose it to clients right now, but this may change as soon as we
 // make line-breaking scriptable.
 type linebreaker struct {
-	knot      khipu.Knot       // the current input knot
+	knot      khipu.Knot     // the current input knot
 	cursor    linebreak.Cursor // cursor moving over knots of input khipu
 	parshape  linebreak.ParShape
 	params    *linebreak.Parameters
@@ -388,5 +388,5 @@ func (lb *linebreaker) backtrack() khipu.Knot {
 // We will use it with a position index of -1.
 type provisionalMark int64 // provisional mark from an integer position
 
-func (m provisionalMark) Position() int64  { return int64(m) }
+func (m provisionalMark) Position() int64    { return int64(m) }
 func (m provisionalMark) Knot() khipu.Knot { return khipu.Penalty(-10000) }
