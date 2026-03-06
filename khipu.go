@@ -17,15 +17,6 @@ import (
 // KnotType is a type for the different flavours of knots.
 type KnotType int8
 
-// A Knot has a width and may be discardable at line-breaks.
-type Knot interface {
-	Type() KnotType      // type identifier of this knot
-	W() dimen.DU         // width
-	MinW() dimen.DU      // minimum width
-	MaxW() dimen.DU      // maximum width
-	IsDiscardable() bool // is this knot discardable?
-}
-
 // Knot types
 const (
 	KTKern KnotType = iota
@@ -36,6 +27,15 @@ const (
 	KTUserDefined // clients should use custom knot types above this
 )
 
+// A Knot has a width and may be discardable at line-breaks.
+type Knot interface {
+	Type() KnotType      // type identifier of this knot
+	W() dimen.DU         // width
+	MinW() dimen.DU      // minimum width
+	MaxW() dimen.DU      // maximum width
+	IsDiscardable() bool // is this knot discardable?
+}
+
 // NewKnot is a factory method to create a knot. Parameter is a valid knot type.
 func NewKnot(knottype KnotType) Knot {
 	switch knottype {
@@ -44,7 +44,7 @@ func NewKnot(knottype KnotType) Knot {
 	case KTGlue:
 		return Glue{0, 0, 0}
 	case KTPenalty:
-		return Penalty(0)
+		return PenaltyItem(0)
 	case KTDiscretionary:
 		return Discretionary{HyphenChar: '-', Width: 5 * dimen.BP}
 	case KTTextBox:
@@ -64,7 +64,7 @@ func KnotString(k Knot) string {
 		//g := k.(Glue)
 		return k.(Glue).String()
 	case KTPenalty:
-		return k.(Penalty).String()
+		return k.(PenaltyItem).String()
 	case KTTextBox:
 		s, ok := k.(*TextBox)
 		if ok {
@@ -88,7 +88,8 @@ func (k Kern) Type() KnotType {
 }
 
 func (k Kern) String() string {
-	return fmt.Sprintf("\u29e6%s", k.W())
+	//return fmt.Sprintf("\u29e6%.2f", k.W().Points())x25cb
+	return fmt.Sprintf("\u25a1%.2f", k.W().Points())
 }
 
 // W is part of interface Knot. Width of the kern.
@@ -124,7 +125,7 @@ func (g Glue) Type() KnotType {
 func (g Glue) String() string {
 	// minus := g.W() - g.MinW()
 	// plus := g.MaxW() - g.W()
-	return fmt.Sprintf("\u29df %.2f\u00b1", g.W().Points())
+	return fmt.Sprintf("\u25cb%.2f\u00b1", g.W().Points())
 }
 
 // W is part of interface Knot. Natural width of the glue.
@@ -257,50 +258,52 @@ var _ Knot = &TextBox{}
 
 // --- Penalty ---------------------------------------------------------------
 
-// A Penalty contributes to demerits, i.e. the quality index of paragraphs
-type Penalty int
+// A PenaltyItem contributes to demerits, i.e. the quality index of paragraphs
+type PenaltyItem int
 
 // Type is part of interface Knot.
-func (p Penalty) Type() KnotType {
+func (p PenaltyItem) Type() KnotType {
 	return KTPenalty
 }
 
-func (p Penalty) String() string {
+func (p PenaltyItem) String() string {
 	//return fmt.Sprintf("\u2af2%d", p) // crossed-out parallels
-	return fmt.Sprintf("\u29bb%d", p) // white circle with cross
+	//return fmt.Sprintf("\u29bb%d", p) // white circle with cross
+	return fmt.Sprintf("!%d", p) // white circle with cross
+	//return fmt.Sprintf("\u20e0%d", p) // white circle with cross
 }
 
 // W is part of interface Knot. Returns 0.
-func (p Penalty) W() dimen.DU {
+func (p PenaltyItem) W() dimen.DU {
 	return 0
 }
 
 // MinW is part of interface Knot. Returns 0.
-func (p Penalty) MinW() dimen.DU {
+func (p PenaltyItem) MinW() dimen.DU {
 	return 0
 }
 
 // MaxW is part of interface Knot. Returns 0.
-func (p Penalty) MaxW() dimen.DU {
+func (p PenaltyItem) MaxW() dimen.DU {
 	return 0
 }
 
 // IsDiscardable is part of interface Knot. Penalties are discardable.
-func (p Penalty) IsDiscardable() bool {
+func (p PenaltyItem) IsDiscardable() bool {
 	return true
 }
 
 // Demerits returns the penalty as demerits.
 // No numeric changes are made.
-func (p Penalty) Demerits() int32 {
+func (p PenaltyItem) Demerits() int32 {
 	return int32(p)
 }
 
 // === Khipus ================================================================
 
-// Khipu is a string of knots.
+// KhipuAOS is a string of knots.
 // We handle text/paragraphs as khipus.
-type Khipu struct {
+type KhipuAOS struct {
 	typ   int    // hlist, vlist or mlist
 	knots []Knot // array of knots of different type
 }
@@ -313,25 +316,25 @@ const (
 )
 
 // NewKhipu creates a new knot list.
-func NewKhipu() *Khipu {
-	kh := &Khipu{}
+func NewKhipu() *KhipuAOS {
+	kh := &KhipuAOS{}
 	kh.knots = make([]Knot, 0, 50)
 	return kh
 }
 
 // Length gives the number of knots in the list.
-func (kh *Khipu) Length() int64 {
+func (kh *KhipuAOS) Length() int64 {
 	return int64(len(kh.knots))
 }
 
 // AppendKnot appends a knot at the end of the list.
-func (kh *Khipu) AppendKnot(knot Knot) *Khipu {
+func (kh *KhipuAOS) AppendKnot(knot Knot) *KhipuAOS {
 	kh.knots = append(kh.knots, knot)
 	return kh
 }
 
 // AppendKhipu concatenates two khipus.
-func (kh *Khipu) AppendKhipu(k *Khipu) *Khipu {
+func (kh *KhipuAOS) AppendKhipu(k *KhipuAOS) *KhipuAOS {
 	kh.knots = append(kh.knots, k.knots...)
 	return kh
 }
@@ -340,7 +343,7 @@ func (kh *Khipu) AppendKhipu(k *Khipu) *Khipu {
 // index for the khipu, nothing is done.
 //
 // Returns the current knot at position inx.
-func (kh *Khipu) ReplaceKnot(inx int64, knot Knot) Knot {
+func (kh *KhipuAOS) ReplaceKnot(inx int64, knot Knot) Knot {
 	if inx >= 0 && inx < int64(len(kh.knots)) {
 		k := kh.knots[inx]
 		kh.knots[inx] = knot
@@ -352,16 +355,16 @@ func (kh *Khipu) ReplaceKnot(inx int64, knot Knot) Knot {
 // Measure returns the widths of a subset of this knot list. The subset runs from
 // index [from ... to-1]. The method returns natural, maximum and minimum
 // width.
-func (kh *Khipu) Measure(from, to int64) (dimen.DU, dimen.DU, dimen.DU) {
-	var w, max, min dimen.DU
-	to = iMax(to, int64(len(kh.knots)))
+func (kh *KhipuAOS) Measure(from, to int64) (dimen.DU, dimen.DU, dimen.DU) {
+	var w, maxx, min dimen.DU
+	to = max(to, int64(len(kh.knots)))
 	for i := from; i < to; i++ {
 		knot := kh.knots[i]
 		w += knot.W()
-		max += knot.MaxW()
+		maxx += knot.MaxW()
 		min += knot.MinW()
 	}
-	return w, max, min
+	return w, maxx, min
 }
 
 // Reach iterates over a khipu to find a point beyond a given distance.
@@ -369,7 +372,7 @@ func (kh *Khipu) Measure(from, to int64) (dimen.DU, dimen.DU, dimen.DU) {
 // endpoints for a sequence of knots to cover a certain width distance.
 // The knot set is returned as a pair (from,to) of indices.
 // If the distance cannot be covered, (-1,-1) is returned.
-func (kh *Khipu) Reach(start int, distance dimen.DU) (int, int) {
+func (kh *KhipuAOS) Reach(start int, distance dimen.DU) (int, int) {
 	l := len(kh.knots)
 	var max, min dimen.DU
 	var from, to int = -1, -1
@@ -388,8 +391,8 @@ func (kh *Khipu) Reach(start int, distance dimen.DU) (int, int) {
 }
 
 // MaxWidth finds the maximum width of the knots in the range [from ... to-1].
-func (kh *Khipu) MaxWidth(from, to int64) dimen.DU {
-	to = iMax(to, int64(len(kh.knots)))
+func (kh *KhipuAOS) MaxWidth(from, to int64) dimen.DU {
+	to = max(to, int64(len(kh.knots)))
 	var w dimen.DU
 	for i := from; i < to; i++ {
 		knot := kh.knots[i]
@@ -403,8 +406,8 @@ func (kh *Khipu) MaxWidth(from, to int64) dimen.DU {
 // MaxHeightAndDepth finds the maximum height and depth of the knots in the range
 // [from ... to-1].
 // Only knots of type TextBox are considered.
-func (kh *Khipu) MaxHeightAndDepth(from, to int64) (dimen.DU, dimen.DU) {
-	to = iMax(from, iMin(to, int64(len(kh.knots))))
+func (kh *KhipuAOS) MaxHeightAndDepth(from, to int64) (dimen.DU, dimen.DU) {
+	to = max(from, min(to, int64(len(kh.knots))))
 	var h, d dimen.DU
 	for i := from; i < to; i++ {
 		if knot, ok := kh.knots[i].(*TextBox); ok {
@@ -420,9 +423,9 @@ func (kh *Khipu) MaxHeightAndDepth(from, to int64) (dimen.DU, dimen.DU) {
 }
 
 // Text returns the text contents of a khipu segment.
-func (kh *Khipu) Text(from, to int64) string {
+func (kh *KhipuAOS) Text(from, to int64) string {
 	var b bytes.Buffer
-	to = iMax(from, iMin(to, int64(len(kh.knots))))
+	to = max(from, min(to, int64(len(kh.knots))))
 	spacecnt := 0
 	for i := from; i < to; i++ {
 		knot := kh.knots[i]
@@ -443,42 +446,28 @@ func (kh *Khipu) Text(from, to int64) string {
 }
 
 // Debug representation of a knot list.
-func (kh *Khipu) String() string {
+func (kh *KhipuAOS) String() string {
 	buf := make([]byte, 0, 30)
 	w := bytes.NewBuffer(buf)
 	switch kh.typ {
 	case HList:
-		w.WriteString("\\hlist{")
+		w.WriteString("\\hlist{\n")
 	case VList:
-		w.WriteString("\\vlist{")
+		w.WriteString("\\vlist{\n")
 	case MList:
-		w.WriteString("\\mlist{")
+		w.WriteString("\\mlist{\n")
 	}
-	first := true
+	//first := true
 	for _, knot := range kh.knots {
-		if !first {
-			w.WriteString(" ")
-		} else {
-			first = false
-		}
+		// if !first {
+		// 	w.WriteString(" ")
+		// } else {
+		// 	first = false
+		// }
+		w.WriteString(" ")
 		w.WriteString(KnotString(knot))
+		w.WriteString("\n")
 	}
 	w.WriteString("}")
 	return w.String()
-}
-
-// ----------------------------------------------------------------------
-
-func iMin(x, y int64) int64 {
-	if x < y {
-		return x
-	}
-	return y
-}
-
-func iMax(x, y int64) int64 {
-	if x > y {
-		return x
-	}
-	return y
 }

@@ -41,36 +41,11 @@ ________________________________________________________________________________
 
 # BSD License
 
-# Copyright (c) 2017–21, Norbert Pillmayer
+# Copyright (c) Norbert Pillmayer
 
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions
-are met:
-
-1. Redistributions of source code must retain the above copyright
-notice, this list of conditions and the following disclaimer.
-
-2. Redistributions in binary form must reproduce the above copyright
-notice, this list of conditions and the following disclaimer in the
-documentation and/or other materials provided with the distribution.
-
-3. Neither the name of this software nor the names of its contributors
-may be used to endorse or promote products derived from this software
-without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+Please refer to the file LICENSE for licensing details.
 */
 package firstfit
 
@@ -80,20 +55,19 @@ import (
 
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/linebreak"
-	"github.com/npillmayer/schuko/gtrace"
 	"github.com/npillmayer/schuko/tracing"
 )
 
-// T traces to the core tracer.
-func T() tracing.Trace {
-	return gtrace.CoreTracer
+// tracer traces with key 'khipu.linebreak'.
+func tracer() tracing.Trace {
+	return tracing.Select("khipu.linebreak")
 }
 
 // We use a small object to manage line-breaking information for a client call.
 // We do not expose it to clients right now, but this may change as soon as we
 // make line-breaking scriptable.
 type linebreaker struct {
-	knot      khipu.Knot     // the current input knot
+	knot      khipu.Knot       // the current input knot
 	cursor    linebreak.Cursor // cursor moving over knots of input khipu
 	parshape  linebreak.ParShape
 	params    *linebreak.Parameters
@@ -157,24 +131,24 @@ func (lb *linebreaker) FindBreakpoints() ([]khipu.Mark, error) {
 	last := lb.mark() // and remember the last one
 	for knot != nil {
 		linelen := lb.parshape.LineLength(lineno)
-		gtrace.CoreTracer.Debugf("_______________ %v ___________________", knot)
+		tracer().Debugf("_______________ %v ___________________", knot)
 		if knot.Type() == khipu.KTPenalty { // TODO discretionaries
 			last = lb.mark()
 			penalty := lb.penalty()
 			spaceUsed.append(knot)
 			segm := spaceUsed.width(lb.params)
 			if linebreak.Merits(penalty.Demerits()) < linebreak.InfinityDemerits {
-				T().Debugf("penalty %v is acceptable", penalty.Demerits())
-				T().Debugf("segm=%v", segm)
+				tracer().Debugf("penalty %v is acceptable", penalty.Demerits())
+				tracer().Debugf("segm=%v", segm)
 				if segm.Min > linelen { // overshoot
 					if lb.backtrack() != nil {
 						// checkpoint set => start new line there
-						T().Infof("backtracked to %v", lb.knot)
+						tracer().Infof("backtracked to %v", lb.knot)
 						breakpoints = lb.linebreak(breakpoints)
 						spaceUsed.reset()
 						firstInLine = true
 					} else { // no checkpoint set => overfull hbox
-						T().Infof("Overfull box at line %d", lb.linecount+1)
+						tracer().Infof("Overfull box at line %d", lb.linecount+1)
 						breakpoints = lb.linebreak(breakpoints)
 						spaceUsed.reset()
 						firstInLine = true
@@ -184,7 +158,7 @@ func (lb *linebreaker) FindBreakpoints() ([]khipu.Mark, error) {
 					if !lb.checkpoint() {
 						panic("CANNOT SET CHECKPOINT") // TODO remove after debugging
 					}
-					gtrace.CoreTracer.Infof("setting checkpoint with demerits=%v", penalty.Demerits())
+					tracer().Infof("setting checkpoint with demerits=%v", penalty.Demerits())
 				}
 			} // otherwise no feasible break, just move over penalty
 		} else { // knot is not a penalty => append at end of segment
@@ -194,7 +168,7 @@ func (lb *linebreaker) FindBreakpoints() ([]khipu.Mark, error) {
 				firstInLine = false
 			}
 		}
-		T().Debugf("segment = %v", spaceUsed)
+		tracer().Debugf("segment = %v", spaceUsed)
 		knot = lb.next()
 	}
 	breakpoints = append(breakpoints, last)
@@ -209,11 +183,11 @@ func (lb *linebreaker) FindBreakpoints() ([]khipu.Mark, error) {
 //	max(p1, p2, ..., pn) otherwise
 //
 // Returns the most significant penalty. Advances the cursor over all adjacent penalties.
-func (lb *linebreaker) penalty() khipu.Penalty {
+func (lb *linebreaker) penalty() khipu.PenaltyItem {
 	if lb.eof || lb.knot.Type() != khipu.KTPenalty {
-		return khipu.Penalty(linebreak.InfinityDemerits)
+		return khipu.PenaltyItem(linebreak.InfinityDemerits)
 	}
-	penalty := lb.knot.(khipu.Penalty)
+	penalty := lb.knot.(khipu.PenaltyItem)
 	ignore := false // final penalty found, ignore all other penalties
 	knot, ok := lb.peek()
 	for ok {
@@ -222,7 +196,7 @@ func (lb *linebreaker) penalty() khipu.Penalty {
 			if ignore {
 				break // found a -10000 previously, now skipping
 			} else {
-				p := knot.(khipu.Penalty)
+				p := knot.(khipu.PenaltyItem)
 				if linebreak.Merits(p.Demerits()) <= linebreak.InfinityMerits { // -10000 must break (like in TeX)
 					penalty = p
 					ignore = true // skip all further penalties
@@ -235,7 +209,7 @@ func (lb *linebreaker) penalty() khipu.Penalty {
 			ok = false
 		}
 	}
-	p := khipu.Penalty(linebreak.CapDemerits(linebreak.Merits(penalty.Demerits())))
+	p := khipu.PenaltyItem(linebreak.CapDemerits(linebreak.Merits(penalty.Demerits())))
 	return p
 }
 
@@ -276,8 +250,8 @@ func (s *segment) width(params *linebreak.Parameters) linebreak.WSS {
 // reset is called while creating a line-break. It carries over 'carry' to the
 // length count and truncates breakDiscard.
 func (s *segment) reset() {
-	T().Debugf("reset: length = %v,", s.length)
-	T().Debugf("       carrying over %v", s.carry)
+	tracer().Debugf("reset: length = %v,", s.length)
+	tracer().Debugf("       carrying over %v", s.carry)
 	s.length = s.carry
 	s.carry = linebreak.WSS{}
 	s.breakDiscard = linebreak.WSS{}
@@ -286,7 +260,7 @@ func (s *segment) reset() {
 // trackcarry signals that we will start tracking carry items. It simply truncates
 // carry.
 func (s *segment) trackcarry() {
-	T().Debugf("truncating track")
+	tracer().Debugf("truncating track")
 	s.carry = linebreak.WSS{}
 }
 
@@ -297,7 +271,7 @@ func (s *segment) String() string {
 // linebreak creates a breakpoint and appends it to a given list.
 func (lb *linebreaker) linebreak(breakpoints []khipu.Mark) []khipu.Mark {
 	lb.linecount++
-	gtrace.CoreTracer.Debugf("new line #%d", lb.linecount)
+	tracer().Debugf("new line #%d", lb.linecount)
 	breakpoints = append(breakpoints, lb.mark())
 	lb.buffer = lb.buffer[:0]
 	lb.pos = -1
@@ -388,5 +362,5 @@ func (lb *linebreaker) backtrack() khipu.Knot {
 // We will use it with a position index of -1.
 type provisionalMark int64 // provisional mark from an integer position
 
-func (m provisionalMark) Position() int64    { return int64(m) }
-func (m provisionalMark) Knot() khipu.Knot { return khipu.Penalty(-10000) }
+func (m provisionalMark) Position() int64  { return int64(m) }
+func (m provisionalMark) Knot() khipu.Knot { return khipu.PenaltyItem(-10000) }

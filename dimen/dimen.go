@@ -134,21 +134,3 @@ func Parse(s string) (DU, bool, error) {
 	return DU(n) * scale, ispcnt, nil
 }
 */
-
-// ---------------------------------------------------------------------------
-
-// Min returns the smaller of two dimensions.
-func Min(a, b DU) DU {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// Max returns the greater of two dimensions.
-func Max(a, b DU) DU {
-	if a > b {
-		return a
-	}
-	return b
-}

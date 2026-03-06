@@ -71,10 +71,23 @@ Copyright © 2017–2021 Norbert Pillmayer <norbert@pillmayer.com>
 package khipu
 
 import (
+	"errors"
+
 	"github.com/npillmayer/schuko/tracing"
 )
 
-// tracer traces with key 'tyse.khipu'.
+// tracer traces with key 'khipu'.
 func tracer() tracing.Trace {
-	return tracing.Select("tyse.khipu")
+	return tracing.Select("khipu")
 }
+
+func assert(cond bool, msg string) {
+	if !cond {
+		panic(msg)
+	}
+}
+
+var (
+	ErrIllegalArguments = errors.New("khipu: illegal arguments")
+	ErrVoidKhipukamayuq = errors.New("khipu: void khipukamayuq")
+)

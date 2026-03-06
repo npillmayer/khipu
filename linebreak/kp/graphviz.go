@@ -14,7 +14,7 @@ type graphParamsType struct {
 	Fontname string
 }
 
-func allBreakpointBoxes(kp *linebreaker, kh *khipu.Khipu, optimal map[int32][]khipu.Mark,
+func allBreakpointBoxes(kp *linebreaker, kh *khipu.KhipuAOS, optimal map[int32][]khipu.Mark,
 	boxT *template.Template, w io.Writer) map[int64]*n {
 	//
 	breakBoxes := make(map[int64]*n)
@@ -31,11 +31,11 @@ func allBreakpointBoxes(kp *linebreaker, kh *khipu.Khipu, optimal map[int32][]kh
 	return breakBoxes
 }
 
-func allEdges(kp *linebreaker, kh *khipu.Khipu, boxes map[int64]*n, edgeT *template.Template,
+func allEdges(kp *linebreaker, kh *khipu.KhipuAOS, boxes map[int64]*n, edgeT *template.Template,
 	w io.Writer) {
 	//
 	for _, edge := range kp.Edges(true) {
-		T().Debugf("output of edge %v", edge)
+		tracer().Debugf("output of edge %v", edge)
 		e := &e{}
 		e.N1 = boxes[edge.from]
 		e.N2 = boxes[edge.to]
@@ -71,7 +71,7 @@ func contains(s []khipu.Mark, e khipu.Mark) bool {
 	return false
 }
 
-func makeBox(fb *feasibleBreakpoint, kh *khipu.Khipu) *n {
+func makeBox(fb *feasibleBreakpoint, kh *khipu.KhipuAOS) *n {
 	box := &n{
 		khipu: kh,
 		Mark:  fb.mark,
@@ -84,7 +84,7 @@ func makeBox(fb *feasibleBreakpoint, kh *khipu.Khipu) *n {
 		box.Text = fmt.Sprintf("%s\\n%v", getText(box), fb.mark.Knot())
 		box.Name = fmt.Sprintf("break%d", fb.mark.Position())
 	}
-	T().Debugf("Text %v = '%v'", fb.mark.Knot(), box.Text)
+	tracer().Debugf("Text %v = '%v'", fb.mark.Knot(), box.Text)
 	return box
 }
 
@@ -103,7 +103,7 @@ func (kp *linebreaker) toGraphViz(cursor *khipu.Cursor, results map[int32][]khip
 }
 
 type n struct {
-	khipu *khipu.Khipu
+	khipu *khipu.KhipuAOS
 	Mark  khipu.Mark
 	Name  string
 	Text  string

@@ -30,13 +30,13 @@ func (m mark) Knot() Knot {
 
 // A Cursor navigates over the knots of a khipu
 type Cursor struct {
-	khipu *Khipu
+	khipu *KhipuAOS
 	inx   int64
 }
 
 // NewCursor creates a cursor for a given khipu.
 // Usage is unsafe if the referenced khipu changes during lifetime of the cursor.
-func NewCursor(kh *Khipu) *Cursor {
+func NewCursor(kh *KhipuAOS) *Cursor {
 	return &Cursor{kh, -1}
 }
 
@@ -96,7 +96,7 @@ func (c *Cursor) Mark() Mark {
 // Clients should not modify it, except with the methods of the cursor.
 // Different cursors should not modify the same khipu.
 // Modifying a khipu may render previously returned marks invalid.
-func (c *Cursor) Khipu() *Khipu {
+func (c *Cursor) Khipu() *KhipuAOS {
 	return c.khipu
 }
 
@@ -123,8 +123,8 @@ func (c Cursor) AsGlue() Glue {
 }
 
 // AsPenalty returns the current knot as a penalty.
-func (c Cursor) AsPenalty() Penalty {
-	return c.Knot().(Penalty)
+func (c Cursor) AsPenalty() PenaltyItem {
+	return c.Knot().(PenaltyItem)
 }
 
 // AsKern returns the current knot as a kern item.

@@ -61,7 +61,7 @@ func (fwc FixedWidthCursor) Mark() khipu.Mark {
 }
 
 // Khipu is part of interface Cursor.
-func (fwc FixedWidthCursor) Khipu() *khipu.Khipu {
+func (fwc FixedWidthCursor) Khipu() *khipu.KhipuAOS {
 	return fwc.cursor.Khipu()
 }
 

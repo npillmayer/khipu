@@ -85,7 +85,7 @@ func TestPrincess(t *testing.T) {
 	defer teardown()
 	//
 	lb, kh := newTestLinebreaker(t, princess, 45)
-	kh.AppendKnot(khipu.Penalty(-10000)) // TODO: add parfillskip
+	kh.AppendKnot(khipu.PenaltyItem(-10000)) // TODO: add parfillskip
 	breakpoints, err := lb.FindBreakpoints()
 	if err != nil {
 		t.Error(err)
@@ -106,7 +106,7 @@ func TestPrincess(t *testing.T) {
 
 // --- Helpers ----------------------------------------------------------
 
-func newTestLinebreaker(t *testing.T, text string, len int) (*linebreaker, *khipu.Khipu) {
+func newTestLinebreaker(t *testing.T, text string, len int) (*linebreaker, *khipu.KhipuAOS) {
 	kh, cursor, _ := setupFFTest(t, text, false)
 	parshape := linebreak.RectangularParShape(dimen.DU(len) * 10 * dimen.BP)
 	lb, err := newLinebreaker(cursor, parshape, nil)
@@ -116,7 +116,7 @@ func newTestLinebreaker(t *testing.T, text string, len int) (*linebreaker, *khip
 	return lb, kh
 }
 
-func setupFFTest(t *testing.T, paragraph string, hyphens bool) (*khipu.Khipu, linebreak.Cursor, io.Writer) {
+func setupFFTest(t *testing.T, paragraph string, hyphens bool) (*khipu.KhipuAOS, linebreak.Cursor, io.Writer) {
 	tracing.Select("tyse.frame").SetTraceLevel(tracing.LevelError)
 	regs := newParameters()
 	if hyphens {

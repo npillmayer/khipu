@@ -28,6 +28,7 @@ func TestKhipu(t *testing.T) {
 	if kh.Length() != 3 {
 		t.Errorf("Length of khipu should be 3")
 	}
+	t.Fail()
 }
 
 func TestBreaking1(t *testing.T) {

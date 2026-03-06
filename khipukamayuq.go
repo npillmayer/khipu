@@ -41,7 +41,7 @@ type TypesettingPipeline struct {
 }
 
 type typEnv struct { // typesetting environment
-	shaper   otshape.Shaper
+	shaper   Shaper
 	pipeline *TypesettingPipeline
 	//regs     *params.TypesettingRegisters
 	params *Params
@@ -55,45 +55,45 @@ type styledItem struct {
 	prevStyles, styles styled.Style
 }
 
-func EncodeParagraph(para *styled.Paragraph, startpos uint64, shaper otshape.Shaper,
-	pipeline *TypesettingPipeline, regs *Params) (*Khipu, error) {
+func EncodeParagraph(para *styled.Paragraph, startpos uint64, env typEnv) (*KhipuAOS, error) {
 	//
-	if regs == nil {
-		regs = newParameters()
-	}
-	env := typEnv{
-		shaper:   shaper,
-		pipeline: pipeline,
-		params:   regs,
-		levels:   para.BidiLevels(),
-	}
+	// if params == nil {
+	// 	params = newParameters()
+	// }
+	// env := typEnv{
+	// 	shaper:   shaper,
+	// 	pipeline: pipeline,
+	// 	params:   params,
+	// 	levels:   para.BidiLevels(),
+	// }
 	text := para.Raw().Reader()
 	//paraLen := para.Raw().Len()
 	env.pipeline = PrepareTypesettingPipeline(text, env.pipeline)
-	var result *Khipu = NewKhipu()
+	var result *KhipuAOS = NewKhipu()
 	tracer().Debugf("------------ start of para -----------")
-	//T().Debugf("para text = '%s'", para.Raw().String())
-	para.EachStyleRun(func(content string, sty styled.Style, pos, length uint64) error {
+	tracer().Debugf("para text = '%s'", para.Raw().String())
+	for styleChange, textReader := range para.StyleRanges() {
+		//para.EachStyleRun(func(content string, sty styled.Style, pos, length uint64) error {
 		item := styledItem{
 			offset: para.Offset,
 			end:    para.Offset + para.Raw().Len(),
-			from:   startpos + pos,
-			to:     startpos + pos + length,
-			styles: sty,
+			from:   styleChange.Position,
+			to:     styleChange.Position + styleChange.Length,
+			styles: styleChange.Style,
 		}
-		tracer().Debugf("--- encoding run '%s'", content)
-		k, err := encodeRun(text, item, env)
+		s, _ := io.ReadAll(textReader)
+		tracer().Debugf("--- encoding run '%s'", s)
+		k, err := encodeRun(textReader, item, env)
 		if err != nil {
-			return err
+			return result, err
 		}
 		result = result.AppendKhipu(k)
-		return nil
-	})
+	}
 	tracer().Debugf("------------- end of para ------------")
 	return result, nil
 }
 
-func encodeRun(text io.Reader, item styledItem, env typEnv) (k *Khipu, err error) {
+func encodeRun(text io.Reader, item styledItem, env typEnv) (k *KhipuAOS, err error) {
 	k = NewKhipu()                   // will be return value
 	stopper := item.to               // we won't read beyond end of item run
 	if uint64(stopper) >= item.end { // except when at end of paragraph
@@ -119,7 +119,7 @@ func encodeRun(text io.Reader, item styledItem, env typEnv) (k *Khipu, err error
 	return k, err
 }
 
-func encodeSegment(segm string, p penalties, item styledItem, env typEnv) (*Khipu, error) {
+func encodeSegment(segm string, p penalties, item styledItem, env typEnv) (*KhipuAOS, error) {
 	//
 	if p.breaksAtSpace() && isspace(segm) {
 		return encodeSpace(segm, p, item.styles, env.params), nil
@@ -129,13 +129,13 @@ func encodeSegment(segm string, p penalties, item styledItem, env typEnv) (*Khip
 		// b := NewTextBox(seg.Text(), textpos)
 		// khipu.AppendKnot(b).AppendKnot(Penalty(dimen.Infty))
 		b := encodeText(segm, item, env)
-		b.AppendKnot(Penalty(p.p1))
+		b.AppendKnot(PenaltyItem(p.p1))
 		return b, nil
 	}
 	if p.canWrapLine() { // line wrap without space
 		// identified as a possible line break, but no space
 		// insert explicit discretionary '\-' penalty
-		k := NewKhipu().AppendKnot(Penalty(env.params.Hyphenpenalty))
+		k := NewKhipu().AppendKnot(PenaltyItem(env.params.Hyphenpenalty))
 		//k := NewKhipu().AppendKnot(Penalty(env.regs.N(params.P_HYPHENPENALTY)))
 		return k, nil
 	}
@@ -146,17 +146,17 @@ func encodeSegment(segm string, p penalties, item styledItem, env typEnv) (*Khip
 	// khipu.AppendKnot(b).AppendKnot(pen)
 	tracer().Debugf("no line wrap possible, encode unbreakable text")
 	b := encodeText(segm, item, env)
-	b.AppendKnot(Penalty(dimen.Infinity))
+	b.AppendKnot(PenaltyItem(dimen.Infinity))
 	return b, nil
 }
 
 func encodeSpace(fragm string, p penalties, styles styled.Style,
-	regs *Params) *Khipu {
+	regs *Params) *KhipuAOS {
 	//
 	tracer().Debugf("khipukamayuq: encode space with penalites %v", p)
 	k := NewKhipu()
 	g := spaceglue(regs)
-	k.AppendKnot(g).AppendKnot(Penalty(p.p2))
+	k.AppendKnot(g).AppendKnot(PenaltyItem(p.p2))
 	return k
 }
 
@@ -181,7 +181,7 @@ func encodeSpace(fragm string, p penalties, styles styled.Style,
 //
 // For now, our proposition is that paragraphs are the finest level down to which we can
 // parallelize things. From paragraphs on we switch to sequential mode.
-func encodeText(fragm string, item styledItem, env typEnv) *Khipu {
+func encodeText(fragm string, item styledItem, env typEnv) *KhipuAOS {
 	//
 	wordsKhipu := NewKhipu()
 	// 1. break fragment into words by UAX#29
@@ -266,7 +266,7 @@ func matchLang(styles styled.Style, lang language.Tag) language.Tag {
 
 // KnotEncode transforms an input text into a khipu.
 func KnotEncode(text io.Reader, startpos uint64, pipeline *TypesettingPipeline,
-	regs *Params) *Khipu {
+	regs *Params) *KhipuAOS {
 	//
 	if regs == nil {
 		regs = newParameters()
@@ -298,7 +298,7 @@ func KnotEncode(text io.Reader, startpos uint64, pipeline *TypesettingPipeline,
 //
 // Returns a khipu consisting of text-boxes, glues and penalties.
 func createPartialKhipuFromSegment(seg *segment.Segmenter, textpos uint64,
-	pipeline *TypesettingPipeline, regs *Params) *Khipu {
+	pipeline *TypesettingPipeline, regs *Params) *KhipuAOS {
 	//
 	khipu := NewKhipu()
 	p := penlty(seg.Penalties())
@@ -308,15 +308,15 @@ func createPartialKhipuFromSegment(seg *segment.Segmenter, textpos uint64,
 		if p.breaksAtSpace() { // broken by secondary breaker, too
 			if isspace(seg.Text()) {
 				g := spaceglue(regs)
-				khipu.AppendKnot(g).AppendKnot(Penalty(p.p2))
+				khipu.AppendKnot(g).AppendKnot(PenaltyItem(p.p2))
 			} else {
 				b := NewTextBox(seg.Text(), textpos)
-				khipu.AppendKnot(b).AppendKnot(Penalty(dimen.Infinity))
+				khipu.AppendKnot(b).AppendKnot(PenaltyItem(dimen.Infinity))
 			}
 		} else { // identified as a possible line break, but no space
 			// insert explicit discretionary '\-' penalty
 			b := NewTextBox(seg.Text(), textpos)
-			pen := Penalty(regs.Hyphenpenalty)
+			pen := PenaltyItem(regs.Hyphenpenalty)
 			khipu.AppendKnot(b).AppendKnot(pen)
 		}
 	} else { // segment is broken by secondary breaker
@@ -325,13 +325,13 @@ func createPartialKhipuFromSegment(seg *segment.Segmenter, textpos uint64,
 			tracer().Errorf("BROKEN BY SECONDARY BREAKER: WHITESPACE")
 			// close a span of whitespace
 			g := spaceglue(regs)
-			pen := Penalty(p.p2)
+			pen := PenaltyItem(p.p2)
 			khipu.AppendKnot(g).AppendKnot(pen)
 		} else {
 			tracer().Errorf("BROKEN BY SECONDARY BREAKER: TEXT_BOX")
 			// close a text box which is not a possible line wrap position
 			b := NewTextBox(seg.Text(), textpos)
-			pen := Penalty(dimen.Infinity)
+			pen := PenaltyItem(dimen.Infinity)
 			khipu.AppendKnot(b).AppendKnot(pen)
 		}
 	}
@@ -343,7 +343,7 @@ func createPartialKhipuFromSegment(seg *segment.Segmenter, textpos uint64,
 //
 // Hyphenation is governed by the typesetting registers.
 // If regs is nil, no hyphenation is done.
-func HyphenateTextBoxes(khipu *Khipu, pipeline *TypesettingPipeline, regs *Params) {
+func HyphenateTextBoxes(khipu *KhipuAOS, pipeline *TypesettingPipeline, regs *Params) {
 	//
 	if regs == nil || khipu == nil {
 		return
