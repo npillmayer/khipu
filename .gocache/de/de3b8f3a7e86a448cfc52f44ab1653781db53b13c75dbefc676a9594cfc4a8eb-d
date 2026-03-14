@@ -1,0 +1,5 @@
+./doc.go
+./errors.go
+./monad.go
+./para.go
+./paragraphs.go

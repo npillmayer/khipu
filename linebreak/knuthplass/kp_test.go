@@ -1,6 +1,7 @@
 package knuthplass
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/npillmayer/khipu"
@@ -10,23 +11,33 @@ import (
 )
 
 func TestKPVoid(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "khipu")
+	teardown := gotestingadapter.QuickConfig(t, "khipu.linebreak")
 	defer teardown()
 	//
+	params := DefaultParameters
+	parfillnode := node{
+		params.ParFillSkip.W,
+		params.ParFillSkip.MinW,
+		params.ParFillSkip.MaxW,
+		InfinityMerits,
+		khipu.KTGlue,
+	}
 	khp := newKhipu([]node{
-		{w: 100, minw: 50, maxw: 150, p: InfinityDemerits, kind: khipu.KTTextBox},
-		{w: 10, minw: 5, maxw: 15, p: 0, kind: khipu.KTGlue},
-		{w: 100, minw: 50, maxw: 150, p: 0, kind: khipu.KTTextBox},
-		{w: 10, minw: 5, maxw: 15, p: 0, kind: khipu.KTGlue},
+		{w: 100, minw: 80, maxw: 120, p: InfinityDemerits, kind: khipu.KTTextBox},
+		{w: 10, minw: 5, maxw: 15, p: -100, kind: khipu.KTGlue},
+		{w: 80, minw: 60, maxw: 110, p: 5000, kind: khipu.KTTextBox},
+		parfillnode,
 	})
 	t.Logf("khipu of length %d", len(khp.Kind))
 	t.Logf("khipu: %v", khp)
-	parshape := linebreak.RectangularParShape(100 * dimen.PT)
-	_, err := BreakParagraph(khp, parshape, nil)
+	parshape := linebreak.RectangularParShape(100 * dimen.BP)
+	breakpoints, err := BreakParagraph(khp, parshape, nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
-	t.Fail()
+	if want := []kinx{1, 3}; !slices.Equal(breakpoints, want) {
+		t.Fatalf("expected breakpoints %v, got %v", want, breakpoints)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -40,9 +51,9 @@ type node struct {
 func newKhipu(nodes []node) *khipu.Khipu {
 	khp := testKhipu()
 	for _, n := range nodes {
-		khp.W = append(khp.W, n.w*dimen.PT)
-		khp.MinW = append(khp.MinW, n.minw*dimen.PT)
-		khp.MaxW = append(khp.MaxW, n.maxw*dimen.PT)
+		khp.W = append(khp.W, n.w*dimen.BP)
+		khp.MinW = append(khp.MinW, n.minw*dimen.BP)
+		khp.MaxW = append(khp.MaxW, n.maxw*dimen.BP)
 		khp.Penalty = append(khp.Penalty, khipu.Penalty(n.p))
 		khp.Kind = append(khp.Kind, n.kind)
 		khp.Pos = append(khp.Pos, 0)

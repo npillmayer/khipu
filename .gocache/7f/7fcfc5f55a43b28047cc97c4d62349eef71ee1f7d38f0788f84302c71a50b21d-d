@@ -1,0 +1,9 @@
+./bytes.go
+./doc.go
+./head.go
+./info.go
+./kern.go
+./maxp.go
+./metrics.go
+./name.go
+./types.go

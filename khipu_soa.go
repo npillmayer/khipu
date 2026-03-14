@@ -34,9 +34,9 @@ type KnotStyler interface {
 func (k KnotCore) String() string {
 	switch k.Kind {
 	case KTGlue:
-		return fmt.Sprintf("\u25cb%.2f\u00b1", k.W.Points())
+		return fmt.Sprintf("\u25cb%.2f\u00b1[p=%d]", k.W.Points(), k.Penalty)
 	case KTTextBox:
-		return fmt.Sprintf("\u00ab%s\u00bb(%.2f)", "text", k.W.Points())
+		return fmt.Sprintf("\u00ab%s\u00bb(%.2f)[p=%d]", "text", k.W.Points(), k.Penalty)
 	}
 	return fmt.Sprintf("%d:%.2f", k.Kind, k.W.Points())
 }
@@ -90,13 +90,17 @@ func unwireKhipu(khipu *Khipu) *Khipu {
 }
 
 func (khipu Khipu) KnotByIndex(index int) KnotCore {
+	if index < 0 || index >= len(khipu.Kind) {
+		return KnotCore{}
+	}
 	return KnotCore{
-		W:    khipu.W[index],
-		MinW: khipu.MinW[index],
-		MaxW: khipu.MaxW[index],
-		Kind: khipu.Kind[index],
-		Pos:  khipu.Pos[index],
-		Len:  khipu.Len[index],
+		W:       khipu.W[index],
+		MinW:    khipu.MinW[index],
+		MaxW:    khipu.MaxW[index],
+		Kind:    khipu.Kind[index],
+		Penalty: khipu.Penalty[index],
+		Pos:     khipu.Pos[index],
+		Len:     khipu.Len[index],
 	}
 }
 
@@ -130,6 +134,20 @@ func (khipu *Khipu) Unskip() {
 		khipu.Len = khipu.Len[:top]
 		khipu.Kind = khipu.Kind[:top]
 	}
+}
+
+func (khipu *Khipu) Discardable(index int) (int, bool) {
+	if index < 0 || index >= len(khipu.Kind) {
+		return 0, false
+	}
+	discarded := false
+	for i := index; index >= 0; i-- {
+		if khipu.Kind[index] != KTGlue && khipu.Kind[index] != KTKern {
+			return index, discarded
+		}
+		discarded = true
+	}
+	return 0, discarded
 }
 
 // acquire is called by Khipukamayuq to take ownership of a khipu.

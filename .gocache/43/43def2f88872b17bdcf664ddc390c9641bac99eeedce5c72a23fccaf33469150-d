@@ -1,0 +1,7 @@
+./cursor.go
+./doc.go
+./khipu.go
+./khipu_soa.go
+./khipukamayuq.go
+./params.go
+./shaping.go

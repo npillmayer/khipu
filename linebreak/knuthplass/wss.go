@@ -1,6 +1,8 @@
 package knuthplass
 
 import (
+	"fmt"
+
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/dimen"
 )
@@ -68,6 +70,11 @@ type WSS struct {
 	W   dimen.DU
 	Min dimen.DU
 	Max dimen.DU
+}
+
+func (wss WSS) String() string {
+	return fmt.Sprintf("WSS[%.2f -%.2f +%.2f]",
+		wss.W.Points(), wss.Min.Points(), wss.Max.Points())
 }
 
 // Spread returns the width's of an elastic WSS.

@@ -1,6 +1,10 @@
 package knuthplass
 
-import "slices"
+import (
+	"bytes"
+	"fmt"
+	"slices"
+)
 
 type kinx = int   // khipu knot index
 type merits int16 // (de-)merits for a line break
@@ -39,6 +43,17 @@ func newGraph() *graph {
 		edgesTo:     make(map[kinx]map[origin]edge),
 		prunedEdges: make(map[kinx]map[origin]edge),
 	}
+}
+
+func (g *graph) String() string {
+	var sb bytes.Buffer
+	for _, edges := range g.edgesTo {
+		for o, e := range edges {
+			fmt.Fprintf(&sb, "%d -> %d (c:%d, l:%d)\n",
+				e.from, e.to, e.cost, o.line)
+		}
+	}
+	return sb.String()
 }
 
 // newWEdge returns a new weighted edge from one breakpoint to another,
@@ -164,10 +179,14 @@ func (g *graph) AddEdge(from, to kinx, cost, total merits, line lineNo) {
 	if from == to {
 		return
 	}
+	tracer().Debugf("K&P graph: adding edge %d -> %d", from, to)
 	// if from.mark.Position() == to.mark.Position() {
 	// 	return
 	// }
-	g.AddBP(to)
+	if b := g.Breakpoint(to); b == noinx {
+		g.AddBP(to)
+		tracer().Debugf("K&P graph: edge endpoint %d not yet a breakpoint, adding", to)
+	}
 	// if g.Breakpoint(to.mark.Position()) == nil {
 	// 	g.Add(to)
 	// }
@@ -226,6 +245,32 @@ func (g *graph) To(bp kinx) []kinx {
 	// }
 	// sort.Sort(breakpointSorter{breakpoints})
 	// return breakpoints
+}
+
+// predecessorForLine returns the predecessor of a breakpoint for a given line number.
+// With pruning enabled there should be at most one surviving predecessor per (to,line).
+func (g *graph) predecessorForLine(to kinx, line lineNo) (kinx, edge, bool) {
+	edgesTo, ok := g.edgesTo[to]
+	if !ok {
+		return noinx, nullEdge, false
+	}
+	pred := noinx
+	best := nullEdge
+	found := false
+	for org, e := range edgesTo {
+		if org.line != line {
+			continue
+		}
+		if !found || e.total < best.total {
+			pred = org.from
+			best = e
+			found = true
+		}
+	}
+	if !found {
+		return noinx, nullEdge, false
+	}
+	return pred, best, true
 }
 
 // Cost returns the cost for the edge between two breakpoints, valid for a lineNo.

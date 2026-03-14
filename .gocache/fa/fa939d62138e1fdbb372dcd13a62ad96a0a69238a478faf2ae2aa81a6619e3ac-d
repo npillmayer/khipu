@@ -1,0 +1,17 @@
+./bytes.go
+./cmap.go
+./doc.go
+./errors.go
+./gsubgpos.go
+./layout.go
+./layout_scripts_features.go
+./lookup.go
+./lookup_gpos.go
+./lookup_gsub.go
+./ot.go
+./parse.go
+./parse_gsubgpos.go
+./parse_lookup.go
+./parse_lookup_gpos.go
+./parse_lookup_gsub.go
+./script_tags.go

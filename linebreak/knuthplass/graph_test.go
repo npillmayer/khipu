@@ -54,3 +54,25 @@ func TestGraphRemoveEdge(t *testing.T) {
 		t.Errorf("expected 1 edge, got %d", len(bps))
 	}
 }
+
+func TestGraphPredecessorForLine(t *testing.T) {
+	teardown := gotestingadapter.QuickConfig(t, "khipu.linebreak")
+	defer teardown()
+	//
+	g := newGraph()
+	g.AddBP(1)
+	g.AddBP(3)
+	g.AddBP(5)
+	g.AddEdge(1, 5, 100, 100, 2)
+	g.AddEdge(3, 5, 80, 90, 3)
+	pred, edge, ok := g.predecessorForLine(5, 3)
+	if !ok {
+		t.Fatalf("expected predecessor for line 3")
+	}
+	if pred != 3 {
+		t.Fatalf("expected predecessor 3, got %d", pred)
+	}
+	if edge.from != 3 || edge.to != 5 {
+		t.Fatalf("unexpected edge %+v", edge)
+	}
+}

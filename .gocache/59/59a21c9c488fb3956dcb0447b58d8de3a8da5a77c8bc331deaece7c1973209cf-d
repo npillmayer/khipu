@@ -1,0 +1,8 @@
+./buffer.go
+./doc.go
+./feature.go
+./gpos.go
+./gpos_helpers.go
+./gsub.go
+./layout.go
+./tags.go
