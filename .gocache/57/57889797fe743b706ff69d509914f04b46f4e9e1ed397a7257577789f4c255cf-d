@@ -1,9 +1,0 @@
-./actions.go
-./bracketpairs.go
-./brackets.go
-./doc.go
-./reordering.go
-./resolver.go
-./scanner.go
-./scrap.go
-./uaxrules.go

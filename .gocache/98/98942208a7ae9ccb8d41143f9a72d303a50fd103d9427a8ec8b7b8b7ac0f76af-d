@@ -1,7 +1,0 @@
-./builder_ext.go
-./chunks.go
-./cords_ext.go
-./doc.go
-./errors.go
-./iterate.go
-./text_segment.go
