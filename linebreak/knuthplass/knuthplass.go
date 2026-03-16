@@ -14,7 +14,7 @@ import (
 
 // linebreaker is an internal entity for K&P-linebreaking.
 type linebreaker struct {
-	*graph
+	*pathTable
 	horizon  map[kinx]struct{}      // horizon of possible linebreaks
 	paths    map[origin]bookkeeping // path(-partials) up to horizon
 	params   *Parameters            // typesetting parameters relevant for line-breaking
@@ -42,7 +42,7 @@ func pathsAsString(paths map[origin]bookkeeping) string {
 
 func newLinebreaker(parshape linebreak.ParShape, params *Parameters) *linebreaker {
 	kp := &linebreaker{}
-	kp.graph = newGraph()
+	kp.pathTable = newPathTable()
 	kp.horizon = make(map[kinx]struct{})
 	kp.paths = make(map[origin]bookkeeping)
 	kp.parshape = parshape
@@ -187,28 +187,27 @@ func (kp *linebreaker) updatePath(bp, idx kinx, k khipu.KnotCore) {
 // --- Segments ---------------------------------------------------------
 
 func (kp *linebreaker) evalNewSegment(from, to kinx, line lineNo, cost merits) {
-	if bp := kp.graph.Breakpoint(to); bp == noinx {
-		//kp.graph.feasBP[to] = struct{}{}
-		kp.graph.AddBP(to)
+	if bp := kp.pathTable.Breakpoint(to); bp == noinx {
+		kp.pathTable.AddBP(to)
 	}
 	// now sure that `to` is a breakpoint
 	preSeg, ok := kp.paths[origin{from, line - 1}]
 	tracer().Debugf("K&P prev seg = %v", preSeg)
 	assert(ok, "K&P internal error: cannot append segment to non-existent sub-path")
 	evalCost := preSeg.totalcost + cost
-	e := kp.graph.Edge(from, to, line)
+	pred, hasPred := kp.pathTable.Pred(to, line)
 	seg, ok := kp.paths[origin{to, line}]
 	path := seg // `path` will be the new path, if cheaper than `seg`
-	if e == nullEdge {
-		assert(!ok, "K&P internal error: path with non-existent edge exists")
-	} else if seg.totalcost <= evalCost {
-		assert(ok, "K&P internal error: path for edge does not exist")
+	if !hasPred {
+		assert(!ok, "K&P internal error: path with non-existent predecessor state exists")
+	} else if pred.total <= evalCost {
+		assert(ok, "K&P internal error: path for predecessor state does not exist")
 		return // existing path is cheaper => do nothing
 	} else {
 		tracer().Debugf("K&P remove sub-optimal seg %v", origin{to, line})
 		delete(kp.paths, origin{to, line}) // remove `seg` from paths
 	}
-	kp.graph.AddEdge(from, to, cost, evalCost, line)
+	kp.pathTable.SetPred(from, to, cost, evalCost, line)
 	path.totalcost = evalCost
 	// ... other properties (TODO)
 	kp.paths[origin{to, line}] = path
@@ -499,7 +498,7 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu, parshape lin
 	} // end of outer loop over input knots
 	tracer().Infof("Collected %d potential breakpoints for paragraph", len(kp.feasBP))
 	tracer().Infof("          %v", kp.feasBP)
-	tracer().Infof("          graph:\n%v", kp.String())
+	tracer().Infof("          predecessors:\n%v", kp.String())
 	tracer().Infof("          paths:\n%s", pathsAsString(kp.paths))
 	// fb = kp.findBreakpointAtMark(last)
 	// if fb == nil {
@@ -512,7 +511,7 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu, parshape lin
 	return nil
 }
 
-// collectOptimalBreakpoints walks the pruned breakpoint graph backwards from the
+// collectOptimalBreakpoints walks the predecessor table backwards from the
 // paragraph terminus and returns the single cheapest breakpoint sequence.
 func (kp *linebreaker) collectOptimalBreakpoints(end kinx) ([]kinx, merits, bool) {
 	bestLine := lineNo(0)
@@ -536,11 +535,11 @@ func (kp *linebreaker) collectOptimalBreakpoints(end kinx) ([]kinx, merits, bool
 	line := bestLine
 	for cur != kp.root {
 		breaks = append(breaks, cur)
-		pred, _, ok := kp.graph.predecessorForLine(cur, line)
+		pred, ok := kp.pathTable.Pred(cur, line)
 		if !ok {
 			return nil, 0, false
 		}
-		cur = pred
+		cur = pred.from
 		line--
 	}
 	slices.Reverse(breaks)

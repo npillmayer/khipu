@@ -1,6 +1,6 @@
 # Graph Inventory For `linebreak/knuthplass`
 
-This note records how the current graph data structure in `linebreak/knuthplass` is actually used by the rewrite of the Knuth-Plass linebreaking algorithm.
+This note records how the graph-shaped data structure in `linebreak/knuthplass` was used during the rewrite of the Knuth-Plass linebreaking algorithm, and why it was replaced by a predecessor table.
 
 The purpose is not yet to redesign the graph, but to establish:
 
@@ -9,6 +9,22 @@ The purpose is not yet to redesign the graph, but to establish:
 - which parts of the representation look like candidates for simplification
 
 The findings are based on the current worktree as inspected on March 16, 2026.
+
+## Current Status
+
+The active runtime implementation no longer uses `graph.go`.
+
+The package now uses `path.go`, which implements:
+
+- a breakpoint set
+- a predecessor table keyed by `(to, line)`
+- overwrite-on-cheaper semantics for predecessor replacement
+
+This document remains useful because:
+
+- it captures the access pattern analysis that motivated the change
+- it records which graph operations turned out to be essential
+- it explains why the predecessor-table design was chosen over the older graph shape
 
 ## Executive Summary
 
@@ -28,11 +44,13 @@ The paragraph-breaking algorithm does not currently:
 - inspect arbitrary neighbors
 - need a fully general node/edge abstraction
 
-This strongly suggests that the real required abstraction is closer to a predecessor table for `(to, line)` states than to a reusable graph library.
+This strongly suggested that the real required abstraction was closer to a predecessor table for `(to, line)` states than to a reusable graph library.
 
-## Current Representation
+That conclusion has now been implemented in `path.go`.
 
-The graph is defined in `linebreak/knuthplass/graph.go` as:
+## Historical Graph Representation
+
+Before the cleanup, the graph was defined in `linebreak/knuthplass/graph.go` as:
 
 - `feasBP map[kinx]struct{}`
 - `edgesTo map[kinx]map[origin]edge`
@@ -59,6 +77,8 @@ That last point is important: the graph is not really representing plain connect
 - accumulated total cost `total`
 
 ## Inventory Of Graph Operations
+
+The sections below describe the usage pattern that was observed before the graph was removed from the active runtime path.
 
 ### 1. Construction
 
@@ -625,3 +645,27 @@ The answer today is:
 - optionally the local and total cost for debugging
 
 That answer is much closer to Candidate B than to a generic graph API.
+
+## Outcome Of The Investigation
+
+The implementation now follows Candidate B.
+
+What was kept:
+
+- explicit feasible-breakpoint registration
+- direct predecessor lookup for `(to, line)`
+- overwrite-on-cheaper replacement semantics
+- optional stringification for debugging
+
+What was dropped from the active runtime path:
+
+- the general graph container
+- explicit edge objects in the active algorithm
+- edge deletion machinery and `prunedEdges`
+- generic graph-style tests
+
+So the practical result of this investigation is:
+
+- the algorithm now stores what it actually needs
+- the predecessor invariant is now represented directly
+- the code no longer relies on stale edges plus re-minimization during backward collection
