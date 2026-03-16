@@ -9,17 +9,18 @@ import (
 
 // Parameters is a collection of configuration parameters for line-breaking.
 type Parameters struct {
-	Tolerance            merits         // acceptable demerits
-	PreTolerance         merits         // acceptabale demerits for first (rough) pass
-	LinePenalty          merits         // penalty for an additional line
-	HyphenPenalty        merits         // penalty for hyphenating words
-	ExHyphenPenalty      merits         // penalty for explicit words
-	DoubleHyphenDemerits merits         // demerits for consecutive hyphens
-	FinalHyphenDemerits  merits         // demerits for hyphen in the last line
-	EmergencyStretch     dimen.DU       // stretching acceptable when desperate
-	LeftSkip             khipu.KnotCore // glue at left edge of paragraphs
-	RightSkip            khipu.KnotCore // glue at right edge of paragraphs
-	ParFillSkip          khipu.KnotCore // glue at the end of a paragraph
+	Tolerance             merits         // acceptable demerits
+	PreTolerance          merits         // acceptabale demerits for first (rough) pass
+	LinePenalty           merits         // penalty for an additional line
+	HyphenPenalty         merits         // penalty for hyphenating words
+	ExHyphenPenalty       merits         // penalty for explicit words
+	DoubleHyphenDemerits  merits         // demerits for consecutive hyphens
+	FinalHyphenDemerits   merits         // demerits for hyphen in the last line
+	EmergencyStretch      dimen.DU       // stretching acceptable when desperate
+	LeftSkip              khipu.KnotCore // glue at left edge of paragraphs
+	RightSkip             khipu.KnotCore // glue at right edge of paragraphs
+	ParFillSkip           khipu.KnotCore // glue at the end of a paragraph
+	DiscretionaryProvider DiscretionaryProvider
 }
 
 // DefaultParameters are the standard line-breaking parameters.
@@ -52,15 +53,17 @@ func glue(w, wmin int, wmax dimen.DU) khipu.KnotCore {
 
 const InfinityMerits = -10000
 const InfinityDemerits = 10000
+const AwfulDemerits = 1000000000
 
-// capDemerits caps a demerit value at infinity.
-func capDemerits(d merits) merits {
-	if d > InfinityDemerits {
-		d = InfinityDemerits
-	} else if d < InfinityMerits-1000 {
-		d = InfinityMerits - 1000
+// clampPenalty caps a penalty value to the TeX-style sentinel range.
+func clampPenalty(p merits) merits {
+	if p > InfinityDemerits {
+		return InfinityDemerits
 	}
-	return d
+	if p < InfinityMerits {
+		return InfinityMerits
+	}
+	return p
 }
 
 // ----------------------------------------------------------------------

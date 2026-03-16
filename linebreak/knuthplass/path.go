@@ -9,7 +9,7 @@ import (
 )
 
 type kinx = int   // khipu knot index
-type merits int16 // (de-)merits for a line break
+type merits int32 // (de-)merits for a line break
 type lineNo int   // line number
 
 const noinx = -1

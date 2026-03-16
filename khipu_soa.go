@@ -19,12 +19,19 @@ type Penalty int16
 const MaxPenalty = 10000
 const MaxMerit = -10000
 
+type KnotFlags uint8
+
+const (
+	KFDiscardable KnotFlags = 1 << iota
+)
+
 type KnotCore struct {
 	Pos           uint64
 	W, MinW, MaxW dimen.DU
 	Len           uint16
 	Penalty       Penalty
 	Kind          KnotType
+	Flags         KnotFlags
 }
 
 type KnotStyler interface {
@@ -56,6 +63,10 @@ type Khipu struct {
 	Pos       []uint64
 	Len       []uint16
 	Kind      []KnotType
+	Flags     []KnotFlags
+
+	DiscretionaryCandidates map[int][]DiscretionaryCandidate
+	SelectedDiscretionaries map[int]DiscretionarySelection
 }
 
 func (kq *Khipukamayuq) allocKhipu(capacity int) *Khipu {
@@ -72,6 +83,10 @@ func (kq *Khipukamayuq) allocKhipu(capacity int) *Khipu {
 		Pos:     make([]uint64, 0, capacity),
 		Len:     make([]uint16, 0, capacity),
 		Kind:    make([]KnotType, 0, capacity),
+		Flags:   make([]KnotFlags, 0, capacity),
+
+		DiscretionaryCandidates: make(map[int][]DiscretionaryCandidate),
+		SelectedDiscretionaries: make(map[int]DiscretionarySelection),
 	}
 	return &khipu
 }
@@ -86,6 +101,9 @@ func unwireKhipu(khipu *Khipu) *Khipu {
 	khipu.Pos = nil
 	khipu.Len = nil
 	khipu.Kind = nil
+	khipu.Flags = nil
+	khipu.DiscretionaryCandidates = nil
+	khipu.SelectedDiscretionaries = nil
 	return nil
 }
 
@@ -101,6 +119,7 @@ func (khipu Khipu) KnotByIndex(index int) KnotCore {
 		Penalty: khipu.Penalty[index],
 		Pos:     khipu.Pos[index],
 		Len:     khipu.Len[index],
+		Flags:   khipu.flagsAt(index),
 	}
 }
 
@@ -116,6 +135,7 @@ func (khipu *Khipu) appendKnot(k KnotCore) *Khipu {
 	khipu.Pos = append(khipu.Pos, k.Pos)
 	khipu.Len = append(khipu.Len, k.Len)
 	khipu.Kind = append(khipu.Kind, k.Kind)
+	khipu.Flags = append(khipu.Flags, k.Flags)
 	return khipu
 }
 
@@ -133,6 +153,9 @@ func (khipu *Khipu) Unskip() {
 		khipu.Pos = khipu.Pos[:top]
 		khipu.Len = khipu.Len[:top]
 		khipu.Kind = khipu.Kind[:top]
+		if len(khipu.Flags) > top {
+			khipu.Flags = khipu.Flags[:top]
+		}
 	}
 }
 
@@ -141,9 +164,9 @@ func (khipu *Khipu) Discardable(index int) (int, bool) {
 		return 0, false
 	}
 	discarded := false
-	for i := index; index >= 0; i-- {
-		if khipu.Kind[index] != KTGlue && khipu.Kind[index] != KTKern {
-			return index, discarded
+	for i := index; i >= 0; i-- {
+		if khipu.flagsAt(i)&KFDiscardable == 0 {
+			return i, discarded
 		}
 		discarded = true
 	}
@@ -244,6 +267,7 @@ func (kq *Khipukamayuq) EncodeParagraph(para *styled.Paragraph, knotAdapt KnotSt
 				Pos:     para.Offset + uint64(pos) + uint64(rangeLen),
 				Len:     uint16(segLen),
 				Kind:    kindFromText(segment),
+				Flags:   defaultFlagsForKind(kindFromText(segment)),
 			}
 			if knotAdapt != nil {
 				mn, mx := knotAdapt.AdaptKnot(k, styleChange.Style)

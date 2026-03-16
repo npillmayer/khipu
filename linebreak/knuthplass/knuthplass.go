@@ -15,12 +15,13 @@ import (
 // linebreaker is an internal entity for K&P-linebreaking.
 type linebreaker struct {
 	*pathTable
-	horizon  map[kinx]struct{}      // horizon of possible linebreaks
-	paths    map[origin]bookkeeping // path(-partials) up to horizon
-	params   *Parameters            // typesetting parameters relevant for line-breaking
-	parshape linebreak.ParShape     // target shape of the paragraph
-	root     kinx                   // "break" at start of paragraph
-	end      kinx                   // "break" at end of paragraph
+	horizon     map[kinx]struct{}      // horizon of possible linebreaks
+	paths       map[origin]bookkeeping // path(-partials) up to horizon
+	params      *Parameters            // typesetting parameters relevant for line-breaking
+	parshape    linebreak.ParShape     // target shape of the paragraph
+	hyphenating bool                   // second pass may relax limits and use discretionaries
+	root        kinx                   // "break" at start of paragraph
+	end         kinx                   // "break" at end of paragraph
 }
 
 func pathsAsString(paths map[origin]bookkeeping) string {
@@ -98,13 +99,14 @@ type feasibleBreakpoint struct {
 type bookkeeping struct {
 	segment      WSS    // sum of widths from this breakpoint up to current knot
 	totalcost    merits // sum of costs for segment up to this breakpoint
+	worstbadness merits // highest line badness encountered along the path
 	leadingTrim  WSS    // discardable width before the first retained line item
 	trailingTrim WSS    // discardable width after the most recent retained line item
 	seenContent  bool   // does this segment contain a non-discardable content item?
 }
 
 func (path bookkeeping) String() string {
-	return fmt.Sprintf("P(%.2f TC:%d)", path.segment.W.Points(), path.totalcost)
+	return fmt.Sprintf("P(%.2f TC:%d MB:%d)", path.segment.W.Points(), path.totalcost, path.worstbadness)
 }
 
 type lineItemClass uint8
@@ -158,8 +160,8 @@ func (book bookkeeping) effectiveWidth(params *Parameters) WSS {
 }
 
 type cost struct {
-	badness  merits // 0 <= b <= 10000
-	demerits merits // -10000 <= d <= 10000
+	badness  merits // line badness used for pass screening
+	demerits merits // line demerits used for path ranking
 }
 
 func (c cost) String() string {
@@ -184,9 +186,16 @@ func (kp *linebreaker) updatePath(bp, idx kinx, k khipu.KnotCore) {
 	}
 }
 
+func (kp *linebreaker) badnessLimit() merits {
+	if kp != nil && kp.hyphenating {
+		return kp.params.Tolerance
+	}
+	return kp.params.PreTolerance
+}
+
 // --- Segments ---------------------------------------------------------
 
-func (kp *linebreaker) evalNewSegment(from, to kinx, line lineNo, cost merits) {
+func (kp *linebreaker) evalNewSegment(from, to kinx, line lineNo, c cost) {
 	if bp := kp.pathTable.Breakpoint(to); bp == noinx {
 		kp.pathTable.AddBP(to)
 	}
@@ -194,7 +203,7 @@ func (kp *linebreaker) evalNewSegment(from, to kinx, line lineNo, cost merits) {
 	preSeg, ok := kp.paths[origin{from, line - 1}]
 	tracer().Debugf("K&P prev seg = %v", preSeg)
 	assert(ok, "K&P internal error: cannot append segment to non-existent sub-path")
-	evalCost := preSeg.totalcost + cost
+	evalCost := preSeg.totalcost + c.demerits
 	pred, hasPred := kp.pathTable.Pred(to, line)
 	seg, ok := kp.paths[origin{to, line}]
 	path := seg // `path` will be the new path, if cheaper than `seg`
@@ -207,12 +216,12 @@ func (kp *linebreaker) evalNewSegment(from, to kinx, line lineNo, cost merits) {
 		tracer().Debugf("K&P remove sub-optimal seg %v", origin{to, line})
 		delete(kp.paths, origin{to, line}) // remove `seg` from paths
 	}
-	kp.pathTable.SetPred(from, to, cost, evalCost, line)
+	kp.pathTable.SetPred(from, to, c.demerits, evalCost, line)
 	path.totalcost = evalCost
-	// ... other properties (TODO)
+	path.worstbadness = max(preSeg.worstbadness, c.badness)
 	kp.paths[origin{to, line}] = path
 	tracer().Debugf(" paths:\n%s", pathsAsString(kp.paths))
-	tracer().Debugf("new segment %s ---(C:%d|L:%d)---> %s", knotInxStr(from), cost,
+	tracer().Debugf("new segment %s ---(C:%d|L:%d)---> %s", knotInxStr(from), c.demerits,
 		line, knotInxStr(to))
 }
 
@@ -231,70 +240,130 @@ func (lc lineCost) String() string {
 		lc.line, c, lc.stretch.Points())
 }
 
-func (kp *linebreaker) calcCost(bp kinx, k khipu.KnotCore) ([]lineCost, bool) {
-	var d merits = InfinityDemerits // pre-set result variable
-	var b merits = InfinityDemerits // badness of line
+type lineDisposition uint8
+
+const (
+	lineInfeasible lineDisposition = iota
+	lineScreenedOut
+	lineAccepted
+)
+
+type lineEvaluation struct {
+	bp          kinx
+	line        lineNo
+	stretch     dimen.DU
+	disposition lineDisposition
+	badness     merits
+	demerits    merits
+}
+
+func (ev lineEvaluation) accepted() bool {
+	return ev.disposition == lineAccepted
+}
+
+func (ev lineEvaluation) screenedOut() bool {
+	return ev.disposition == lineScreenedOut
+}
+
+func (ev lineEvaluation) lineCost() lineCost {
+	return lineCost{
+		bp:      ev.bp,
+		line:    ev.line,
+		stretch: ev.stretch,
+		cost: cost{
+			badness:  ev.badness,
+			demerits: ev.demerits,
+		},
+	}
+}
+
+func (kp *linebreaker) evaluateCandidates(bp kinx, penalty khipu.Penalty) ([]lineEvaluation, bool) {
 	canReach := false
 	// find all paths ending at `bp`
-	var result []lineCost
+	var result []lineEvaluation
 	for st, path := range kp.paths { // TODO find a more efficient data-structure
 		if st.from == bp { // found a path ending in `to`
 			linelen := kp.parshape.LineLength(int32(st.line + 1))
 			segwss := path.effectiveWidth(kp.params)
-			d = InfinityDemerits             // pre-set result variable
-			b = InfinityDemerits             // badness of line
 			stsh := absD(linelen - segwss.W) // stretch or shrink of glue in line
 			tracer().Debugf("    +---%.2f--->    | %.2f", segwss.W.Points(), linelen.Points())
-			if segwss.Min <= linelen { // segment can shrink enough
+			ev := lineEvaluation{
+				bp:          bp,
+				line:        st.line,
+				stretch:     stsh,
+				disposition: lineInfeasible,
+			}
+			if b, ok := calcBadness(segwss, linelen); ok {
 				canReach = true
-				d, b = calcDemerits(segwss, stsh, k.Penalty, kp.params)
+				ev.badness = b
+				if b <= kp.badnessLimit() {
+					ev.disposition = lineAccepted
+					ev.demerits = calcDemerits(b, penalty, kp.params)
+				} else {
+					ev.disposition = lineScreenedOut
+				}
 			}
-			if d < InfinityDemerits {
-				cst := cost{badness: b, demerits: d}
-				result = append(result, lineCost{bp: bp, line: st.line, cost: cst, stretch: stsh})
-			}
+			result = append(result, ev)
 		}
 	}
 	return result, canReach
 }
 
-// Currently we try to replicated the logic of TeX.
-func calcDemerits(segwss WSS, stretch dimen.DU, penalty khipu.Penalty,
-	params *Parameters) (d merits, b merits) {
-	//func calculateDemerits(segwss linebreak.WSS, stretch dimen.DU, penalty khipu.Penalty,
-	//params *linebreak.Parameters) (d linebreak.Merits, b linebreak.Merits) {
-	//
-	p := capDemerits(merits(penalty))
-	//p2 := p * p
-	p2 := abs(p) // seems to work better for now; related to segmenter behaviour
-	s, m := float64(stretch), float64(absD(segwss.Max-segwss.W))
-	m = max(1.0, m)                           // avoid division by 0
-	sm := min(10000.0, s/m*s/m)               // avoid huge intermediate numbers
-	sm = sm * s / m                           // in total: sm = (s/m)^3
-	badness := merits(min(sm, 100.0) * 100.0) // TeX's formula for badness
-	// T().Debugf("sm=%.3f", sm)
-	// T().Debugf("s=%.3f, m=%.3f, b=%d", s, m, badness)
-	b = (params.LinePenalty + badness)
-	b2 := b * b
-	if p > 0 { // TeX's magic formula for demerits
-		d = b2 + p2
-		// } else if p <= linebreak.InfinityMerits {
-		// 	d = b2
-	} else {
-		d = b2 - p2
+// calcAdjustmentRatio computes the TeX-style adjustment ratio for one line.
+// Positive ratios mean stretching, negative ratios mean shrinking.
+// The ratio is only computable if there is some stretch or shrink capacity.
+func calcAdjustmentRatio(segwss WSS, linelen dimen.DU) (float64, bool) {
+	if segwss.W == linelen {
+		return 0, true
 	}
-	d = capDemerits(d)
+	if segwss.W < linelen {
+		available := segwss.Max - segwss.W
+		if available <= 0 {
+			return 0, false
+		}
+		return float64(linelen-segwss.W) / float64(available), true
+	}
+	available := segwss.W - segwss.Min
+	if available <= 0 {
+		return 0, false
+	}
+	return -float64(segwss.W-linelen) / float64(available), true
+}
+
+func calcBadness(segwss WSS, linelen dimen.DU) (merits, bool) {
+	ratio, ok := calcAdjustmentRatio(segwss, linelen)
+	if !ok {
+		return 0, false
+	}
+	r := max(0.0, absFloat64(ratio))
+	badness := merits(min(100.0, r*r*r) * 100.0)
+	return badness, true
+}
+
+// calcDemerits computes line demerits from a precomputed badness value.
+// Forced breaks are handled in constructBreakpointGraph and therefore reach
+// this function with a neutralized penalty.
+func calcDemerits(badness merits, penalty khipu.Penalty, params *Parameters) merits {
+	p := clampPenalty(merits(penalty))
+	q := params.LinePenalty + badness
+	d := q * q
+	p2 := p * p
+	if p > 0 {
+		d += p2
+	} else if p < 0 {
+		d -= p2
+	}
 	tracer().Debugf("    calculating demerits for p=%d, b=%d: d=%d", p, badness, d)
-	return d, badness
+	return d
 }
 
 func demeritsString(d linebreak.Merits) string {
-	if d >= linebreak.InfinityDemerits {
-		return "\u221e"
-	} else if d <= linebreak.InfinityMerits {
-		return "-\u221e"
-	}
 	return fmt.Sprintf("%d", d)
+}
+
+type pathQuality struct {
+	totalCost    merits
+	worstBadness merits
 }
 
 // penaltyAt iterates over all penalties, starting at the current cursor mark, and
@@ -347,19 +416,50 @@ func penaltyAt(cursor linebreak.Cursor) (khipu.PenaltyItem, khipu.Mark) {
 func BreakParagraph(khipu *khipu.Khipu, parshape linebreak.ParShape, params *Parameters) (
 	[]kinx, error) {
 	//
-	kp, err := prepareLineBreaker(parshape, params)
+	if params == nil {
+		params = NewKPDefaultParameters()
+	}
+	breakpoints, quality, ok, err := breakParagraphPass(khipu, parshape, params, false)
 	if err != nil {
 		return nil, err
 	}
-	if err := kp.constructBreakpointGraph(khipu, parshape, params); err != nil {
-		tracer().Errorf("K&P: %w", err)
+	if ok && len(breakpoints) > 0 &&
+		quality.worstBadness <= params.PreTolerance &&
+		quality.totalCost < AwfulDemerits {
+		return breakpoints, nil
+	}
+	if ok && quality.totalCost >= AwfulDemerits {
+		tracer().Debugf("K&P: first-pass best path is overfull fallback (%d), retrying with hyphenation enabled",
+			quality.totalCost)
+	} else if ok && quality.worstBadness > params.PreTolerance {
+		tracer().Debugf("K&P: first-pass best path exceeds PreTolerance (%d > %d)",
+			quality.worstBadness, params.PreTolerance)
+	} else if !ok {
+		tracer().Debugf("K&P: first pass found no acceptable path, retrying with hyphenation enabled")
+	}
+	breakpoints, _, ok, err = breakParagraphPass(khipu, parshape, params, true)
+	if err != nil {
 		return nil, err
 	}
-	breakpoints, _, ok := kp.collectOptimalBreakpoints(kp.end)
 	if !ok || len(breakpoints) == 0 {
 		return nil, ErrNoBreakpoints
 	}
 	return breakpoints, nil
+}
+
+func breakParagraphPass(khp *khipu.Khipu, parshape linebreak.ParShape,
+	params *Parameters, hyphenating bool) ([]kinx, pathQuality, bool, error) {
+	kp, err := prepareLineBreaker(parshape, params)
+	if err != nil {
+		return nil, pathQuality{}, false, err
+	}
+	kp.hyphenating = hyphenating
+	if err := kp.constructBreakpointGraph(khp, parshape, params); err != nil {
+		tracer().Errorf("K&P: %w", err)
+		return nil, pathQuality{}, false, err
+	}
+	breakpoints, quality, ok := kp.collectOptimalBreakpoints(kp.end)
+	return breakpoints, quality, ok, nil
 }
 
 // constructBreakpointGraph is the central algorithm, akin to the paragraph breaking
@@ -413,24 +513,31 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu, parshape lin
 				tracer().Debugf("   --- break prohibited (p=%d)", k.Penalty)
 				continue
 			}
-			linecosts, stillreachable := kp.calcCost(horiz_bp, k)
-			tracer().Debugf("   %s reachable with cost=%v", knotInxStr(last), linecosts)
+			costPenalty := k.Penalty
+			if costPenalty <= InfinityMerits {
+				costPenalty = 0
+			}
+			evals, stillreachable := kp.evaluateCandidates(horiz_bp, costPenalty)
+			tracer().Debugf("   %s reachable with evals=%v", knotInxStr(last), evals)
 			if stillreachable { // yes, position may have been reached in this iteration
-				for _, c := range linecosts {
+				for _, ev := range evals {
+					if ev.disposition == lineInfeasible {
+						continue
+					}
+					c := ev.lineCost()
 					tracer().Debugf("   check reachable segm line-costs %s", c.String())
 					if k.Penalty <= InfinityMerits { // merits cause forced break
-						if c.cost.badness > kp.params.Tolerance {
+						if c.cost.badness > kp.badnessLimit() {
 							tracer().Infof("K&P: znderfull box at line %d, b=%d, d=%d",
 								c.line+1, c.cost.badness, c.cost.demerits)
 						}
-						kp.evalNewSegment(horiz_bp, last, c.line+1, c.cost.demerits)
+						kp.evalNewSegment(horiz_bp, last, c.line+1, c.cost)
 						//newfb := kp.newFeasibleLine(fb, cursor.Mark(), cost.demerits, linecnt+1)
 						//kp.horizon.Add(newfb) // make forced break member of horizon n+1
 						kp.horizon[last] = struct{}{} // make forced break member of horizon n+1
-					} else if c.cost.badness < kp.params.Tolerance &&
-						c.cost.demerits < InfinityDemerits { // happy case: new breakpoint is feasible
+					} else if ev.accepted() { // happy case: new breakpoint is feasible
 						//
-						kp.evalNewSegment(horiz_bp, last, c.line+1, c.cost.demerits)
+						kp.evalNewSegment(horiz_bp, last, c.line+1, c.cost)
 						//newfb := kp.newFeasibleLine(fb, cursor.Mark(), cost.demerits, linecnt+1)
 						//kp.horizon.Add(newfb) // make new breakpoint member of horizon n+1
 						kp.horizon[last] = struct{}{} // make new breakpoint member of horizon n+1
@@ -438,9 +545,14 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu, parshape lin
 				}
 			} else { // no longer reachable => check against draining of horizon
 				if len(kp.horizon) <= 1 { // oops, low on options
-					for _, c := range linecosts {
-						tracer().Infof("Overfull box at line %d, cost=10000", c.line+1)
-						kp.evalNewSegment(horiz_bp, last, c.line+1, InfinityDemerits)
+					for _, ev := range evals {
+						if ev.disposition != lineInfeasible {
+							continue
+						}
+						c := ev.lineCost()
+						tracer().Infof("Overfull box at line %d, cost=%d", c.line+1, AwfulDemerits)
+						c.cost.demerits = AwfulDemerits
+						kp.evalNewSegment(horiz_bp, last, c.line+1, c.cost)
 						kp.horizon[last] = struct{}{}
 					}
 					// for linecnt := range costs {
@@ -513,22 +625,25 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu, parshape lin
 
 // collectOptimalBreakpoints walks the predecessor table backwards from the
 // paragraph terminus and returns the single cheapest breakpoint sequence.
-func (kp *linebreaker) collectOptimalBreakpoints(end kinx) ([]kinx, merits, bool) {
+func (kp *linebreaker) collectOptimalBreakpoints(end kinx) ([]kinx, pathQuality, bool) {
 	bestLine := lineNo(0)
-	bestCost := merits(0)
+	bestQuality := pathQuality{}
 	found := false
 	for st, path := range kp.paths {
 		if st.from != end {
 			continue
 		}
-		if !found || path.totalcost < bestCost {
+		if !found || path.totalcost < bestQuality.totalCost {
 			bestLine = st.line
-			bestCost = path.totalcost
+			bestQuality = pathQuality{
+				totalCost:    path.totalcost,
+				worstBadness: path.worstbadness,
+			}
 			found = true
 		}
 	}
 	if !found {
-		return nil, 0, false
+		return nil, pathQuality{}, false
 	}
 	breaks := make([]kinx, 0, bestLine)
 	cur := end
@@ -537,13 +652,13 @@ func (kp *linebreaker) collectOptimalBreakpoints(end kinx) ([]kinx, merits, bool
 		breaks = append(breaks, cur)
 		pred, ok := kp.pathTable.Pred(cur, line)
 		if !ok {
-			return nil, 0, false
+			return nil, pathQuality{}, false
 		}
 		cur = pred.from
 		line--
 	}
 	slices.Reverse(breaks)
-	return breaks, bestCost, true
+	return breaks, bestQuality, true
 }
 
 // --- Helpers ----------------------------------------------------------
@@ -556,6 +671,13 @@ func absD(n dimen.DU) dimen.DU {
 }
 
 func abs(n merits) merits {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+func absFloat64(n float64) float64 {
 	if n < 0 {
 		return -n
 	}

@@ -542,3 +542,189 @@ This is enough for the current migration target and is covered by package tests.
 The final implementation will probably need to attach a `isDiscardable` bit with every khipu node (as in TeX). One example: `\parindent` whitespace at the beginning of a paragraph is not discardable, but rather flags the typographic custom to indent the first line of a paragraph for readability.   
 
 Another level of complexity will stem from hyphenation. Hyphenation will insert discretionary items in the khipu, which complicates the algorithm for linebreaking. However, we will tackle this problem after normal linebreaking is fully in place.
+
+Implementation note:
+
+- the old list-based `KhipuAOS` implementation already has `HyphenateTextBoxes()`, which performs eager hyphenation and therefore imports the hyphenation package directly
+- the new solution should avoid this coupling
+- instead, the rewrite should introduce a separate `Hyphenator` interface
+- that interface can be kept small at first and developed incrementally as the actual API surface becomes clearer during implementation
+
+## Khipu SOA data-structure, Hyphenation
+
+The SOA-style data-structure for type `Khipu` was an experiment of mine to perhaps profit during line-breaking, where width-information is the most important property of a khipu knot. However, this advantage did not materialize. The fields of a khipu knot relevant for line-breaking are:  
+- W
+- MaxW
+- MinW
+- Penalty
+
+Field `KnotType` is currently relevant for deciding about discarding/trimming. However, in the long run the only correct handling of this is with a `isDiscardable` flag, to be set by the khipukamayuq. The line-breaker should only be a consumer of this information, and the information will – at least for international script – not be provided by out-of-band information (i.e., not be provided by calling some general predicate function).   
+  
+We should think about a possible improvement with the memory layout of khipu properties. We could define a `{ W, MaxW, MinW, Penalty, isDiscardable }` knot core, which is more SOA designed and would make it possible for the linebreaker to load a sequence into memory and sequentially operate on them.   
+  
+The `isDiscardable` flag needs just one bit. It seems overkill to use a bool field, but bit-packing seems less expressive. The only field in the core knot available for bit-packing would be `Penalty`, which will never exceed 10000, thus an int16 would leave us with room for an additional bit for `isDiscardable` . It would complicate the usage of knot core in the line-breaker, so I am unsure if it's worth the effort.   
+  
+If the first line-breaking path does not result in a overall (de-)merit below a given (parameter-)threshold, the line-breaker should do a second run with hyphenation enabled. To support this, the khipu needs to support storing hyphenation opportunities. TeX calls these opportunities *discretionary*. Such a discretionary consists of 3 parts:  
+  
+- unhyphenated fragment (usually a word, e.g. “breakpoint”)
+- pre-break fragment (e.g., “break-”)
+- post-break fragment (e.g, “point”)
+
+An external hyphenator will be able to be queried for break opportunities, i.e. : “how can 'breakpoint' be broken up?”. The hyphenator gives a discretionary as a result. Therefore we will have to be able to store discretionaries in the khipu and later access them from the line-breaker. A discretionary will be related to a knot of type `TextBox`. I propose to store discretionaries in a separate AOS within the khipu. Khipu knots should then somehow point/be associated with discretionary items. More than one discretionary item may be associated with a textbox. (e.g.,  “fragmented” may result in “{fragmented}{frag-}{mented}” or “{fragmented}{fragment-}{ed}”). 
+
+## Evolution Options For `Khipu`
+
+The clarification is important: hyphenation opportunities are not to be materialized eagerly. The line-breaker will only consult a hyphenator if an initial pass produces line costs above a configurable threshold or fails to find acceptable breakpoints. Therefore the design target is not “store all possible discretionaries in every khipu”, but “support lazy attachment or lookup of discretionaries when the second pass asks for them”.
+
+Below are three plausible evolution options.
+
+### Option 1: Keep SOA, add a flag plane, keep discretionaries external/lazy
+
+This is the smallest evolution from the current `Khipu`.
+
+Idea:
+
+- keep the current parallel slices for `W`, `MinW`, `MaxW`, `Penalty`, `Pos`, `Len`
+- add a new slice or bitset for flags
+- one of those flags would be `isDiscardable`
+- a second-pass line-breaker can query a hyphenation service when it sees a high-cost segment and receive discretionary candidates on demand
+- those discretionary candidates stay outside the base `Khipu`, e.g. in a side cache keyed by knot index
+
+Advantages:
+
+- minimal disruption to the current `Khipu`
+- preserves the current SOA layout
+- discardability becomes explicit and prepared by `Khipukamayuq`
+- no eager hyphenation cost
+
+Disadvantages:
+
+- line-breaker still has to combine several parallel slices mentally
+- discretionary lookup becomes a second data source beside the base `Khipu`
+- debugging may be more cumbersome because some paragraph state lives outside the khipu itself
+
+Assessment:
+
+- safest near-term option
+- probably the best choice if the main goal were only to stabilize linebreaking semantics first
+- however, it is weaker once rendering is taken into account, because finally selected discretionary decisions need to remain attached to the paragraph object
+
+### Option 2: Keep SOA, but add a dedicated linebreaking view over `Khipu`
+
+This option keeps `Khipu` as storage, but introduces a consumer-oriented layer for the line-breaker.
+
+Idea:
+
+- `Khipu` remains the mutable paragraph store
+- `Khipukamayuq` prepares a lightweight linebreaking view exposing exactly the fields K&P needs
+- that view can provide:
+  - `W`, `MinW`, `MaxW`, `Penalty`
+  - flags such as `isDiscardable`
+  - terminal-paragraph semantics
+  - optional accessors for lazy discretionary lookup
+
+Advantages:
+
+- separates paragraph storage concerns from linebreaking concerns
+- avoids overloading `Khipu` with every future K&P-specific requirement
+- gives room for a second-pass hyphenation API without mutating the core representation too early
+- likely the cleanest long-term architecture
+
+Disadvantages:
+
+- introduces another abstraction layer
+- more design work up front
+- requires discipline to keep the view small and stable
+
+Assessment:
+
+- architecturally the cleanest option
+- likely best if `Khipu` is expected to serve more consumers than linebreaking
+
+### Option 3: Keep SOA for base knots, add a sparse discretionary side-table inside `Khipu`
+
+This option accepts that discretionary data belongs logically to the paragraph object, but keeps it sparse.
+
+Idea:
+
+- base knot properties stay in SOA slices
+- add a side-table owned by `Khipu` for discretionary candidates
+- entries are keyed by textbox knot index
+- each entry holds zero or more discretionary alternatives
+- the table is filled lazily when the line-breaker reaches for hyphenation in the second pass
+- the finally selected discretionary decisions are also retained in `Khipu` for later rendering
+
+Advantages:
+
+- discretionary data stays attached to the paragraph object
+- avoids bloating every knot with hyphenation fields
+- fits the fact that only a minority of knots will ever need discretionary alternatives
+- makes repeated second-pass attempts cheaper because discovered alternatives can be cached
+- matches the real pipeline more closely: opportunities are discovered lazily, but decisions survive into rendering
+
+Disadvantages:
+
+- `Khipu` becomes more specialized toward linebreaking
+- lifecycle and invalidation rules for cached discretionaries must be designed
+- still needs an explicit flag plane or equivalent for discardability
+
+Assessment:
+
+- strongest option if hyphenation is expected to be queried repeatedly on the same paragraph
+- more invasive than Option 1, but still much better than eager materialization
+- now looks like the strongest semantic fit, because the renderer must consume the finally chosen discretionary outcomes
+
+## Provisional Evaluation
+
+Given the current status of the rewrite, I would now rank them like this:
+
+1. Option 3 as the most faithful model of the full pipeline
+2. Option 2 for architectural cleanliness
+3. Option 1 only as the smallest short-term simplification
+
+Reasoning:
+
+- the current blocker is not raw performance, but semantic stabilization across both linebreaking and rendering
+- explicit discardability is needed sooner than full hyphenation support
+- lazy hyphenation still suggests a sparse side structure, not eager expansion of the base khipu
+- selected discretionary decisions must survive into rendering, so they cannot remain purely external
+
+## Design Constraints That Seem Clear Already
+
+Regardless of the option chosen, these points look stable:
+
+- `isDiscardable` should be prepared upstream by `Khipukamayuq`
+- the line-breaker should consume discardability, not infer it from `KnotType`
+- eager materialization of all hyphenation opportunities is not acceptable
+- discretionary data should be sparse and tied to textbox positions
+- finally selected discretionary decisions must remain attached to `Khipu` for the renderer
+- linebreaking parameters for hyphenation must stay outside the khipu storage itself
+
+The most likely next design question is therefore not “should khipu store all discretionaries?”, but:
+
+- how should `Khipu` distinguish between lazily discovered discretionary candidates and the finally selected discretionary decisions?
+
+## Refined Direction
+
+The current discussion suggests a refinement of Option 3.
+
+The important distinction is:
+
+- the line-breaker consumes break opportunities
+- the renderer consumes break decisions
+
+That means:
+
+- discretionary candidates may still be discovered lazily
+- they may still be cached sparsely, only where the second pass asks for them
+- but once a discretionary has been chosen for an actual breakpoint, that choice must be retained in `Khipu`
+
+So the most plausible next-step model is:
+
+- base knot data remains SOA
+- `Khipu` owns a sparse discretionary side-table keyed by textbox index
+- the side-table can hold zero or more lazily discovered discretionary candidates
+- linebreaking records which discretionary candidate, if any, was chosen
+- rendering consumes only the chosen decisions, not the entire search space
+
+This keeps eager materialization off the table while still respecting the fact that the renderer works on shaped/measured paragraph state rather than on the original rune stream.
