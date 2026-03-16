@@ -98,13 +98,63 @@ type feasibleBreakpoint struct {
 type bookkeeping struct {
 	segment      WSS    // sum of widths from this breakpoint up to current knot
 	totalcost    merits // sum of costs for segment up to this breakpoint
-	startDiscard WSS    // sum of discardable space at start of segment / line
-	breakDiscard WSS    // sum of discardable space while looking for next breakpoint
-	hasContent   bool   // does this segment contain non-discardable item?
+	leadingTrim  WSS    // discardable width before the first retained line item
+	trailingTrim WSS    // discardable width after the most recent retained line item
+	seenContent  bool   // does this segment contain a non-discardable content item?
 }
 
 func (path bookkeeping) String() string {
 	return fmt.Sprintf("P(%.2f TC:%d)", path.segment.W.Points(), path.totalcost)
+}
+
+type lineItemClass uint8
+
+const (
+	LICContent lineItemClass = iota
+	LICTrimDiscardable
+	LICRetainedNeutral
+)
+
+func classifyLineItem(idx, end kinx, k khipu.KnotCore) lineItemClass {
+	if idx == end && k.Penalty <= InfinityMerits {
+		return LICRetainedNeutral
+	}
+	switch k.Kind {
+	case khipu.KTGlue, khipu.KTKern:
+		return LICTrimDiscardable
+	case khipu.KTTextBox, khipu.KTDiscretionary:
+		return LICContent
+	default:
+		return LICRetainedNeutral
+	}
+}
+
+func (book *bookkeeping) appendItem(cls lineItemClass, w WSS) {
+	book.segment = book.segment.Add(w)
+	switch cls {
+	case LICTrimDiscardable:
+		if book.seenContent {
+			book.trailingTrim = book.trailingTrim.Add(w)
+		} else {
+			book.leadingTrim = book.leadingTrim.Add(w)
+		}
+	case LICContent:
+		book.seenContent = true
+		book.trailingTrim = WSS{}
+	case LICRetainedNeutral:
+		// width stays in segment, but does not contribute to trim bookkeeping
+	}
+}
+
+func (book bookkeeping) effectiveWidth(params *Parameters) WSS {
+	segw := book.segment
+	segw = segw.Subtract(book.leadingTrim)
+	segw = segw.Subtract(book.trailingTrim)
+	w := WSS{}.SetFromKnot(params.LeftSkip)
+	segw = segw.Add(w)
+	w = WSS{}.SetFromKnot(params.RightSkip)
+	segw = segw.Add(w)
+	return segw
 }
 
 type cost struct {
@@ -121,12 +171,13 @@ type provisionalMark int64 // provisional mark from an integer position
 func (m provisionalMark) Position() int64  { return int64(m) }
 func (m provisionalMark) Knot() khipu.Knot { return khipu.PenaltyItem(-10000) }
 
-func (kp *linebreaker) updatePath(bp kinx, k khipu.KnotCore) {
-	wss := WSS{}.SetFromKnot(k)      // get dimensions of knot
-	for st, path := range kp.paths { // TODO find a more efficient data-structure
+func (kp *linebreaker) updatePath(bp, idx kinx, k khipu.KnotCore) {
+	wss := WSS{}.SetFromKnot(k)             // get dimensions of knot
+	cls := classifyLineItem(idx, kp.end, k) // classify for line-edge trimming
+	for st, path := range kp.paths {        // TODO find a more efficient data-structure
 		if st.from == bp { // found a path ending in `to`
 			tracer().Debugf("   --- path of %s/%v = %v", knotInxStr(bp), st, path)
-			path.segment = path.segment.Add(wss)
+			path.appendItem(cls, wss)
 			tracer().Debugf("K&R: extending segment from %s to %v", knotInxStr(bp), path.segment)
 			kp.paths[st] = path
 		}
@@ -190,7 +241,7 @@ func (kp *linebreaker) calcCost(bp kinx, k khipu.KnotCore) ([]lineCost, bool) {
 	for st, path := range kp.paths { // TODO find a more efficient data-structure
 		if st.from == bp { // found a path ending in `to`
 			linelen := kp.parshape.LineLength(int32(st.line + 1))
-			segwss := segmentW(path, st, kp.params)
+			segwss := path.effectiveWidth(kp.params)
 			d = InfinityDemerits             // pre-set result variable
 			b = InfinityDemerits             // badness of line
 			stsh := absD(linelen - segwss.W) // stretch or shrink of glue in line
@@ -206,20 +257,6 @@ func (kp *linebreaker) calcCost(bp kinx, k khipu.KnotCore) ([]lineCost, bool) {
 		}
 	}
 	return result, canReach
-}
-
-// segmentWidth returns the widths of a segment at fb, subtracting discardable
-// items at the start of the segment and at the end (= possible breakpoint).
-func segmentW(path bookkeeping, st origin, params *Parameters) WSS {
-	//segw := fb.books[linecnt].segment
-	segw := path.segment
-	// segw = segw.Subtract(fb.books[linecnt].startDiscard)
-	// segw = segw.Subtract(fb.books[linecnt].breakDiscard)
-	w := WSS{}.SetFromKnot(params.LeftSkip)
-	segw = segw.Add(w)
-	w = WSS{}.SetFromKnot(params.RightSkip)
-	segw = segw.Add(w)
-	return segw
 }
 
 // Currently we try to replicated the logic of TeX.
@@ -372,7 +409,7 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu, parshape lin
 			//for fb != nil { // loop over active feasible breakpoints of horizon
 			//tracer().Debugf("      --- %s (in horizon) --> %v", knotInxStr(horiz_bp), khipu.KnotByIndex(last))
 			tracer().Debugf("   --- %s (in horizon) --> candidate %v", knotInxStr(horiz_bp), knotString(last, khipu))
-			kp.updatePath(horiz_bp, k)         // now WSS extends to new knot k
+			kp.updatePath(horiz_bp, last, k)   // now WSS extends to new knot k
 			if k.Penalty >= InfinityDemerits { // merits prohibit break
 				tracer().Debugf("   --- break prohibited (p=%d)", k.Penalty)
 				continue

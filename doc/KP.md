@@ -6,13 +6,13 @@ This note summarizes the current state of:
 - `linebreak/knuthplass`
 - the relevant `khipu` code in the repository root
 
-The findings are based on the current worktree as inspected on March 14, 2026.
+The findings are based on the current worktree as inspected on March 16, 2026.
 
 ## Executive summary
 
 `linebreak/kp` is still the only working Knuth-Plass implementation in this tree. It is tied to the old array-of-interfaces `KhipuAOS` model, to `khipu.Mark`, and to the `linebreak.Cursor` abstraction. Its tests currently pass.
 
-`linebreak/knuthplass` is not yet a finished replacement. It has already moved to the new `Khipu`/`KnotCore` representation and removed some of the older object-heavy structures, but large parts of the old implementation still survive as commented-out code, several semantics are not ported yet, and only the single-path `BreakParagraph` API is wired end-to-end so far. Its package tests now pass, but parity with `linebreak/kp` is still incomplete.
+`linebreak/knuthplass` is not yet a finished replacement. It has already moved to the new `Khipu`/`KnotCore` representation and removed some of the older object-heavy structures. The single-path `BreakParagraph` API is now wired end-to-end, backward collection is implemented, and the current glue/kern trimming semantics are active in the width calculation. Its package tests now pass, but parity with `linebreak/kp` is still incomplete and several documented K&P features are still absent.
 
 The main architectural pressure point is the split between two khipu models:
 
@@ -60,8 +60,9 @@ Practical status:
 
 - `BreakParagraph` now builds the graph, identifies the terminal knot by index, and returns the single best breakpoint path as `[]kinx`
 - `collectOptimalBreakpoints(end kinx)` exists and backtracks through the pruned graph using line-number labels
-- `FindBreakpoints` still returns `nil, nil, nil`
-- the old `collectFeasibleBreakpoints` remains commented out as legacy reference
+- discardable-item bookkeeping is active through `leadingTrim`, `trailingTrim`, `seenContent`, `classifyLineItem(...)`, `appendItem(...)`, and `effectiveWidth(...)`
+- the package tests now cover bookkeeping transitions as well as trailing and later-line leading trimming for glue and kern
+- `FindBreakpoints` is no longer on the active path and has been removed from the rewrite
 - GraphViz output was not ported
 - `env GOCACHE=/Users/npi/prg/go/khipu/.gocache go test ./linebreak/knuthplass` passes
 
@@ -155,16 +156,22 @@ Before the rewrite can be finished, it needs an explicit answer to:
 - how is paragraph end represented?
 - how are trailing spaces/glue around a breakpoint represented?
 
-### 4. Some critical semantics have not yet been ported
+### 4. Some critical semantics have now been ported, but not all
 
-In `linebreak/knuthplass` the new path bookkeeping currently does not preserve all the old behavior.
+In `linebreak/knuthplass` the new path bookkeeping now preserves the main glue/kern trimming semantics of the old implementation, but it still does not cover the full long-term notion of “discardable”.
 
-Most important gaps:
+What is now present:
 
-- `startDiscard` and `breakDiscard` exist in `bookkeeping` but are not actively maintained
-- `segmentW(...)` currently ignores discardable material entirely
-- `collectFeasibleBreakpoints(...)` is not active
-- the public API returns no results
+- `leadingTrim` and `trailingTrim` are actively maintained in `bookkeeping`
+- `seenContent` tracks whether a segment already contains retained content
+- `effectiveWidth(...)` subtracts trimmed material from the active segment width
+- terminal `ParFillSkip + InfinityMerits` is treated as retained-neutral, not as ordinary trimmed glue
+
+Remaining gaps:
+
+- paragraph-initial leading whitespace is not yet being treated as a separate design topic
+- the implementation still uses explicit glue/kern handling, not a fully general international-script discardability model
+- hyphenation and discretionary handling are still future work
 
 This is especially important because the old implementation used discard accounting to avoid charging leading and trailing glue to a line.
 
@@ -257,12 +264,16 @@ The PDF repeatedly treats the considered breakpoint as the space after a word an
 
 Status in `linebreak/knuthplass`:
 
-- not migrated
-- `startDiscard` and `breakDiscard` are still in the data model
-- the actual rewrite path update does not maintain them
-- `segmentW(...)` currently leaves the corresponding subtraction commented out
+- partially migrated
+- leading and trailing trimming are now active in the implementation for explicit glue and kern items
+- `bookkeeping` maintains `leadingTrim`, `trailingTrim`, and `seenContent`
+- `effectiveWidth(...)` subtracts trimmed material before demerits are computed
+- tests now cover bookkeeping transitions, consecutive discardables, trailing trim at a breakpoint, and leading trim on later lines
 
-This is one of the most direct mismatches between the documented algorithm and the current rewrite.
+Remaining limitations:
+
+- paragraph-initial leading whitespace is intentionally deferred
+- the current approach is still explicit glue/kern logic, not a general “discardable item” model for international script
 
 ### 3. The final result is chosen only after the end of the paragraph is known
 
@@ -273,13 +284,13 @@ The PDF's worked example makes two points very clearly:
 
 Status in `linebreak/knuthplass`:
 
-- partially migrated
+- migrated for the active API
 - `constructBreakpointGraph()` now sets `kp.end` to the final knot index
 - `collectOptimalBreakpoints(...)` chooses the cheapest final `(end, line)` state and reconstructs one winning path
-- `BreakParagraph(...)` now returns that path as `[]kinx`
-- `FindBreakpoints(...)` still returns no variants and no breakpoint sets
+- `BreakParagraph(...)` returns that path as `[]kinx`
+- the earlier multi-variant API is no longer on the active path in this rewrite
 
-This was the biggest functional gap in the rewrite. It is now closed for the single-result API, but not yet for the old multi-variant API.
+This was the biggest functional gap in the rewrite. It is now closed for the current public API of the package.
 
 ### 4. The documented algorithm relies on a paragraph-final terminal condition
 
@@ -316,7 +327,7 @@ What is present:
 
 What is missing:
 
-- `FindBreakpoints(...)` still does not expose multiple final variants
+- multi-variant result enumeration is no longer present in the rewrite
 
 ### 6. The PDF treats the algorithm as dynamic programming over optimal subpaths
 
@@ -366,7 +377,7 @@ The implemented collector therefore no longer inspects `last.books`. It:
 
 ### Placement
 
-The new collector now lives immediately after `constructBreakpointGraph()` in `linebreak/knuthplass/knuthplass.go`, while the older `collectFeasibleBreakpoints(...)` remains in comments as migration reference.
+The new collector now lives immediately after `constructBreakpointGraph()` in `linebreak/knuthplass/knuthplass.go`. Earlier legacy collector code has been removed from the active implementation path.
 
 ### Graph helper
 
@@ -436,16 +447,6 @@ This preserves the original algorithmic intent while dropping the unneeded varia
 - backward traversal still walks from paragraph end to root
 - the result type now matches the new implementation model: `[]kinx`
 
-### Current caveats
-
-The single-path collector works, but several surrounding gaps remain:
-
-1. `FindBreakpoints(...)` still has the old multi-variant signature and currently returns nothing useful.
-2. The paragraph still depends on a real terminal breakpoint being present in the input.
-3. The public API is now split: `BreakParagraph(...)` returns `[]kinx`, while `FindBreakpoints(...)` still exposes the old unfinished shape.
-
-With the single-result direction chosen, there is no longer a need for `BreakParagraph(...)` to recreate the old `[]khipu.Mark` return shape.
-
 ## Test observations
 
 With a workspace-local build cache:
@@ -462,6 +463,15 @@ Observed result:
 - `./...`: still fails because the root `khipu` package fails; `linebreak/firstfit`, `linebreak/kp`, and `linebreak/knuthplass` pass
 
 `linebreak/knuthplass` now does reconstruct and return the optimal breakpoint path for `BreakParagraph(...)`. The remaining repository-wide failures are upstream of this package.
+
+In addition, the package-local tests now explicitly cover the current discardable-item semantics:
+
+- bookkeeping transitions for leading trim, trailing trim, and retained-neutral terminal nodes
+- effective width after trimming
+- retention of internal discardable material
+- accumulation of consecutive discardables
+- trailing trim at a chosen breakpoint
+- leading trim on a later line
 
 The root-package `khipu` failure is also relevant context for the rewrite. It shows that the new paragraph encoding path is itself still in flux, so `linebreak/knuthplass` does not yet sit on top of a fully stable upstream representation.
 
@@ -480,7 +490,7 @@ That abstraction should probably expose only what K&P needs:
 - knot count
 - indexed access to `W`, `MinW`, `MaxW`, `Penalty`, `Kind`
 - paragraph-end sentinel behavior
-- a clear rule for "discardable at line start/end"
+- a clear rule for what counts as trimmed boundary material today and what should become future international-script discardability later
 
 This can be an interface or a small generic accessor layer. The important part is that it should not depend on `KhipuAOS`, `khipu.Mark`, or the current `linebreak.Cursor` API.
 
@@ -488,11 +498,12 @@ This can be an interface or a small generic accessor layer. The important part i
 
 ### Short term
 
-- stop extending commented-out old code in `linebreak/knuthplass`
-- finish the migration by aligning `FindBreakpoints(...)` with the new index-based result model or removing it from the active path
-- port discardable-space handling (`startDiscard` / `breakDiscard`) before adding parity tests
+- stop extending commented-out old code in `linebreak/knuthplass`: **DONE**
+- remove the old multi-variant API from the active path: **DONE**
+- port current glue/kern discardable handling before adding parity tests: **DONE**
 - fix line-number accounting and verify it against non-rectangular paragraph shapes
-- decide how final forced paragraph break is represented in the new `Khipu`
+- decide how final forced paragraph break is represented in the new `Khipu`: **DONE**
+- decide how paragraph-initial whitespace should be modeled separately from ordinary discardable glue
 
 ### Medium term
 
@@ -514,3 +525,20 @@ This can be an interface or a small generic accessor layer. The important part i
 The rewrite is moving in the right direction structurally: integer indices, `KnotCore`, and SOA storage are better foundations for a lightweight implementation than the current `KhipuAOS` + `Cursor` + `Mark` design.
 
 However, the new package is still a transitional port. It has not yet reached semantic or API completeness, and the real blocker is not just missing code. The blocker is that the repository still contains two different models of what a breakable paragraph is. The next design step should therefore be to settle the linebreaker input model first, then finish the algorithm on top of that model.
+
+## Treating of “discardable” Items
+
+TeX introduces the term “discardable” for items in the hlist which should be disregarded when breaking lines (and building hboxes). For TeX, this is mainly about whitespace. However, for truly international script there may be much more complicated scenarios. 
+
+The current rewrite now implements a deliberately narrow version of this idea:
+
+- explicit `KTGlue` and `KTKern` handling
+- separate tracking of `leadingTrim` and `trailingTrim`
+- `seenContent` to distinguish empty-from-contentful segments
+- special handling for the terminal `ParFillSkip + InfinityMerits` node as retained-neutral material
+
+This is enough for the current migration target and is covered by package tests. It should not yet be mistaken for the final general model of discardability.
+
+The final implementation will probably need to attach a `isDiscardable` bit with every khipu node (as in TeX). One example: `\parindent` whitespace at the beginning of a paragraph is not discardable, but rather flags the typographic custom to indent the first line of a paragraph for readability.   
+
+Another level of complexity will stem from hyphenation. Hyphenation will insert discretionary items in the khipu, which complicates the algorithm for linebreaking. However, we will tackle this problem after normal linebreaking is fully in place.
