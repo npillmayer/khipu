@@ -39,7 +39,7 @@ func TestCollectOptimalBreakpointsTracksWorstBadness(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareLineBreaker failed: %v", err)
 	}
-	if err := kp.constructBreakpointGraph(khp, kp.parshape, kp.params); err != nil {
+	if err := kp.constructBreakpointGraph(khp); err != nil {
 		t.Fatalf("constructBreakpointGraph failed: %v", err)
 	}
 	breakpoints, quality, ok := kp.collectOptimalBreakpoints(kp.end)

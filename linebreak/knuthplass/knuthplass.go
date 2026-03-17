@@ -64,7 +64,6 @@ func NewKPDefaultParameters() *Parameters {
 		PreTolerance:         100,
 		LinePenalty:          10,
 		HyphenPenalty:        50,
-		ExHyphenPenalty:      50,
 		FirstHyphenDemerits:  0,
 		DoubleHyphenDemerits: 2000,
 		FinalHyphenDemerits:  10000,
@@ -307,10 +306,6 @@ func (ev lineEvaluation) accepted() bool {
 	return ev.disposition == lineAccepted
 }
 
-func (ev lineEvaluation) screenedOut() bool {
-	return ev.disposition == lineScreenedOut
-}
-
 func (ev lineEvaluation) lineCost() lineCost {
 	return lineCost{
 		bp:      ev.bp,
@@ -464,51 +459,9 @@ func calcDemerits(badness merits, penalty khipu.Penalty, params *Parameters) mer
 	return d
 }
 
-func demeritsString(d linebreak.Merits) string {
-	return fmt.Sprintf("%d", d)
-}
-
 type pathQuality struct {
 	totalCost    merits // sum of demerits along the winning path
 	worstBadness merits // highest local line badness on the winning path
-}
-
-// penaltyAt iterates over all penalties, starting at the current cursor mark, and
-// collects penalties, searching for the most significant one.
-// Will return
-//
-//	-10000, if present
-//	max(p1, p2, ..., pn) otherwise
-//
-// Returns the most significant penalty. Advances the cursor over all adjacent penalties.
-// After this, the cursor mark may not reflect the position of the significant penalty.
-func penaltyAt(cursor linebreak.Cursor) (khipu.PenaltyItem, khipu.Mark) {
-	if cursor.Knot().Type() != khipu.KTPenalty {
-		return khipu.PenaltyItem(linebreak.InfinityDemerits), cursor.Mark()
-	}
-	penalty := cursor.Knot().(khipu.PenaltyItem)
-	ignore := false // final penalty found, ignore all other penalties
-	knot, ok := cursor.Peek()
-	for ok {
-		if knot.Type() == khipu.KTPenalty {
-			cursor.Next() // advance to next penalty
-			if ignore {
-				break // just skip over adjacent penalties
-			}
-			p := knot.(khipu.PenaltyItem)
-			if linebreak.Merits(p.Demerits()) <= linebreak.InfinityMerits { // -10000 must break (like in TeX)
-				penalty = p
-				ignore = true
-			} else if p.Demerits() > penalty.Demerits() {
-				penalty = p
-			}
-			knot, ok = cursor.Peek() // now check next knot
-		} else {
-			ok = false
-		}
-	}
-	p := khipu.PenaltyItem(linebreak.CapDemerits(linebreak.Merits(penalty.Demerits())))
-	return p, cursor.Mark()
 }
 
 // --- Main API ---------------------------------------------------------
@@ -569,7 +522,7 @@ func breakParagraphPassRefs(khp *khipu.Khipu, parshape linebreak.ParShape,
 		return nil, pathQuality{}, false, err
 	}
 	kp.hyphenating = hyphenating
-	if err := kp.constructBreakpointGraph(khp, parshape, params); err != nil {
+	if err := kp.constructBreakpointGraph(khp); err != nil {
 		tracer().Errorf("K&P: %w", err)
 		return nil, pathQuality{}, false, err
 	}
@@ -595,8 +548,7 @@ func breakParagraphPassRefs(khp *khipu.Khipu, parshape linebreak.ParShape,
 //
 // The above operations contruct a DAG, starting from a single node representing the
 // start of the paragraph, to a single node representing the end.
-func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu, parshape linebreak.ParShape,
-	params *Parameters) error {
+func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu) error {
 	//
 	if len(khipu.W) == 0 {
 		return ErrNoBreakpoints
