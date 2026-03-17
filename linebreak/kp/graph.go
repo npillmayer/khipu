@@ -47,8 +47,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.  */
 import (
 	"fmt"
 	"sort"
-
-	"github.com/npillmayer/khipu/linebreak"
 )
 
 // fbGraph is a directed weighted graph of feasible breakpoints.
@@ -90,8 +88,8 @@ func newFBGraph() *fbGraph {
 
 type wEdge struct {
 	from, to  int64 // this is an edge between two text-positions
-	cost      linebreak.Merits
-	total     linebreak.Merits
+	cost      Merits
+	total     Merits
 	linecount int32
 }
 
@@ -106,7 +104,7 @@ func (e wEdge) isNull() bool {
 // newWEdge returns a new weighted edge from one breakpoint to another,
 // given two breakpoints and a label-key.
 // It is not yet inserted into a graph.
-func newWEdge(from, to *feasibleBreakpoint, cost, total linebreak.Merits, linecnt int32) wEdge {
+func newWEdge(from, to *feasibleBreakpoint, cost, total Merits, linecnt int32) wEdge {
 	if from.books[linecnt-1] == nil {
 		panic(fmt.Errorf("startpoint of new line %d seems to have incorrent books: %v", linecnt, from))
 	}
@@ -225,7 +223,7 @@ func (g *fbGraph) RemoveEdge(from, to *feasibleBreakpoint, linecnt int32) {
 // AddEdge adds a weighted edge from one node to another. Endpoints which are
 // not yet contained in the graph are added.
 // Does nothing if from=to.
-func (g *fbGraph) AddEdge(from, to *feasibleBreakpoint, cost, total linebreak.Merits, linecnt int32) {
+func (g *fbGraph) AddEdge(from, to *feasibleBreakpoint, cost, total Merits, linecnt int32) {
 	if from.mark.Position() == to.mark.Position() {
 		return
 	}
@@ -321,9 +319,9 @@ func (s breakpointSorter) Swap(i, j int) {
 // If from and to are the same node or if there is no edge (from,to),
 // a pseudo-label with infinite cost is returned.
 // Cost returns true if an edge (from,to) exists, false otherwise.
-func (g *fbGraph) Cost(from, to *feasibleBreakpoint, linecnt int32) (linebreak.Merits, bool) {
+func (g *fbGraph) Cost(from, to *feasibleBreakpoint, linecnt int32) (Merits, bool) {
 	if from == to {
-		return linebreak.InfinityDemerits, false
+		return InfinityDemerits, false
 	}
 	if edgesFrom, ok := g.edgesTo[to.mark.Position()]; ok {
 		if edges, ok := edgesFrom[from.mark.Position()]; ok {
@@ -332,5 +330,5 @@ func (g *fbGraph) Cost(from, to *feasibleBreakpoint, linecnt int32) (linebreak.M
 			}
 		}
 	}
-	return linebreak.InfinityDemerits, false
+	return InfinityDemerits, false
 }

@@ -114,6 +114,7 @@ func TestFirstPassAcceptsBadnessAtPreToleranceBoundary(t *testing.T) {
 	khp.Kind = append(khp.Kind, khipu.KTTextBox, khipu.KTTextBox, khipu.KTGlue)
 	khp.Pos = append(khp.Pos, 0, 0, 0)
 	khp.Len = append(khp.Len, 0, 0, 0)
+	khp.Flags = append(khp.Flags, 0, 0, khipu.KFDiscardable)
 
 	breakpoints, quality, ok, err := breakParagraphPass(khp, linebreak.RectangularParShape(8000), params, false)
 	if err != nil {

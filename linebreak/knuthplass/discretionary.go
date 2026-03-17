@@ -26,15 +26,7 @@ func (kp *linebreaker) discretionaryCandidates(khp *khipu.Khipu, at kinx) ([]khi
 // flag plane on KnotCore. More script-sensitive trimming rules can later replace
 // this without changing the surrounding pass-2 logic.
 func isLineDiscardable(k khipu.KnotCore) bool {
-	if k.IsDiscardable() {
-		return true
-	}
-	switch k.Kind {
-	case khipu.KTGlue, khipu.KTKern:
-		return true
-	default:
-		return false
-	}
+	return k.IsDiscardable()
 }
 
 // previousNonDiscardable and nextNonDiscardable walk the physical Khipu around a
@@ -173,18 +165,18 @@ func cacheDiscretionaryCandidates(khp *khipu.Khipu, at kinx, cands []khipu.Discr
 
 // appendKnotToBook applies ordinary trimming semantics to one KnotCore. It is
 // shared by physical Khipu knots and by synthetic discretionary fragments.
-func appendKnotToBook(book *bookkeeping, idx, end kinx, k khipu.KnotCore) {
+func appendKnotToBook(book *bookkeeping, k khipu.KnotCore) {
 	wss := WSS{}.SetFromKnot(k)
-	cls := classifyLineItem(idx, end, k)
+	cls := classifyLineItem(k)
 	book.appendItem(cls, wss)
 }
 
 // seedBookkeepingFromKnot creates the initial bookkeeping state for the next
 // line after a discretionary break. In practice this means: start the successor
 // segment with the post-break fragment already present.
-func seedBookkeepingFromKnot(idx, end kinx, k khipu.KnotCore) bookkeeping {
+func seedBookkeepingFromKnot(k khipu.KnotCore) bookkeeping {
 	var seed bookkeeping
-	appendKnotToBook(&seed, idx, end, k)
+	appendKnotToBook(&seed, k)
 	return seed
 }
 
@@ -196,7 +188,7 @@ func (kp *linebreaker) appendActualKnots(book *bookkeeping, khp *khipu.Khipu, fr
 		return
 	}
 	for i := from; i <= to; i++ {
-		appendKnotToBook(book, i, kp.end.At, khp.KnotByIndex(i))
+		appendKnotToBook(book, khp.KnotByIndex(i))
 	}
 }
 
@@ -255,8 +247,8 @@ func (kp *linebreaker) evaluateDiscretionaryCandidates(khp *khipu.Khipu, from Br
 			case candidate > breakpoint:
 				lineBook = path.segmentState()
 				kp.appendActualKnots(&lineBook, khp, breakpoint+1, candidate-1)
-				appendKnotToBook(&lineBook, candidate, kp.end.At, cand.PreBreak)
-				nextSeed = seedBookkeepingFromKnot(candidate, kp.end.At, cand.PostBreak)
+				appendKnotToBook(&lineBook, cand.PreBreak)
+				nextSeed = seedBookkeepingFromKnot(cand.PostBreak)
 			default:
 				seed, ok := kp.seeds[origin{from, st.line}]
 				if !ok {
@@ -264,8 +256,8 @@ func (kp *linebreaker) evaluateDiscretionaryCandidates(khp *khipu.Khipu, from Br
 				}
 				lineBook = seed.segmentState()
 				kp.appendActualKnots(&lineBook, khp, from.At+1, candidate-1)
-				appendKnotToBook(&lineBook, candidate, kp.end.At, cand.PreBreak)
-				nextSeed = seedBookkeepingFromKnot(candidate, kp.end.At, cand.PostBreak)
+				appendKnotToBook(&lineBook, cand.PreBreak)
+				nextSeed = seedBookkeepingFromKnot(cand.PostBreak)
 				kp.appendActualKnots(&nextSeed, khp, candidate+1, breakpoint)
 			}
 			segwss := lineBook.effectiveWidth(kp.params)

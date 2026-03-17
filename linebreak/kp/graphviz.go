@@ -6,7 +6,6 @@ import (
 	"text/template"
 
 	"github.com/npillmayer/khipu"
-	"github.com/npillmayer/khipu/linebreak"
 )
 
 // Parameters for GraphViz drawing.
@@ -112,7 +111,7 @@ type n struct {
 
 type e struct {
 	N1, N2      *n
-	Cost, Total linebreak.Merits
+	Cost, Total Merits
 	Line        int32
 	Text        string
 	Color       string

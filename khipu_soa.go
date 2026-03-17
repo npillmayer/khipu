@@ -267,6 +267,9 @@ func (kq *Khipukamayuq) EncodeParagraph(para *styled.Paragraph, knotAdapt KnotSt
 				Pos:     para.Offset + uint64(pos) + uint64(rangeLen),
 				Len:     uint16(segLen),
 				Kind:    kindFromText(segment),
+				// TODO: discardability currently falls back to a simple kind-based
+				// default. This decision belongs with Khipukamayuq and should later
+				// be driven by richer script/segment/shaping information instead.
 				Flags:   defaultFlagsForKind(kindFromText(segment)),
 			}
 			if knotAdapt != nil {

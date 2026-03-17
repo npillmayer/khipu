@@ -9,7 +9,7 @@ import (
 
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/dimen"
-	"github.com/npillmayer/khipu/linebreak"
+	lb "github.com/npillmayer/khipu/linebreak"
 	"github.com/npillmayer/schuko/tracing/gotestingadapter"
 	"github.com/npillmayer/uax/bidi"
 	"golang.org/x/text/language"
@@ -21,7 +21,7 @@ func TestGraph1(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "tyse.frame")
 	defer teardown()
 	//
-	parshape := linebreak.RectangularParShape(10 * 10 * dimen.BP)
+	parshape := lb.RectangularParShape(10 * 10 * dimen.BP)
 	g := newLinebreaker(parshape, nil)
 	g.newBreakpointAtMark(provisionalMark(1))
 	if g.Breakpoint(1) == nil {
@@ -29,7 +29,7 @@ func TestGraph1(t *testing.T) {
 	}
 }
 
-func setupKPTest(t *testing.T, paragraph string, hyphens bool) (*khipu.KhipuAOS, linebreak.Cursor, io.Writer) {
+func setupKPTest(t *testing.T, paragraph string, hyphens bool) (*khipu.KhipuAOS, Cursor, io.Writer) {
 	regs := newParameters()
 	if hyphens {
 		regs.Minhyphenlength = 3
@@ -40,8 +40,8 @@ func setupKPTest(t *testing.T, paragraph string, hyphens bool) (*khipu.KhipuAOS,
 	if kh == nil {
 		t.Errorf("no Khipu to test; input is %s", paragraph)
 	}
-	kh.AppendKnot(khipu.PenaltyItem(linebreak.InfinityMerits))
-	cursor := linebreak.NewFixedWidthCursor(khipu.NewCursor(kh), 10*dimen.BP, 0)
+	kh.AppendKnot(khipu.PenaltyItem(InfinityMerits))
+	cursor := NewFixedWidthCursor(khipu.NewCursor(kh), 10*dimen.BP, 0)
 	var dotfile io.Writer
 	var err error
 	if graphviz {
@@ -58,7 +58,7 @@ func TestKPUnderfull(t *testing.T) {
 	defer teardown()
 	//
 	kh, cursor, dotfile := setupKPTest(t, " ", false)
-	parshape := linebreak.RectangularParShape(10 * 10 * dimen.BP)
+	parshape := lb.RectangularParShape(10 * 10 * dimen.BP)
 	v, breaks, err := FindBreakpoints(cursor, parshape, nil, dotfile)
 	t.Logf("%d linebreaking-variants for empty line found, error = %v", len(v), err)
 	for linecnt, breakpoints := range breaks {
@@ -79,7 +79,7 @@ func TestKPExactFit(t *testing.T) {
 	defer teardown()
 	//
 	kh, cursor, dotfile := setupKPTest(t, "The quick.", false)
-	parshape := linebreak.RectangularParShape(10 * 10 * dimen.BP)
+	parshape := lb.RectangularParShape(10 * 10 * dimen.BP)
 	v, breaks, err := FindBreakpoints(cursor, parshape, nil, dotfile)
 	t.Logf("%d linebreaking-variants found, error = %v", len(v), err)
 	for linecnt, breakpoints := range breaks {
@@ -103,7 +103,7 @@ func TestKPOverfull(t *testing.T) {
 	params := NewKPDefaultParameters()
 	params.EmergencyStretch = dimen.DU(0)
 	params.Tolerance = 400
-	parshape := linebreak.RectangularParShape(10 * 10 * dimen.BP)
+	parshape := lb.RectangularParShape(10 * 10 * dimen.BP)
 	v, breaks, err := FindBreakpoints(cursor, parshape, params, dotfile)
 	t.Logf("%d linebreaking-variants found, error = %v", len(v), err)
 	for linecnt, breakpoints := range breaks {
@@ -127,9 +127,9 @@ func TestKPParaKing(t *testing.T) {
 	defer teardown()
 	//
 	kh, _, dotfile := setupKPTest(t, king, false)
-	cursor := linebreak.NewFixedWidthCursor(khipu.NewCursor(kh), 10*dimen.BP, 3)
+	cursor := NewFixedWidthCursor(khipu.NewCursor(kh), 10*dimen.BP, 3)
 	params := NewKPDefaultParameters()
-	parshape := linebreak.RectangularParShape(45 * 10 * dimen.BP)
+	parshape := lb.RectangularParShape(45 * 10 * dimen.BP)
 	v, breaks, err := FindBreakpoints(cursor, parshape, params, dotfile)
 	t.Logf("%d linebreaking-variants found, error = %v", len(v), err)
 	for linecnt, breakpoints := range breaks {
@@ -151,9 +151,9 @@ func TestKPParaPrincess(t *testing.T) {
 	//
 	kh, _, _ := setupKPTest(t, princess, false)
 	// change to cursor with flexible interword-spacing
-	cursor := linebreak.NewFixedWidthCursor(khipu.NewCursor(kh), 10*dimen.BP, 2)
+	cursor := NewFixedWidthCursor(khipu.NewCursor(kh), 10*dimen.BP, 2)
 	params := NewKPDefaultParameters()
-	parshape := linebreak.RectangularParShape(45 * 10 * dimen.BP)
+	parshape := lb.RectangularParShape(45 * 10 * dimen.BP)
 	breakpoints, err := BreakParagraph(cursor, parshape, params)
 	//v, breaks, err := FindBreakpoints(cursor, parshape, params, dotfile)
 	//t.Logf("%d linebreaking-variants found, error = %v", len(v), err)

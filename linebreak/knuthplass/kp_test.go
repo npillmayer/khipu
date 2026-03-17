@@ -79,6 +79,19 @@ func TestBookkeepingAppendItem(t *testing.T) {
 	}
 }
 
+func TestClassifyLineItemUsesDiscardableFlags(t *testing.T) {
+	k := khipu.KnotCore{
+		W: 10 * dimen.BP, MinW: 5 * dimen.BP, MaxW: 15 * dimen.BP, Kind: khipu.KTGlue,
+	}
+	if got := classifyLineItem(k); got != LICRetainedNeutral {
+		t.Fatalf("expected unflagged glue to be retained-neutral, got %v", got)
+	}
+	k.Flags = khipu.KFDiscardable
+	if got := classifyLineItem(k); got != LICTrimDiscardable {
+		t.Fatalf("expected flagged glue to be trim-discardable, got %v", got)
+	}
+}
+
 func TestBookkeepingEffectiveWidth(t *testing.T) {
 	book := bookkeeping{
 		segment:      WSS{W: 100 * dimen.BP, Min: 90 * dimen.BP, Max: 120 * dimen.BP},
@@ -198,6 +211,7 @@ func glueKnot(w, wmin int, wmax dimen.DU) khipu.KnotCore {
 		MaxW:    wmax,
 		Penalty: 0,
 		Kind:    khipu.KTGlue,
+		Flags:   khipu.KFDiscardable,
 	}
 }
 
@@ -217,6 +231,7 @@ func newKhipu(nodes []node) *khipu.Khipu {
 		khp.Kind = append(khp.Kind, n.kind)
 		khp.Pos = append(khp.Pos, 0)
 		khp.Len = append(khp.Len, 0)
+		khp.Flags = append(khp.Flags, discardFlagsForKind(n.kind))
 	}
 	return khp
 }
@@ -230,6 +245,16 @@ func testKhipu() *khipu.Khipu {
 		Pos:     make([]uint64, 0, 50),
 		Len:     make([]uint16, 0, 50),
 		Kind:    make([]khipu.KnotType, 0, 50),
+		Flags:   make([]khipu.KnotFlags, 0, 50),
 	}
 	return &khipu
+}
+
+func discardFlagsForKind(kind khipu.KnotType) khipu.KnotFlags {
+	switch kind {
+	case khipu.KTGlue, khipu.KTKern:
+		return khipu.KFDiscardable
+	default:
+		return 0
+	}
 }

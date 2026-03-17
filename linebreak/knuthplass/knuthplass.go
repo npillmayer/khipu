@@ -120,13 +120,15 @@ const (
 	LICRetainedNeutral
 )
 
-func classifyLineItem(idx, end kinx, k khipu.KnotCore) lineItemClass {
-	if idx == end && k.Penalty <= InfinityMerits {
-		return LICRetainedNeutral
+// classifyLineItem derives line-edge trimming behavior entirely from knot
+// flags and visible-content kind. The paragraph-final ParFillSkip node must be
+// guaranteed to arrive without KFDiscardable set; otherwise it would be
+// trimmed like ordinary interword space.
+func classifyLineItem(k khipu.KnotCore) lineItemClass {
+	if k.IsDiscardable() {
+		return LICTrimDiscardable
 	}
 	switch k.Kind {
-	case khipu.KTGlue, khipu.KTKern:
-		return LICTrimDiscardable
 	case khipu.KTTextBox, khipu.KTDiscretionary:
 		return LICContent
 	default:
@@ -180,9 +182,9 @@ func (kp *linebreaker) updatePath(bp BreakRef, idx kinx, k khipu.KnotCore) {
 	if bp.IsDiscretionary() && idx <= bp.At {
 		return
 	}
-	wss := WSS{}.SetFromKnot(k)                // get dimensions of knot
-	cls := classifyLineItem(idx, kp.end.At, k) // classify for line-edge trimming
-	for st, path := range kp.paths {           // TODO find a more efficient data-structure
+	wss := WSS{}.SetFromKnot(k)      // get dimensions of knot
+	cls := classifyLineItem(k)       // classify for line-edge trimming
+	for st, path := range kp.paths { // TODO find a more efficient data-structure
 		if st.from == bp { // found a path ending in `to`
 			tracer().Debugf("   --- path of %s/%v = %v", bp.String(), st, path)
 			path.appendItem(cls, wss)

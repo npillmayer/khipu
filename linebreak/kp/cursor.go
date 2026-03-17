@@ -1,13 +1,12 @@
-package linebreak
+package knuthplass
 
 import (
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/dimen"
 )
 
-// FixedWidthCursor is a linebreak-cursor for assigning a fixed width to
-// letters and spaces.
-// It is intended to wrap a khipu.Cursor or another linebreak.Cursor.
+// FixedWidthCursor is a legacy testing helper that assigns a fixed width to
+// letters and spaces while iterating through a KhipuAOS paragraph.
 type FixedWidthCursor struct {
 	cursor     Cursor
 	glyphWidth dimen.DU
@@ -16,8 +15,8 @@ type FixedWidthCursor struct {
 
 var _ Cursor = &FixedWidthCursor{}
 
-// NewFixedWidthCursor creates a FixedWidthCursor, given a width dimension for
-// every glyph it will read.
+// NewFixedWidthCursor creates a FixedWidthCursor with a fixed glyph width for
+// every knot it will read.
 func NewFixedWidthCursor(cursor Cursor, glyphWidth dimen.DU, stretchFactor int) FixedWidthCursor {
 	return FixedWidthCursor{
 		cursor:     cursor,
@@ -26,7 +25,6 @@ func NewFixedWidthCursor(cursor Cursor, glyphWidth dimen.DU, stretchFactor int) 
 	}
 }
 
-// Next is part of interface Cursor.
 func (fwc FixedWidthCursor) Next() bool {
 	ok := fwc.cursor.Next()
 	if ok {
@@ -41,12 +39,10 @@ func (fwc FixedWidthCursor) Next() bool {
 	return ok
 }
 
-// Knot is part of interface Cursor.
 func (fwc FixedWidthCursor) Knot() khipu.Knot {
 	return fwc.cursor.Knot()
 }
 
-// Peek is part of interface Cursor.
 func (fwc FixedWidthCursor) Peek() (khipu.Knot, bool) {
 	peek, ok := fwc.cursor.Peek()
 	if ok {
@@ -55,12 +51,10 @@ func (fwc FixedWidthCursor) Peek() (khipu.Knot, bool) {
 	return peek, ok
 }
 
-// Mark is part of interface Cursor.
 func (fwc FixedWidthCursor) Mark() khipu.Mark {
 	return fwc.cursor.Mark()
 }
 
-// Khipu is part of interface Cursor.
 func (fwc FixedWidthCursor) Khipu() *khipu.KhipuAOS {
 	return fwc.cursor.Khipu()
 }
