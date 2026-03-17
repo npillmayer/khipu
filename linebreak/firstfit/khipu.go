@@ -126,35 +126,8 @@ func BreakParagraph(khp *khipu.Khipu, parshape linebreak.ParShape, params *Param
 	return breakpoints, nil
 }
 
-// WSS is a local elastic-width helper for first-fit.
-type WSS struct {
-	W   dimen.DU
-	Min dimen.DU
-	Max dimen.DU
-}
-
-func (wss WSS) SetFromKnot(k khipu.KnotCore) WSS {
-	wss.W = k.W
-	wss.Min = k.MinW
-	wss.Max = k.MaxW
-	return wss
-}
-
-func (wss WSS) Add(other WSS) WSS {
-	return WSS{
-		W:   wss.W + other.W,
-		Min: wss.Min + other.Min,
-		Max: wss.Max + other.Max,
-	}
-}
-
-func (wss WSS) Subtract(other WSS) WSS {
-	return WSS{
-		W:   wss.W - other.W,
-		Min: wss.Min - other.Min,
-		Max: wss.Max - other.Max,
-	}
-}
+// WSS is shared with other linebreakers through the root linebreak package.
+type WSS = linebreak.WSS
 
 // segmentState tracks one in-progress first-fit line together with the seed
 // for the next line after the current checkpoint. `length` is the raw scanned
