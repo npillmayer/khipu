@@ -37,7 +37,7 @@ small.
 All former shared legacy types now live locally or are gone:
 
 - `Parameters` is local to `firstfit`
-- `WSS` is local to `firstfit`
+- `WSS` is again shared in `linebreak`
 - demerit sentinels are local constants
 
 This means the root `linebreak` package has successfully shrunk to the shared
@@ -60,7 +60,11 @@ Compared to `knuthplass`, it still intentionally avoids:
 - graph construction
 - global path ranking
 - line demerits / multiple-pass optimization
-- discretionary / hyphenation logic
+- broad discretionary search
+
+However, `firstfit` now does have one deliberately small hyphenation feature:
+
+- local loose-line discretionary rescue when the next textbox overflows
 
 ## Discardable-Item Handling
 
@@ -115,6 +119,8 @@ Current coverage includes:
 - trimming trailing discardables at a checkpoint
 - trimming leading discardables on later lines
 - forced breaks
+- loose-line discretionary rescue with `MinHyphenGain`
+- clearing stale selected discretionary decisions on rerun
 - local segment-state transitions for leading/trailing trim
 - reset preserving carried trim state
 - unflagged glue staying neutral
@@ -123,18 +129,26 @@ So the core trimming model is no longer just a plan; it is active and tested.
 
 ## What Is Still Missing
 
-### 1. No discretionary / hyphenation support
+### 1. Hyphenation is deliberately minimal
 
-`firstfit` is still deliberately non-hyphenating.
+`firstfit` now supports a narrow form of hyphenation:
 
-Missing on purpose:
+- only the loose-line case
+- only when the overflowing textbox has discretionary candidates
+- only when the best candidate improves the line by at least `MinHyphenGain`
 
-- discretionary-provider integration
+The current implementation is intentionally still much smaller than
+`knuthplass`.
+
+Still missing on purpose:
+
+- tight-line hyphenation
 - second pass
-- storing selected discretionaries back into `Khipu`
+- path-dependent hyphen penalties
+- global candidate comparison across multiple line variants
 
-This is currently consistent with the intended role of `firstfit` as a simple
-breaker.
+The result of a chosen discretionary is stored in `Khipu.SelectedDiscretionaries`,
+but the package remains a local greedy breaker, not a path-optimizing one.
 
 ### 2. No cost model beyond first-fit choice
 
@@ -171,7 +185,6 @@ Shared concepts:
 Not shared intentionally:
 
 - parameter types
-- width helper types
 - cost model
 - discretionary machinery
 
@@ -210,7 +223,7 @@ Owns:
 The next reasonable work items are:
 
 1. Add explicit paragraph-level kern regressions for trimming.
-2. Leave hyphenation out of `firstfit` unless there is a concrete product need.
+2. Decide whether tight-line hyphenation is worth the extra local complexity.
 3. Later, improve upstream discardable-flag assignment in `Khipukamayuq`.
 
 At this point, the migration of `firstfit` itself should be considered done.

@@ -9,6 +9,18 @@ import (
 	"github.com/npillmayer/khipu/linebreak"
 )
 
+type testDiscretionaryProvider struct {
+	calls       int
+	requestedAt []int
+	want        []khipu.DiscretionaryCandidate
+}
+
+func (p *testDiscretionaryProvider) DiscretionaryCandidates(khp *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error) {
+	p.calls++
+	p.requestedAt = append(p.requestedAt, at)
+	return p.want, nil
+}
+
 type node struct {
 	w, minw, maxw dimen.DU
 	p             int
@@ -89,6 +101,117 @@ func TestBreakParagraphKhipuRespectsForcedBreak(t *testing.T) {
 	}
 	if want := []kinx{1, 3}; !slices.Equal(breakpoints, want) {
 		t.Fatalf("expected forced breakpoints %v, got %v", want, breakpoints)
+	}
+}
+
+func TestBreakParagraphKhipuUsesLooseLineDiscretionary(t *testing.T) {
+	provider := &testDiscretionaryProvider{
+		want: []khipu.DiscretionaryCandidate{
+			{
+				Variant: 1,
+				PreBreak: khipu.KnotCore{
+					W: 6 * dimen.BP, MinW: 6 * dimen.BP, MaxW: 6 * dimen.BP, Penalty: 50, Kind: khipu.KTTextBox,
+				},
+				PostBreak: khipu.KnotCore{
+					W: 14 * dimen.BP, MinW: 14 * dimen.BP, MaxW: 14 * dimen.BP, Kind: khipu.KTTextBox,
+				},
+			},
+			{
+				Variant: 2,
+				PreBreak: khipu.KnotCore{
+					W: 9 * dimen.BP, MinW: 9 * dimen.BP, MaxW: 9 * dimen.BP, Penalty: 80, Kind: khipu.KTTextBox,
+				},
+				PostBreak: khipu.KnotCore{
+					W: 11 * dimen.BP, MinW: 11 * dimen.BP, MaxW: 11 * dimen.BP, Kind: khipu.KTTextBox,
+				},
+			},
+		},
+	}
+	params := &Parameters{
+		LeftSkip:              glue(0, 0, 0),
+		RightSkip:             glue(0, 0, 0),
+		MinHyphenGain:         5 * dimen.BP,
+		DiscretionaryProvider: provider,
+	}
+	khp := newKhipu([]node{
+		{w: 15, minw: 15, maxw: 15, p: -100, kind: khipu.KTTextBox},
+		{w: 20, minw: 20, maxw: 20, p: InfinityDemerits, kind: khipu.KTTextBox},
+		{w: 0, minw: 0, maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
+	})
+
+	breakpoints, err := BreakParagraph(khp, linebreak.RectangularParShape(24*dimen.BP), params)
+	if err != nil {
+		t.Fatalf("BreakParagraph failed: %v", err)
+	}
+	if want := []kinx{1, 2}; !slices.Equal(breakpoints, want) {
+		t.Fatalf("expected discretionary breakpoints %v, got %v", want, breakpoints)
+	}
+	if provider.calls != 1 || provider.requestedAt[0] != 1 {
+		t.Fatalf("expected one provider call for textbox 1, got calls=%d at=%v", provider.calls, provider.requestedAt)
+	}
+	choice, ok := khp.SelectedDiscretionaryAt(1)
+	if !ok || choice.Variant != 2 {
+		t.Fatalf("expected variant 2 to be selected at 1, got %+v ok=%v", choice, ok)
+	}
+}
+
+func TestBreakParagraphKhipuHonorsMinHyphenGain(t *testing.T) {
+	provider := &testDiscretionaryProvider{
+		want: []khipu.DiscretionaryCandidate{
+			{
+				Variant: 1,
+				PreBreak: khipu.KnotCore{
+					W: 3 * dimen.BP, MinW: 3 * dimen.BP, MaxW: 3 * dimen.BP, Penalty: 50, Kind: khipu.KTTextBox,
+				},
+				PostBreak: khipu.KnotCore{
+					W: 17 * dimen.BP, MinW: 17 * dimen.BP, MaxW: 17 * dimen.BP, Kind: khipu.KTTextBox,
+				},
+			},
+		},
+	}
+	params := &Parameters{
+		LeftSkip:              glue(0, 0, 0),
+		RightSkip:             glue(0, 0, 0),
+		MinHyphenGain:         5 * dimen.BP,
+		DiscretionaryProvider: provider,
+	}
+	khp := newKhipu([]node{
+		{w: 15, minw: 15, maxw: 15, p: -100, kind: khipu.KTTextBox},
+		{w: 20, minw: 20, maxw: 20, p: InfinityDemerits, kind: khipu.KTTextBox},
+		{w: 0, minw: 0, maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
+	})
+
+	breakpoints, err := BreakParagraph(khp, linebreak.RectangularParShape(24*dimen.BP), params)
+	if err != nil {
+		t.Fatalf("BreakParagraph failed: %v", err)
+	}
+	if want := []kinx{0, 2}; !slices.Equal(breakpoints, want) {
+		t.Fatalf("expected non-hyphenating breakpoints %v, got %v", want, breakpoints)
+	}
+	if len(khp.SelectedDiscretionaries) != 0 {
+		t.Fatalf("expected no selected discretionaries, got %+v", khp.SelectedDiscretionaries)
+	}
+}
+
+func TestBreakParagraphKhipuClearsStaleSelectedDiscretionaries(t *testing.T) {
+	khp := newKhipu([]node{
+		{w: 15, minw: 15, maxw: 15, p: -100, kind: khipu.KTTextBox},
+		{w: 20, minw: 20, maxw: 20, p: InfinityDemerits, kind: khipu.KTTextBox},
+		{w: 0, minw: 0, maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
+	})
+	khp.SelectedDiscretionaries = map[int]khipu.DiscretionarySelection{
+		1: {Source: 1, Variant: 9},
+	}
+
+	breakpoints, err := BreakParagraph(khp, linebreak.RectangularParShape(24*dimen.BP), nil)
+	if err != nil {
+		t.Fatalf("BreakParagraph failed: %v", err)
+	}
+	if want := []kinx{0, 2}; !slices.Equal(breakpoints, want) {
+		t.Fatalf("expected breakpoints %v, got %v", want, breakpoints)
+	}
+	if len(khp.SelectedDiscretionaries) != 0 {
+		t.Fatalf("expected stale selected discretionaries to be cleared, got %+v", khp.SelectedDiscretionaries)
 	}
 }
 
