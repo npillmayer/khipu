@@ -1,13 +1,28 @@
-# Option 3 Draft: Lazy Hyphenation With Sparse Discretionaries In `Khipu`
+# Lazy Hyphenation With Sparse Discretionaries
 
-This note sketches a design for Option 3:
+This design has the following overall goals for introducing hyphenation (“discretionaries”) in linebreaking:
 
-- keep base knot data in the current SOA-style `Khipu`
 - add a sparse discretionary side-table inside `Khipu`
 - discover discretionary candidates lazily
 - retain selected discretionary decisions inside `Khipu` for rendering
 
-The goal is not to finalize every API detail yet, but to establish a coherent direction for implementation.
+## Current Status
+
+Currently in place:
+
+- `Khipu` has sparse side-tables for discretionary candidates and selected discretionary decisions.
+- `linebreak/knuthplass` has a second pass with discretionary-provider lookup.
+- the line-breaker uses internal `BreakRef{At, Variant}` identities so multiple discretionary variants may coexist at one knot index during path search.
+- the public result of `BreakParagraph(...)` remains `[]kinx`; the chosen discretionary variant is recorded separately in `Khipu`.
+- after a successful linebreaking run, `Khipu.SelectedDiscretionaries` contains exactly the applied discretionary choices from the winning path, and stale selections from earlier runs are cleared.
+- discretionary candidates now carry their own penalty in `PreBreak.Penalty`, and the line-breaker reads that value directly during cost calculation.
+- first-line and final-line discretionary demerits are now implemented as local linebreaker adjustments.
+
+Currently still incomplete:
+
+- no consecutive-hyphen demerits yet
+- no minimum-fragment-length filtering yet (has been pushed into Khipukamayuq's responsibility)
+- no special support of final renderer-side application of selected discretionaries yet
 
 ## Problem Statement
 
@@ -122,6 +137,7 @@ Those must not be conflated.
 ## Proposed Data Shape
 
 The exact field names can change, but conceptually `Khipu` grows two sparse side structures.
+The current implementation already has these as maps on `Khipu`.
 
 ### 1. Candidate table
 
@@ -133,23 +149,28 @@ Value:
 
 - zero or more discretionary candidates
 
-Conceptually:
+Current shape:
 
 ```go
-type discretionaryCandidate struct {
-    source     kinx
-    whole      fragmentRef
-    preBreak   fragmentRef
-    postBreak  fragmentRef
-    penalty    Penalty
-    hyphenW    dimen.DU
+type DiscretionaryCandidate struct {
+    Variant   uint16
+    PreBreak  KnotCore
+    PostBreak KnotCore
 }
 ```
 
-The fields above are intentionally schematic. The important point is that a candidate must carry enough information for:
+The important point is that a candidate must carry enough information for:
 
 - linebreaking cost evaluation
 - later rendering if selected
+
+In the current model, this means:
+
+- `PreBreak` carries the shaped/measured pre-break fragment
+- `PostBreak` carries the shaped/measured post-break fragment
+- `PreBreak.Penalty` carries the discretionary penalty to be used by the cost calculator
+
+This is intentional. The line-breaker should not inject a hyphen glyph or infer a discretionary penalty itself. It should read both width and penalty data from the candidate supplied by `Khipukamayuq`.
 
 ### 2. Selected-decision table
 
@@ -161,16 +182,18 @@ Value:
 
 - which discretionary candidate was chosen, if any
 
-Conceptually:
+Current shape:
 
 ```go
-type discretionaryChoice struct {
-    source    kinx
-    candidate int
+type DiscretionarySelection struct {
+    Source  int
+    Variant uint16
 }
 ```
 
 This can be very small. It only needs to point from a chosen breakpoint to the selected candidate.
+
+This is now the minimum committed result of linebreaking beyond the returned `[]kinx`.
 
 ## Draft `Hyphenator` Direction
 
@@ -184,11 +207,11 @@ The cleaner boundary is:
 
 So the line-breaker should depend on a narrow callback or provider interface, while `Hyphenator` remains an internal collaborator behind `Khipukamayuq`.
 
-Conceptually:
+Current line-breaker seam:
 
 ```go
 type DiscretionaryProvider interface {
-    Candidates(k *Khipu, at kinx) ([]DiscretionaryCandidate, error)
+    DiscretionaryCandidates(k *Khipu, at int) ([]DiscretionaryCandidate, error)
 }
 ```
 
@@ -219,8 +242,15 @@ The intended runtime workflow is:
 4. During that second pass, when a specific candidate line produces demerits above a configurable threshold, the line-breaker asks its discretionary provider for candidates at the relevant textbox index.
 5. `Khipukamayuq` consults its `Hyphenator` and `Shaper`, stores returned candidates in `Khipu`'s sparse candidate table, and hands them back to the line-breaker.
 6. The second pass of the line-breaker may now consider these discretionary candidates as additional break opportunities for that local context.
-7. When a discretionary is selected, that selection is written into `Khipu`'s decision table.
-8. The renderer later consults only the selected decisions, not the whole candidate set.
+7. Internally, these opportunities are represented as `BreakRef{At, Variant}` states so multiple variants at one textbox can coexist during path search.
+8. When a discretionary is selected, that selection is written into `Khipu`'s decision table.
+9. The renderer later consults only the selected decisions, not the whole candidate set.
+
+Current invariant after step 8:
+
+- `SelectedDiscretionaries` contains only the decisions from the winning path
+- unused candidate discretionaries remain cached in the candidate table
+- rerunning linebreaking on the same `Khipu` replaces the old committed decision set
 
 This preserves laziness while still making the final paragraph state durable.
 
@@ -255,6 +285,9 @@ Responsible for:
 - choosing one candidate if a breakpoint uses hyphenation
 - writing back the chosen decision
 
+The current implementation already does the first four items, except that the richer hyphen-related demerits are not active yet.
+It also already writes back the minimum committed discretionary decision set to `Khipu`.
+
 ### Renderer
 
 Responsible for:
@@ -275,6 +308,13 @@ The design has to leave room for hyphenation-related linebreaking parameters suc
 These belong to linebreaking parameters, not to `Khipu` storage itself.
 
 `Khipu` stores opportunities and decisions; it should not store policy.
+
+One refinement has emerged from implementation:
+
+- the cost calculator should read the penalty from the discretionary candidate itself, i.e. from `PreBreak.Penalty`
+- first-line and final-line discretionary extras can stay as local linebreaker demerit hooks, because they do not require any richer `Khipu` storage
+
+This does not make `Khipu` the owner of hyphenation policy. It only means that `Khipukamayuq`, as the producer of discretionary candidates, is the authority on what penalty belongs to that candidate for the current script/shaping context.
 
 ## Why A Sparse Side-Table Fits Best
 
@@ -319,10 +359,14 @@ We need enough information for:
 
 The simplest useful answer currently looks like:
 
-- measured widths for pre-break and post-break fragments, i.e. `WSS` for both discretionary fragments
+- measured widths for pre-break and post-break fragments, currently represented as `KnotCore`
 - a stable candidate identity
 
-For the first version, it is acceptable to assume that hyphenation variants for a given textbox are reproducible and stably ordered. Under that invariant, storing the selected candidate index is sufficient.
+For the first version, it is acceptable to assume that hyphenation variants for a given textbox are reproducible and stably ordered. Under that invariant, storing the selected variant ID is sufficient.
+
+The current implementation also relies on:
+
+- `PreBreak.Penalty` being the effective discretionary penalty for cost calculation
 
 ### 3. Should candidate discovery be cached permanently?
 
@@ -356,6 +400,17 @@ The model should eventually describe both:
 - explicit discretionary insertion
 - lazy discovered discretionary candidates
 
+### 6. How should the renderer consume a selected discretionary?
+
+The line-breaker now records `DiscretionarySelection{Source, Variant}` into `Khipu`.
+The renderer-side contract for consuming that choice is still open.
+
+Before rendering, there will be further stages such as box creation and glue setting. So for now the design stops deliberately at the minimum persistence point:
+
+- the line-breaker returns ordinary breakpoints as `[]kinx`
+- the final `Khipu` retains only the applied discretionary selections from that same winning path
+- no renderer-facing helper layer is introduced yet
+
 ## Recommended First Design Slice
 
 The safest first slice of Option 3 looks like this:
@@ -367,7 +422,11 @@ The safest first slice of Option 3 looks like this:
 5. Introduce a minimal `Hyphenator` interface behind `Khipukamayuq`.
 6. Keep all of this inactive until the first linebreaking pass reports “need hyphenation”.
 
-This is enough to make the architecture real without committing to the full final hyphenation model too early.
+This slice is now mostly in place. The next implementation topics are no longer storage and pass-2 entry, but:
+
+1. candidate filtering rules such as minimum fragment length
+2. richer discretionary demerits
+3. renderer-side consumption of `SelectedDiscretionaries`
 
 ## Provisional Recommendation
 

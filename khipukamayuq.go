@@ -41,8 +41,12 @@ type TypesettingPipeline struct {
 }
 
 type typEnv struct { // typesetting environment
-	shaper   Shaper
-	pipeline *TypesettingPipeline
+	shaper Shaper
+	// hyphenator is consulted lazily for textbox-specific discretionaries.
+	// The linebreaker never calls it directly; it reaches it through
+	// Khipukamayuq.DiscretionaryCandidates(...).
+	hyphenator Hyphenator
+	pipeline   *TypesettingPipeline
 	//regs     *params.TypesettingRegisters
 	params *Params
 	levels *bidi.ResolvedLevels

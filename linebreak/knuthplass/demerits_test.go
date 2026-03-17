@@ -175,6 +175,39 @@ func TestEvaluateCandidatesSeparatesScreeningFromRanking(t *testing.T) {
 	}
 }
 
+func TestDiscretionaryDemeritsAddFirstLineExtra(t *testing.T) {
+	params := NewKPDefaultParameters()
+	params.LinePenalty = 0
+	params.FirstHyphenDemerits = 37
+	kp := newLinebreaker(nil, params)
+	kp.root = PlainBreak(noinx)
+	base := calcDemerits(12, 50, params)
+	got := kp.discretionaryDemerits(12, 50, kp.root)
+	if got != base+params.FirstHyphenDemerits {
+		t.Fatalf("expected first-line discretionary demerits %d, got %d", base+params.FirstHyphenDemerits, got)
+	}
+	got = kp.discretionaryDemerits(12, 50, PlainBreak(3))
+	if got != base {
+		t.Fatalf("expected non-first-line discretionary demerits %d, got %d", base, got)
+	}
+}
+
+func TestTerminalHyphenDemeritsApplyOnlyToFinalTransitionFromDiscretionary(t *testing.T) {
+	params := NewKPDefaultParameters()
+	params.FinalHyphenDemerits = 91
+	kp := newLinebreaker(nil, params)
+	kp.end = PlainBreak(9)
+	if got := kp.terminalHyphenDemerits(BreakRef{At: 4, Variant: 1}, kp.end); got != params.FinalHyphenDemerits {
+		t.Fatalf("expected final-line discretionary demerits %d, got %d", params.FinalHyphenDemerits, got)
+	}
+	if got := kp.terminalHyphenDemerits(PlainBreak(4), kp.end); got != 0 {
+		t.Fatalf("expected ordinary predecessor not to trigger final-line discretionary demerits, got %d", got)
+	}
+	if got := kp.terminalHyphenDemerits(BreakRef{At: 4, Variant: 1}, PlainBreak(8)); got != 0 {
+		t.Fatalf("expected non-terminal transition not to trigger final-line discretionary demerits, got %d", got)
+	}
+}
+
 func dimenDU(n int) dimen.DU {
 	return dimen.DU(n)
 }
