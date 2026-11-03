@@ -33,6 +33,7 @@ small.
 
 - `linebreak.ParShape`
 - `linebreak.RectangularParShape` in tests and call sites
+- `linebreak.WSS`, used through a local type alias
 
 All former shared legacy types now live locally or are gone:
 
@@ -40,8 +41,8 @@ All former shared legacy types now live locally or are gone:
 - `WSS` is again shared in `linebreak`
 - demerit sentinels are local constants
 
-This means the root `linebreak` package has successfully shrunk to the shared
-paragraph-shape abstraction.
+The root package now contains shared paragraph shapes and elastic-width
+arithmetic. Legacy cursor support lives in `linebreak/kp`.
 
 ## Algorithmic Shape
 
@@ -179,6 +180,7 @@ The relationship is now clearer than before.
 Shared concepts:
 
 - `ParShape`
+- `WSS`
 - indexed traversal over `Khipu`
 - discardability consumed from `Khipu.Flags`
 
@@ -201,6 +203,7 @@ Keeps only:
 
 - `ParShape`
 - `RectangularParShape`
+- `WSS`
 
 ### `linebreak/firstfit`
 
@@ -227,3 +230,12 @@ The next reasonable work items are:
 3. Later, improve upstream discardable-flag assignment in `Khipukamayuq`.
 
 At this point, the migration of `firstfit` itself should be considered done.
+
+## Verification And Next Pipeline Stage
+
+On November 3, 2026, `go test ./...` passed for all three linebreaker
+packages. Root-package `TestKhipu` and `TestBreaking1` still failed.
+
+Linebreaking chooses indices and discretionary variants; it does not assign
+final knot widths. Freezing is the next planned stage, described in
+[FREEZE.md](FREEZE.md), before later box creation.

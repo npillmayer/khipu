@@ -2,13 +2,14 @@
 
 This note records how the graph-shaped data structure in `linebreak/knuthplass` was used during the rewrite of the Knuth-Plass linebreaking algorithm, and why it was replaced by a predecessor table.
 
-The purpose is not yet to redesign the graph, but to establish:
+The historical investigation established:
 
 - which operations are genuinely needed by the algorithm
 - which operations exist only because the graph was ported from a more general graph model
 - which parts of the representation look like candidates for simplification
 
-The findings are based on the current worktree as inspected on March 16, 2026.
+The inventory records the March 2026 migration. The current-status section was
+checked against the code on November 3, 2026.
 
 ## Current Status
 
@@ -20,13 +21,29 @@ The package now uses `path.go`, which implements:
 - a predecessor table keyed by `(to, line)`
 - overwrite-on-cheaper semantics for predecessor replacement
 
+Here `to` is now a `BreakRef{At, Variant}`, not a raw knot index.
+`origin.from`, `pathState.to`, `predecessor.from`, the breakpoint set, and
+the horizon all use `BreakRef`. Ordinary breaks use variant zero; multiple
+discretionary variants at one textbox occupy distinct states.
+`SetPred` keeps the existing predecessor on equal total costs.
+
+`collectOptimalBreakRefs` uses direct `Pred(to, line)` lookups. Logical
+replacement is an overwrite; a separate edge-delete operation is unnecessary.
+The modern package's `graph.go` and graph tests have been removed.
+
+The sections below retain the original inventory and alternatives as historical
+design rationale. Their uses of "current" and raw `kinx` keys refer to that
+earlier snapshot, not today's runtime API. Candidate B has been implemented;
+Candidate C remains an unmeasured optimization idea. Fitness classes, if ever
+added, would refine the key further; see [DEMERITS.md](DEMERITS.md).
+
 This document remains useful because:
 
 - it captures the access pattern analysis that motivated the change
 - it records which graph operations turned out to be essential
 - it explains why the predecessor-table design was chosen over the older graph shape
 
-## Executive Summary
+## Historical Executive Summary
 
 The current graph is not used as a general-purpose graph.
 
@@ -446,7 +463,7 @@ In other words, the data structure might more honestly be modeled as:
 
 That would align better with the actual Knuth-Plass usage pattern in this rewrite.
 
-## Open Questions For The Next Step
+## Historical Questions Before The Migration
 
 Before changing representation, these are the useful questions to answer:
 
@@ -611,7 +628,7 @@ Reason:
 - it takes advantage of dense integer knot indices
 - but it is the least justified before the algorithm and API stop moving
 
-## Provisional Recommendation
+## Historical Recommendation
 
 If we decide to change representation at all, the most sensible sequence looks like this:
 

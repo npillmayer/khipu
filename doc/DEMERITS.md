@@ -81,20 +81,26 @@ and adds demerits when adjacent lines jump too far between classes.
 
 The current implementation does not yet model fitness classes.
 
-### 3. Hyphen-related extra demerits are not active yet
+### 3. Discretionary Costs Are Active; Consecutive Costs Are Deferred
 
-The parameter set already includes:
+Discretionary evaluation reads `PreBreak.Penalty`, assigned upstream by
+`Khipukamayuq`, and passes it into the ordinary squared-penalty calculation.
+It does not inject a glyph or read the linebreaker's `HyphenPenalty` field.
+The modern parameter set has no separate `ExHyphenPenalty`.
 
-- `DoubleHyphenDemerits`
-- `FinalHyphenDemerits`
-- `HyphenPenalty`
-- `ExHyphenPenalty`
+`FirstHyphenDemerits` is added when a discretionary line starts at the root.
+`FinalHyphenDemerits` is added when a terminal transition starts at a
+discretionary breakpoint, penalizing the break before the final line.
+These are additive demerits, not increments to the squared penalty.
 
-However, the rewrite does not yet apply them in the original TeX sense, because discretionary / hyphenation support is not integrated yet.
+`DoubleHyphenDemerits` is reserved and unused; implementing it remains optional.
+The existing predecessor `BreakRef` already identifies whether the preceding
+break was discretionary. That fact alone does not require the extra fitness
+state discussed below.
 
 ### 4. Overfull fallback is still a local policy, not a TeX-faithful detail
 
-When the horizon is about to drain, the rewrite inserts an explicit fallback path with [`AwfulDemerits`](/Users/npi/prg/go/khipu/linebreak/knuthplass/wss.go). That is a pragmatic policy to keep the paragraph breakable, and it interacts with the pass-2 trigger.
+When the horizon is about to drain, the rewrite inserts an explicit fallback path with `AwfulDemerits` (defined in `linebreak/knuthplass/definitions.go`). That is a pragmatic policy to keep the paragraph breakable, and it interacts with the pass-2 trigger.
 
 This is useful for robustness, but it is not a direct transcription of TeX's paragraph-breaking internals.
 
@@ -129,8 +135,13 @@ The following cleanup stages are now in place in the rewrite:
 The main remaining TeX-related gaps are:
 
 - fitness classes
-- double-hyphen and final-hyphen extra demerits
-- integration of discretionary hyphenation into the screening path
+- optional double-hyphen extra demerits
+
+Discretionary integration and first/final-line extras are implemented.
+During pass 2, local lookup is triggered by geometrically feasible candidates
+with badness above `PreTolerance`, including those accepted by `Tolerance`.
+Current defaults must be read from the selected initializer:
+`DefaultParameters` and `NewKPDefaultParameters` differ.
 
 ## Comparison With The Legacy `kp` Package
 
@@ -151,8 +162,7 @@ The current rewrite should now be described as:
 - numerically much closer to TeX than before
 - still incomplete in the areas of:
   - fitness classes
-  - hyphen-related extra demerits
-  - full discretionary integration
+  - optional consecutive-discretionary extra demerits
 
 The most important remaining differences are no longer in the basic badness and demerits arithmetic. They are now in the secondary heuristics and the hyphenation-specific parts of the original algorithm.
 
@@ -293,6 +303,10 @@ This is the reason fitness affects state identity, not just cost arithmetic.
 The current predecessor table in the rewrite is keyed effectively by:
 
 - `(to, line)`
+
+Here `to` is a `BreakRef{At, Variant}`; discretionary alternatives already
+have distinct identities. All uses of `to` in this future design retain that
+meaning.
 
 This works as long as total cost is the only state that matters for the future.
 
