@@ -58,9 +58,15 @@ a supplied `*Params` is copied in full, including zero fields. Omitting
 The collaborators themselves are retained, so a stateful shaper must not be used
 concurrently with its owner.
 
-`Config{}` preserves the built-in fixed-width shaper default. Its EOF/run lifecycle
-and the encoder's paragraph-trailer and penalty contracts still need follow-up;
-this configuration API does not establish a complete default typesetting pipeline.
+`Config{}` selects a reusable fixed-width shaper and automatically appends the
+non-discardable paragraph fill and forced break expected by both modern breakers.
+Supply `Config.ParFillSkip` to override the fill dimensions. Encoding preserves
+the original UTF-8 bytes and source positions; normalize text before constructing
+styled ranges if needed. Custom shapers report run-relative byte offsets in
+logical order, including explicit cluster starts with zero width.
+
+The fixed-width shaper is a simple metric provider, not a font shaping backend.
+Freezing, glyph provenance, and script-sensitive spacing remain future work.
 
 SOA is the chosen paragraph model. Legacy APIs remain during migration; see
 [the API migration guide](doc/MIGRATION.md) for the constructor change and planned

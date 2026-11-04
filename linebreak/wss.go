@@ -2,6 +2,7 @@ package linebreak
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/dimen"
@@ -36,17 +37,23 @@ func (wss WSS) SetFromKnot(k khipu.KnotCore) WSS {
 // Add returns the pairwise sum of two elastic widths.
 func (wss WSS) Add(other WSS) WSS {
 	return WSS{
-		W:   wss.W + other.W,
-		Min: wss.Min + other.Min,
-		Max: wss.Max + other.Max,
+		W:   boundedWidth(int64(wss.W) + int64(other.W)),
+		Min: boundedWidth(int64(wss.Min) + int64(other.Min)),
+		Max: boundedWidth(int64(wss.Max) + int64(other.Max)),
 	}
 }
 
 // Subtract returns the pairwise difference of two elastic widths.
 func (wss WSS) Subtract(other WSS) WSS {
 	return WSS{
-		W:   wss.W - other.W,
-		Min: wss.Min - other.Min,
-		Max: wss.Max - other.Max,
+		W:   boundedWidth(int64(wss.W) - int64(other.W)),
+		Min: boundedWidth(int64(wss.Min) - int64(other.Min)),
+		Max: boundedWidth(int64(wss.Max) - int64(other.Max)),
 	}
+}
+
+// These are width summaries, not freeze-time fill-order allocations. Saturation
+// keeps a paragraph fill plus finite text/skips from wrapping to negative width.
+func boundedWidth(w int64) dimen.DU {
+	return dimen.DU(max(int64(math.MinInt32), min(int64(math.MaxInt32), w)))
 }

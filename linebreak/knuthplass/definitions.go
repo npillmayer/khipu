@@ -25,7 +25,7 @@ type Parameters struct {
 	EmergencyStretch      dimen.DU       // stretching acceptable when desperate
 	LeftSkip              khipu.KnotCore // glue at left edge of paragraphs
 	RightSkip             khipu.KnotCore // glue at right edge of paragraphs
-	ParFillSkip           khipu.KnotCore // glue at the end of a paragraph
+	ParFillSkip           khipu.KnotCore // upstream trailer dimensions; pass to khipu.Config.ParFillSkip when encoding
 	DiscretionaryProvider DiscretionaryProvider
 }
 

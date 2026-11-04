@@ -59,7 +59,7 @@ func (sh *testshaper) ReadClusterMetrics() (clusterId int, width dimen.DU, len i
 		return 0, 0, 0, err
 	}
 	clusterId = sh.clusterCount
-	sh.clusterCount += 1
+	sh.clusterCount += len
 	width = 5 * dimen.PT
 	tracer().Debugf("cluster=%d, width=%d, len=%d, err=%v", clusterId, width, len, err)
 	return

@@ -9,9 +9,9 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// TypesettingPipeline holds normalization and segmentation state for encoding.
-// Both paragraph representations use the primary segmenter. The separate word
-// scanner remains for legacy text encoding and eager hyphenation.
+// TypesettingPipeline holds legacy normalization and segmentation state.
+// SOA encoding uses paragraph-wide UAX#14 boundaries and original source bytes.
+// The separate word scanner supports legacy text encoding and eager hyphenation.
 type TypesettingPipeline struct {
 	input     io.RuneReader
 	segmenter *segment.Segmenter
@@ -21,8 +21,7 @@ type TypesettingPipeline struct {
 // PrepareTypesettingPipeline wraps text in an NFC normalization reader and
 // initializes missing segmentation state using the segmenter's default rules.
 // A separate UAX#29 word scanner supports the legacy encoding path.
-// Existing segmenter state is retained when reusing a pipeline; reset semantics
-// remain part of the subsequent encoder integration work.
+// Existing segmenter state is retained when reusing a legacy pipeline.
 func PrepareTypesettingPipeline(text io.Reader, pipeline *TypesettingPipeline) *TypesettingPipeline {
 	if pipeline == nil {
 		pipeline = &TypesettingPipeline{}

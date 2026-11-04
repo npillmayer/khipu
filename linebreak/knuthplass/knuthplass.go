@@ -607,6 +607,23 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu) error {
 				costPenalty = 0
 			}
 			evals, stillreachable := kp.evaluateCandidates(horiz_bp, costPenalty)
+			if k.Penalty <= InfinityMerits {
+				// A forced boundary must be reached even by an under/overfull
+				// fallback. Earlier origins are retired after all are evaluated.
+				for _, ev := range evals {
+					c := ev.lineCost()
+					if ev.disposition == lineInfeasible {
+						c.cost.badness = InfinityDemerits
+						c.cost.demerits = AwfulDemerits
+					} else {
+						c.cost.demerits = calcDemerits(ev.badness, 0, kp.params)
+					}
+					c.cost.demerits += kp.terminalHyphenDemerits(horiz_bp, currentBreak)
+					kp.evalNewSegment(horiz_bp, currentBreak, c.line+1, c.cost)
+					kp.horizon[currentBreak] = struct{}{}
+				}
+				continue
+			}
 			tracer().Debugf("   %s reachable with evals=%v", knotInxStr(last), evals)
 			if stillreachable { // yes, position may have been reached in this iteration
 				for _, ev := range evals {
@@ -615,17 +632,7 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu) error {
 					}
 					c := ev.lineCost()
 					tracer().Debugf("   check reachable segm line-costs %s", c.String())
-					if k.Penalty <= InfinityMerits { // merits cause forced break
-						if c.cost.badness > kp.badnessLimit() {
-							tracer().Infof("K&P: znderfull box at line %d, b=%d, d=%d",
-								c.line+1, c.cost.badness, c.cost.demerits)
-						}
-						c.cost.demerits += kp.terminalHyphenDemerits(horiz_bp, currentBreak)
-						kp.evalNewSegment(horiz_bp, currentBreak, c.line+1, c.cost)
-						//newfb := kp.newFeasibleLine(fb, cursor.Mark(), cost.demerits, linecnt+1)
-						//kp.horizon.Add(newfb) // make forced break member of horizon n+1
-						kp.horizon[currentBreak] = struct{}{} // make forced break member of horizon n+1
-					} else if kp.hyphenating && kp.wantsHyphenation(ev) {
+					if kp.hyphenating && kp.wantsHyphenation(ev) {
 						if err := kp.requestPass2Discretionaries(khipu, last, ev); err != nil {
 							return err
 						}
@@ -679,6 +686,15 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu) error {
 			}
 
 		} // --- end of main loop over horizon ----------------------
+		if k.Penalty <= InfinityMerits {
+			forced := PlainBreak(last)
+			_, reached := kp.horizon[forced]
+			clear(kp.horizon)
+			if !reached {
+				return ErrNoBreakpoints
+			}
+			kp.horizon[forced] = struct{}{}
+		}
 	} // end of outer loop over input knots
 	tracer().Infof("Collected %d potential breakpoints for paragraph", len(kp.feasBP))
 	tracer().Infof("          %v", kp.feasBP)

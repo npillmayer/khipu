@@ -1,5 +1,12 @@
 # Overall Algorithm to Shape Text into Type
 
+The streaming/glyph sections below describe the intended architecture. The
+implemented SOA encoder uses the synchronous `Shaper` metric interface; see
+[MIGRATION.md](MIGRATION.md) for its byte-offset and cluster contract. It preserves
+original source bytes. Any normalization must precede construction of styled
+source ranges. UAX#14 is evaluated across the whole paragraph before intersecting
+its boundaries with shaped runs.
+
 We are dealing with sequences of runes as input, forming a styled paragraph of text. Styles are nested, i.e. form a hierarchy. Examples of styles may be "*boldface*", a font- or color-change, etc. Styles are projected onto the runes out-of-band. In previous stages an HTML-parser will have converted HTML and CSS into a styled paragraph, where the style hierarchy is held in a tree-like structure. For every rune in the input sequence, the style hierarchy is able to tell the exact style valid at this rune.
 
 Non-discardable HTML-items (e.g. inline-blocks, images, etc.) are already taken care of at this stage, resulting in fixed-size anonymous boxes, unaffected by the current style.
@@ -94,8 +101,9 @@ For sketching out the algorithm we will rely on a Shaper version which offers a 
     [ Create a knot `k` for the collected glyph infos ]
     [ Set a penalty for `k` to `U(c)` ]
     [ Append knot `k` to `K` ]
-[ Unskip the last spaces and penalties ]
-[ Append parfillskip and a penalty for mandatory break ]
+[ Retain source spaces; breakers trim flagged discardables at line edges ]
+[ Prohibit the break on the final source knot ]
+[ Append one non-discardable parfillskip knot carrying the mandatory penalty ]
 ```
 
 where

@@ -1,6 +1,6 @@
 # Lazy Discretionaries: Implementation And Ownership
 
-Reviewed against the code on November 3, 2026.
+Reviewed against the code on November 4, 2026.
 
 ## Current Contract
 
@@ -59,7 +59,9 @@ Without a provider, breakers can consult candidates already stored on `Khipu`.
 
 Widths travel directly in `KnotCore.W/MinW/MaxW`; no extra transport or adapter
 type was introduced. The shaper currently provides cluster metrics through
-`SetSource`, `SetStyle`, and `ReadClusterMetrics`.
+`SetSource`, `SetStyle`, and `ReadClusterMetrics`. Cluster anchors are run-relative
+UTF-8 byte offsets in logical order, reset for each fragment. Repeated anchors
+accumulate width; zero-width anchors still mark boundaries; EOF has no metric.
 
 ## Lazy Roundtrip
 
@@ -133,9 +135,10 @@ have been implemented. See [FREEZE.md](FREEZE.md).
 ## Ownership And Deferred Work
 
 Fragment validity and length filtering belong to `Khipukamayuq`, with
-script/shaping knowledge supplied by its collaborators. The current code only
-filters empty fragments; a complete script-sensitive validity policy is still
-missing. Breakers should not impose Western character-count rules.
+script/shaping knowledge supplied by its collaborators. Empty fragments are
+filtered; invalid UTF-8 or fragments exceeding the `uint16` byte-length field
+return errors during shaping. A complete script-sensitive validity policy is
+still missing. Breakers should not impose Western character-count rules.
 
 The cache assumes stable base knots, shaping context, and variant identities
 within a paragraph instance. Nonempty results are reused; empty results are not

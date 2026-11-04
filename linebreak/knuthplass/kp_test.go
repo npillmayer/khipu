@@ -223,15 +223,23 @@ type node struct {
 
 func newKhipu(nodes []node) *khipu.Khipu {
 	khp := testKhipu()
-	for _, n := range nodes {
+	for i, n := range nodes {
 		khp.W = append(khp.W, n.w*dimen.BP)
 		khp.MinW = append(khp.MinW, n.minw*dimen.BP)
-		khp.MaxW = append(khp.MaxW, n.maxw*dimen.BP)
+		maxw := n.maxw * dimen.BP
+		if n.maxw >= dimen.Fil {
+			maxw = n.maxw
+		} // fill is already a dimension sentinel
+		khp.MaxW = append(khp.MaxW, maxw)
 		khp.Penalty = append(khp.Penalty, khipu.Penalty(n.p))
 		khp.Kind = append(khp.Kind, n.kind)
 		khp.Pos = append(khp.Pos, 0)
 		khp.Len = append(khp.Len, 0)
-		khp.Flags = append(khp.Flags, discardFlagsForKind(n.kind))
+		flags := discardFlagsForKind(n.kind)
+		if i == len(nodes)-1 && n.p == InfinityMerits {
+			flags = 0
+		}
+		khp.Flags = append(khp.Flags, flags)
 	}
 	return khp
 }

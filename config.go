@@ -20,4 +20,10 @@ type Config struct {
 	// not affect the Khipukamayuq. Nil selects the existing default parameters.
 	// A non-nil value is used in full: zero fields are not filled with defaults.
 	Params *Params
+
+	// ParFillSkip supplies the final knot's W, MinW, and MaxW. Nil selects
+	// zero natural/minimum width and dimen.Fill maximum width. A non-nil value
+	// is copied, including zero widths. EncodeParagraph sets all other fields
+	// and rejects widths outside MinW <= W <= MaxW.
+	ParFillSkip *KnotCore
 }

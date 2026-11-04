@@ -199,7 +199,7 @@ func TestBreakParagraphSelectsDiscretionaryVariantOnSecondPass(t *testing.T) {
 	khp.Kind = append(khp.Kind, khipu.KTTextBox, khipu.KTGlue, khipu.KTTextBox, khipu.KTGlue)
 	khp.Pos = append(khp.Pos, 0, 0, 0, 0)
 	khp.Len = append(khp.Len, 0, 0, 0, 0)
-	khp.Flags = append(khp.Flags, 0, khipu.KFDiscardable, 0, khipu.KFDiscardable)
+	khp.Flags = append(khp.Flags, 0, khipu.KFDiscardable, 0, 0) // paragraph fill is retained
 
 	breakpoints, err := BreakParagraph(khp, linebreak.RectangularParShape(26*dimen.BP), params)
 	if err != nil {
@@ -267,7 +267,7 @@ func TestDiscretionaryCandidateUsesPreBreakPenaltyForDemerits(t *testing.T) {
 	khp.Kind = append(khp.Kind, khipu.KTTextBox, khipu.KTGlue, khipu.KTTextBox, khipu.KTGlue)
 	khp.Pos = append(khp.Pos, 0, 0, 0, 0)
 	khp.Len = append(khp.Len, 0, 0, 0, 0)
-	khp.Flags = append(khp.Flags, 0, khipu.KFDiscardable, 0, khipu.KFDiscardable)
+	khp.Flags = append(khp.Flags, 0, khipu.KFDiscardable, 0, 0) // paragraph fill is retained
 	khp.AddDiscretionaryCandidate(2, khipu.DiscretionaryCandidate{
 		Variant: 1,
 		PreBreak: khipu.KnotCore{

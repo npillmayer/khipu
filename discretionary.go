@@ -3,6 +3,8 @@ package khipu
 import (
 	"bufio"
 	"errors"
+	"math"
+	"unicode/utf8"
 
 	"github.com/npillmayer/cords/styled"
 )
@@ -205,16 +207,22 @@ func styleChangeForKnot(khp *Khipu, at int) (styled.BidiStyleChange, bool) {
 // yet decide linebreaking policy; the caller attaches the discretionary penalty
 // afterwards.
 func (kq *Khipukamayuq) shapeDiscretionaryFragment(text string, pos uint64, styleChange styled.BidiStyleChange) (KnotCore, error) {
+	if len(text) > math.MaxUint16 || !utf8.ValidString(text) {
+		return KnotCore{}, errors.New("khipu: invalid discretionary source span")
+	}
 	var br *bufio.Reader
 	buf := []byte(text)
 	br = wrapAsRuneReader(br, buf)
 	kq.env.shaper.SetSource(br)
 	kq.env.shaper.SetStyle(styleChange)
-	metrics, err := getMetrics(len(buf), kq.env.shaper)
+	metrics, err := getMetrics(buf, kq.env.shaper)
 	if err != nil {
 		return KnotCore{}, err
 	}
-	w := sumMetrics(metrics, 0, len(buf))
+	w, err := metrics.width(0, len(buf))
+	if err != nil {
+		return KnotCore{}, err
+	}
 	k := KnotCore{
 		Pos:     pos,
 		Len:     uint16(len(buf)),

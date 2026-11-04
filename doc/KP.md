@@ -1,6 +1,6 @@
 # Knuth-Plass Status And Design History
 
-Reviewed against the code on November 3, 2026.
+Reviewed against the code on November 4, 2026.
 
 ## Current State
 
@@ -37,9 +37,11 @@ variant identifies a discretionary inside the textbox at `At`.
 The agreed paragraph trailer is a single final knot carrying `ParFillSkip`
 dimensions and `InfinityMerits`. It must not carry `KFDiscardable`.
 The breaker identifies the terminal position by the last knot index; it does
-not append the trailer from its `ParFillSkip` parameter. General encoder
-integration still needs attention: `EncodeParagraph` does not automatically
-establish this trailer contract.
+not append the trailer from its `ParFillSkip` parameter. `EncodeParagraph` now
+appends this trailer automatically, including for empty paragraphs. Override its
+dimensions through `khipu.Config.ParFillSkip`; callers may copy the corresponding
+breaker parameter there. Width sums saturate to avoid overflow from fill plus
+finite text or skips.
 
 ## Path Construction And Collection
 
@@ -84,7 +86,10 @@ overfull fallback, a fresh pass runs with `hyphenating=true` and `Tolerance`.
 The winning path records its maximum line badness.
 
 Forced breaks are handled in construction control flow with neutralized local
-penalties. First-line discretionary extras and terminal-transition extras are
+penalties. Earlier active origins are retired at every forced break, preventing
+later lines from bypassing it. Infeasible forced lines retain a fallback path;
+64-bit costs prevent repeated fallback demerits from wrapping negative.
+First-line discretionary extras and terminal-transition extras are
 implemented. Fitness classes and `DoubleHyphenDemerits` remain deferred.
 See [DEMERITS.md](DEMERITS.md) for formulas and future fitness-state design.
 Parameter defaults differ between `DefaultParameters` and
@@ -126,9 +131,9 @@ claim has been established by benchmarks.
 ## Remaining Work
 
 - Freezing: materialize chosen lines and assign final widths; see [FREEZE.md](FREEZE.md).
-- Upstream fragment-length and script-validity filtering beyond empty fragments.
+- Script-sensitive fragment validity beyond UTF-8 and representable byte length.
 - Stronger source/glyph provenance for discretionary fragments and future shaping.
-- General encoder/trailer integration and the existing root-package test failures.
+- Migration of legacy test coverage and the existing root-package test failures.
 - Optional fitness classes and consecutive-discretionary demerits.
 - Broader integration/parity coverage before retiring legacy code.
 
@@ -138,7 +143,8 @@ chosen only on theoretical grounds.
 
 ## Verification
 
-On November 3, 2026, `go test ./...` passed for `linebreak/firstfit`,
+On November 4, 2026, encoder-to-breaker integration tests passed, including forced
+breaks and lazy discretionary selection. `go test ./...` passed for `linebreak/firstfit`,
 `linebreak/knuthplass`, and `linebreak/kp`. The root package failed in
 `TestKhipu` and `TestBreaking1`. This is a package test baseline, not a claim
 of complete international-script support or end-to-end typesetting readiness.

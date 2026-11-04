@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/npillmayer/cords/styled"
@@ -134,13 +133,14 @@ func (khipu *Khipu) appendKnot(k KnotCore) *Khipu {
 	return khipu
 }
 
-// Unskip is like `\unskip` in TeX, it removes any trailing glue or kern from the khipu.
+// Unskip removes the last knot if it is discardable glue or kern.
+// A non-discardable paragraph trailer is retained.
 func (khipu *Khipu) Unskip() {
 	if len(khipu.W) == 0 {
 		return
 	}
 	top := len(khipu.W) - 1
-	if khipu.Kind[top] == KTGlue || khipu.Kind[top] == KTKern {
+	if (khipu.Kind[top] == KTGlue || khipu.Kind[top] == KTKern) && khipu.flagsAt(top)&KFDiscardable != 0 {
 		khipu.W = khipu.W[:top]
 		khipu.MinW = khipu.MinW[:top]
 		khipu.MaxW = khipu.MaxW[:top]
@@ -198,8 +198,12 @@ type Khipukamayuq struct {
 // A Khipukamayuq must not be used concurrently.
 func NewKhipukamayuq(config Config) *Khipukamayuq {
 	env := typEnv{
-		shaper:     config.Shaper,
-		hyphenator: config.Hyphenator,
+		shaper:      config.Shaper,
+		hyphenator:  config.Hyphenator,
+		parFillSkip: KnotCore{MaxW: dimen.Fill},
+	}
+	if config.ParFillSkip != nil {
+		env.parFillSkip = *config.ParFillSkip
 	}
 	if env.shaper == nil {
 		env.shaper = newFixedShaper()
@@ -213,130 +217,6 @@ func NewKhipukamayuq(config Config) *Khipukamayuq {
 	return &Khipukamayuq{
 		env: env,
 	}
-}
-
-func (kq *Khipukamayuq) EncodeParagraph(para *styled.Paragraph, knotAdapt KnotStyler) (*Khipu, error) {
-	//
-	if para == nil {
-		return nil, ErrIllegalArguments
-	} else if kq == nil {
-		return nil, ErrVoidKhipukamayuq
-	}
-	tracer().Debugf("------------ start of para -----------")
-	tracer().Debugf("para text = '%s'", para.Raw().String())
-	khipu := kq.allocKhipu(0)
-	kq.acquire(khipu)
-	khipu.paragraph = para
-	var br *bufio.Reader
-	pos := 0
-	// We iterate over the style ranges in the paragraph, encoding a run of text
-	// with a uniform style.
-	for styleChange, textReader := range para.BidiStyleRanges() {
-		buf, err := io.ReadAll(textReader)
-		if err != nil {
-			return unwireKhipu(khipu), err // we do not return partial khipus
-		}
-		tracer().Debugf("--- encoding run '%s'", buf)
-		br = wrapAsRuneReader(br, buf)
-		kq.env.shaper.SetSource(br)
-		kq.env.shaper.SetStyle(styleChange)
-		metrics, err := getMetrics(len(buf), kq.env.shaper)
-		if err != nil {
-			return unwireKhipu(khipu), err
-		}
-		tracer().Debugf("metrics: %v", metrics)
-		pipeline := PrepareTypesettingPipeline(bytes.NewReader(buf), kq.env.pipeline)
-		seg := pipeline.segmenter
-		rangeLen := 0
-		segLen := 0
-		for seg.BoundedNext(int(para.Raw().Len())) {
-			segment := seg.Text()
-			segLen += len(segment)
-			assert(rangeLen+segLen <= len(metrics), "segment extends beyond metrics array")
-			if isMidCluster(rangeLen+segLen-1, metrics) {
-				// We have conficting information about the validity of this break point:
-				// The segmenter tells us it's ok to break, but the shaper tells us we are
-				// in the middle of a cluster. Therefore we will not break here.
-				break
-			}
-			p := penlty(seg.Penalties())
-			tracer().Debugf("next segment = “%s”", segment)
-			tracer().Debugf("     penalties = %d|%d", p.p1, p.p2)
-			tracer().Debugf("     style     = “%v”", styleChange.Style)
-			w := sumMetrics(metrics, rangeLen, segLen)
-			k := KnotCore{
-				W:       w,
-				MinW:    w,
-				MaxW:    w,
-				Penalty: normPenalties(p),
-				Pos:     para.Offset + uint64(pos) + uint64(rangeLen),
-				Len:     uint16(segLen),
-				Kind:    kindFromText(segment),
-				// TODO: discardability currently falls back to a simple kind-based
-				// default. This decision belongs with Khipukamayuq and should later
-				// be driven by richer script/segment/shaping information instead.
-				Flags: defaultFlagsForKind(kindFromText(segment)),
-			}
-			if knotAdapt != nil {
-				mn, mx := knotAdapt.AdaptKnot(k, styleChange.Style)
-				k = sanitizeKnot(k, mn, mx)
-			}
-			tracer().Debugf("new knot = %+v", k)
-			khipu.appendKnot(k)
-			rangeLen += segLen
-			segLen = 0
-		}
-		tracer().Debugf("------------- end of run -------------")
-		pos += rangeLen
-	}
-	tracer().Debugf("------------ end of para -------------")
-	return khipu, nil
-}
-
-// getMetrics returns the cluster metrics for a paragraph of text. The shaper has to
-// already point to the paragraph (set as rune reader). getMetrics will store the
-// width-information for each cluster in the metrics slice. The slice is guaranteed
-// to be no longer than bufsz, as cluster IDs cannot get more (only “melted together”).
-//
-// The shaper may store the shaped glyphs away while providing the metrics to us, but this
-// is not concern of the khipukamayuq. The length of the output glyph buffer may exceed
-// the length of the metrics slice, but this is invisible to us.
-func getMetrics(bufsz int, shaper Shaper) (metrics []dimen.DU, err error) {
-	assert(shaper != nil, "khipu: cannot measure without a shaper")
-	metrics = make([]dimen.DU, bufsz)
-	for {
-		cluster, width, _, shapeerr := shaper.ReadClusterMetrics()
-		assert(cluster < bufsz, "khipu: cluster out of bounds")
-		if shapeerr != nil && shapeerr != io.EOF {
-			err = shapeerr
-			break
-		}
-		metrics[cluster] += width
-		if shapeerr == io.EOF {
-			break
-		}
-	}
-	return
-}
-
-// sumMetrics sums up the width information for a complete segment (e.g., a word).
-func sumMetrics(metrics []dimen.DU, start, len int) dimen.DU {
-	var w dimen.DU
-	for i := start; i < start+len; i++ {
-		w += metrics[i]
-	}
-	return w
-}
-
-// isMidCluster returns true if the given position is not at the end of a cluster.
-func isMidCluster(pos int, metrics []dimen.DU) bool {
-	assert(pos >= 0 || pos < len(metrics), "metrics array index out of bounds")
-	if pos+1 == len(metrics) { // last position cannot be mid-cluster
-		return false
-	}
-	// if next slot is empty, this is  not the end of a cluster
-	tracer().Debugf("mid-cluster check: pos=%d len=%d", pos, len(metrics))
-	return metrics[pos+1] == 0
 }
 
 func sanitizeKnot(k KnotCore, minW, maxW dimen.DU) KnotCore {

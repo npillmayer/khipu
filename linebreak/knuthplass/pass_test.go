@@ -21,6 +21,24 @@ func TestFirstPassUsesPreTolerance(t *testing.T) {
 	}
 }
 
+func TestForcedBreakFallbacksKeepPositiveAccumulatedCost(t *testing.T) {
+	params := NewKPDefaultParameters()
+	params.RightSkip = glue(0, 0, 0)
+	khp := newKhipu([]node{
+		{w: 10, minw: 10, maxw: 10, p: InfinityMerits, kind: khipu.KTTextBox},
+		{w: 10, minw: 10, maxw: 10, p: InfinityMerits, kind: khipu.KTTextBox},
+		{w: 10, minw: 10, maxw: 10, p: InfinityMerits, kind: khipu.KTTextBox},
+		{maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
+	})
+	breaks, quality, ok, err := breakParagraphPass(khp, linebreak.RectangularParShape(80*dimen.BP), params, false)
+	if err != nil || !ok || !slices.Equal(breaks, []int{0, 1, 2, 3}) {
+		t.Fatalf("forced breaks=%v ok=%v err=%v", breaks, ok, err)
+	}
+	if quality.totalCost < 3*AwfulDemerits {
+		t.Fatalf("fallback costs overflowed: %+v", quality)
+	}
+}
+
 func TestCollectOptimalBreakpointsTracksWorstBadness(t *testing.T) {
 	params := NewKPDefaultParameters()
 	parfillnode := node{
@@ -66,7 +84,7 @@ func TestBreakParagraphStartsSecondPassAfterFailedPreTolerancePass(t *testing.T)
 	khp.Kind = append(khp.Kind, khipu.KTTextBox, khipu.KTTextBox, khipu.KTGlue)
 	khp.Pos = append(khp.Pos, 0, 0, 0)
 	khp.Len = append(khp.Len, 0, 0, 0)
-	khp.Flags = append(khp.Flags, 0, 0, khipu.KFDiscardable)
+	khp.Flags = append(khp.Flags, 0, 0, 0) // paragraph fill is retained
 	parshape := linebreak.RectangularParShape(8000)
 
 	firstPassBreaks, quality, ok, err := breakParagraphPass(khp, parshape, params, false)
