@@ -101,7 +101,7 @@ func TestScanStopsAtNonTextboxNonDiscardable(t *testing.T) {
 	khp.MinW = append(khp.MinW, 20*dimen.BP, 0, 5*dimen.BP)
 	khp.MaxW = append(khp.MaxW, 20*dimen.BP, 0, 5*dimen.BP)
 	khp.Penalty = append(khp.Penalty, 0, 0, 0)
-	khp.Kind = append(khp.Kind, khipu.KTTextBox, khipu.KTDiscretionary, khipu.KTGlue)
+	khp.Kind = append(khp.Kind, khipu.KTTextBox, khipu.KTUserDefined+1, khipu.KTGlue)
 	khp.Pos = append(khp.Pos, 0, 0, 0)
 	khp.Len = append(khp.Len, 0, 0, 0)
 	khp.Flags = append(khp.Flags, 0, 0, khipu.KFDiscardable)
@@ -109,13 +109,13 @@ func TestScanStopsAtNonTextboxNonDiscardable(t *testing.T) {
 		t.Fatalf("expected next non-discardable at 1, got %d ok=%v", next, ok)
 	}
 	if _, ok := nextContentBox(khp, 1); ok {
-		t.Fatalf("expected no next content box past discretionary")
+		t.Fatalf("expected no next content box past custom knot")
 	}
 	if prev, ok := previousNonDiscardable(khp, 2); !ok || prev != 1 {
 		t.Fatalf("expected previous non-discardable at 1, got %d ok=%v", prev, ok)
 	}
 	if _, ok := previousContentBox(khp, 2); ok {
-		t.Fatalf("expected no previous content box when discretionary intervenes")
+		t.Fatalf("expected no previous content box when custom knot intervenes")
 	}
 }
 

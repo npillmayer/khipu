@@ -230,10 +230,8 @@ func classifyLineItem(k khipu.KnotCore) lineItemClass {
 		return LICTrimDiscardable
 	}
 	switch k.Kind {
-	case khipu.KTTextBox, khipu.KTDiscretionary:
+	case khipu.KTTextBox:
 		return LICContent
-	case khipu.KTPenalty:
-		return LICRetainedNeutral
 	default:
 		return LICRetainedNeutral
 	}

@@ -1,11 +1,11 @@
 # Demerits Calculation: TeX vs Current Implementation
 
-This note compares the demerits and badness calculation described in [linebreak/kp/knuthplass.pdf](/Users/npi/prg/go/khipu/linebreak/kp/knuthplass.pdf) with the current code in:
+This note compares the demerits and badness calculation described in
+[the Knuth–Plass paper](knuthplass.pdf) with the current
+[SOA implementation](../linebreak/knuthplass/knuthplass.go).
 
-- [linebreak/knuthplass/knuthplass.go](/Users/npi/prg/go/khipu/linebreak/knuthplass/knuthplass.go)
-- [linebreak/kp/knuthplass.go](/Users/npi/prg/go/khipu/linebreak/kp/knuthplass.go)
-
-The older `kp` package still carries the inherited approximate formula. The rewrite in `linebreak/knuthplass` has now gone through the first cleanup stages and is closer to the original TeX model than the legacy code.
+The legacy `linebreak/kp` package has been removed. Its approximate formula is
+summarized below for design history; it is no longer part of the codebase.
 
 ## Original TeX / Knuth-Plass Model
 
@@ -145,14 +145,14 @@ Current defaults must be read from the selected initializer:
 
 ## Comparison With The Legacy `kp` Package
 
-The old package in [linebreak/kp/knuthplass.go](/Users/npi/prg/go/khipu/linebreak/kp/knuthplass.go) still uses the inherited approximate formula:
+The removed `linebreak/kp` package used an inherited approximate formula:
 
 - penalty handled as `abs(p)` rather than `p^2`
 - no explicit stretch/shrink distinction in the badness denominator
 - aggressive demerit capping into the penalty sentinel range
 - no explicit separation between screening and ranking
 
-So at this point the rewrite is meaningfully closer to the PDF's TeX model than the legacy implementation.
+The current implementation is closer to the paper's TeX model than that historical formula.
 
 ## Bottom Line
 

@@ -67,17 +67,17 @@ func TestClusterMetricErrors(t *testing.T) {
 
 func TestNormalizeEncodingPenalties(t *testing.T) {
 	for _, tc := range []struct {
-		primary, secondary int
-		want               Penalty
+		input int64
+		want  Penalty
 	}{
-		{0, 0, 0}, {250, 300, 550}, {-250, 10, -240},
-		{9000, 9000, MaxPenalty}, {-9000, -9000, MaxMerit},
-		{10000, -10000, MaxPenalty}, {-10000, 10000, MaxMerit},
-		{0, 10000, MaxPenalty}, {0, -10000, MaxMerit},
-		{math.MaxInt, math.MaxInt, MaxPenalty}, {math.MinInt, math.MinInt, MaxMerit},
+		{0, 0}, {550, 550}, {-240, -240},
+		{9999, 9999}, {-9999, -9999},
+		{10000, MaxPenalty}, {-10000, MaxMerit},
+		{18000, MaxPenalty}, {-18000, MaxMerit},
+		{math.MaxInt64, MaxPenalty}, {math.MinInt64, MaxMerit},
 	} {
-		if got := normPenalties(penlty(tc.primary, tc.secondary)); got != tc.want {
-			t.Errorf("%d + %d: got %d want %d", tc.primary, tc.secondary, got, tc.want)
+		if got := normPenalty(tc.input); got != tc.want {
+			t.Errorf("%d: got %d want %d", tc.input, got, tc.want)
 		}
 	}
 }

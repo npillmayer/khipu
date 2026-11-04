@@ -1,11 +1,10 @@
 # Migration To The SOA Paragraph Model
 
 Status: November 4, 2026. The public configuration boundary, shared
-infrastructure extraction, SOA encoder-to-breaker integration, and legacy test
-coverage migration are implemented (steps 1–4).
-Legacy storage, encoding, and the `linebreak/kp` package remain available until
-later removal steps. This document distinguishes today's API from planned
-retirement; it does not promise equivalent behavior between the two breakers.
+infrastructure extraction, SOA encoder-to-breaker integration, coverage migration,
+and legacy implementation removal are complete (steps 1–5). SOA is the only
+paragraph representation. The removed APIs below are intentional source-level
+breaks; this guide does not promise behavioral parity with the old breaker.
 
 ## Public Construction And Configuration
 
@@ -25,7 +24,7 @@ type Config struct {
 This is a source-level signature change from `NewKhipukamayuq(env typEnv)`.
 The former argument type and its fields were private to this package, preventing
 ordinary external callers from constructing a configured owner. Internal callers
-now use `Config`; `typEnv` remains internal for the existing implementations.
+now use `Config`; `typEnv` remains internal for SOA encoding.
 Segmentation and bidi pipeline internals are not exposed through configuration.
 
 | Field | When nil | Ownership when supplied |
@@ -53,47 +52,55 @@ close operation; any backend resource lifetime remains the caller's responsibili
 The active encoding path still uses `Shaper`. `StreamingShaper` and the font
 interfaces remain draft boundaries and are not wired into this constructor.
 
-## Surviving API And Planned Replacements
+## Removed APIs And Migration Targets
 
 The chosen model consists of `Khipu`, `KnotCore`, `KnotType`, `KnotFlags`,
 `KnotStyler`, and `Khipukamayuq`, with lazy `Hyphenator`/discretionary support.
 Both `linebreak/firstfit` and `linebreak/knuthplass` operate on this model and share
 `linebreak.ParShape` and `linebreak.WSS`.
 
-| Legacy API or usage | Migration target | Status / limitation |
+| Removed API or usage | Migration target | Status / limitation |
 | --- | --- | --- |
 | `KhipuAOS`, `NewKhipu`, `KnotEncode`, package-level `EncodeParagraph` | Configure an owner and call `(*Khipukamayuq).EncodeParagraph` with a `styled.Paragraph` | SOA encoding exists; raw-reader and manual-list construction have no drop-in replacement |
 | `Knot` and concrete `TextBox`, `Glue`, `Kern` objects | Indexed SOA planes and `KnotCore` values | Modern representation exists; `KnotCore` is a value snapshot, not a mutable reference into storage |
-| `PenaltyItem`, standalone discretionary knots | `KnotCore.Penalty`, `DiscretionaryCandidate`, and `DiscretionarySelection` | Modern storage exists; legacy kinds still await cleanup |
+| `PenaltyItem`, standalone discretionary knots | `KnotCore.Penalty`, `DiscretionaryCandidate`, and `DiscretionarySelection` | Standalone penalty/discretionary kinds are removed |
 | `Cursor`, `Mark`, `NewCursor`, `FixedWidthCursor` | Integer knot indices and `KnotByIndex` | Modern traversal exists; shaping supplies metrics upstream |
 | `HyphenateTextBoxes`, concrete `HyphenateWord` helper | `Config.Hyphenator` and `(*Khipukamayuq).DiscretionaryCandidates` | Lazy interface exists; provide a concrete hyphenator implementation |
 | `linebreak/kp.BreakParagraph` | `linebreak/knuthplass.BreakParagraph` with modern parameters | Returns indices and records selected discretionaries; costs and results may differ |
 | `linebreak/kp.FindBreakpoints` | Modern single-best-path result | Enumeration of all line-count solutions is intentionally not provided |
-| Legacy list mutation, measurement, text extraction, and box height/depth helpers | Review each consumer against source spans, SOA widths, and the future frozen representation | No blanket compatibility API is planned; freezing and glyph provenance are still separate work |
+| List types `HList`/`VList`/`MList`, list mutation, measurement, text extraction, and box height/depth helpers | Review each consumer against source spans, SOA widths, and the future frozen representation | No blanket compatibility API is planned; freezing and glyph provenance are still separate work |
 
-No public legacy APIs are deleted by steps 1–4. Their eventual removal
-will be an intentional API break. Known downstream callers must be checked before
-release; consumers outside this repository have not been audited.
+Step 5 removes these APIs without compatibility aliases. `NewGlue`/`NewFill`
+and `NewKnot` factories are also removed: construct `KnotCore` values for widths
+and flags, and configure paragraph fill with `Config.ParFillSkip`. The legacy
+`TypesettingPipeline`/`PrepareTypesettingPipeline` API has no replacement; the SOA
+encoder owns boundary detection and accepts an already styled paragraph.
+Consumers outside this repository have not been audited.
 
-## Shared Infrastructure Extraction
-
-Shared definitions now live outside the legacy storage and encoder files:
+## Implementation After Removal
 
 | File | Responsibility |
 | --- | --- |
-| `environment.go` | Internal encoding collaborators, parameters, and pipeline state |
-| `pipeline.go` | Legacy NFC input normalization and segmenter setup |
-| `penalties.go` | Segmenter penalty pairs, SOA penalty type and sentinels, and bounded conversion |
-| `knot_types.go` | Knot-kind identifiers shared by both representations |
+| `khipu.go` | SOA storage, indexed knot values, and owner construction (formerly `khipu_soa.go`) |
+| `environment.go` | Internal shaping/hyphenation collaborators, parameters, and paragraph fill |
+| `encoding.go`, `encoding_boundaries.go`, `encoding_metrics.go` | Original-source encoding, paragraph-wide UAX#14 boundaries, and cluster metrics |
+| `penalties.go` | Penalty type, sentinels, and bounded conversion of accumulated UAX contributions |
+| `knot_types.go` | Supported SOA knot kinds |
 
-The unused line-wrapper field, redundant stored word-breaker pointer, and unused
-`primaryBreak` helper have been removed. The word scanner remains because legacy
-text encoding and eager hyphenation still use it; `typEnv.levels` likewise remains
-for the legacy text encoder. These dependencies are marked for later retirement.
+The AOS storage, legacy encoder, cursors, eager hyphenation, normalization/word
+pipeline, and `linebreak/kp` package have been deleted. Their environment fields
+and two-part segmenter penalties are gone. The obsolete graph snapshots were
+removed; the referenced Knuth–Plass paper is retained as [knuthplass.pdf](knuthplass.pdf).
 
-Step 2 preserved public signatures, knot-kind numeric values, segmentation rules,
-and penalty conversion behavior. Step 3 replaces the SOA encoder's use of that
-legacy pipeline with the contract below. Legacy segmenter reuse is unchanged.
+`KTKern`, `KTGlue`, `KTTextBox`, and `KTUserDefined` retain values 0, 1, 2, and 5.
+Values 3 and 4 remain reserved after removing `KTPenalty` and `KTDiscretionary`.
+Penalties live on knots; hyphenation uses candidate/selection tables. Modern
+breaker fixtures use custom retained knots where they need neutral markers.
+
+`go mod tidy` removed the direct `opentype`, `hyphenate`, and `gods` requirements
+and the unused `x/image` requirement. The SOA `Hyphenator`, `Shaper`, draft
+`StreamingShaper`, and font interfaces remain backend-independent. Existing local
+module replacements for `cords` and `uax` are unchanged.
 
 ## SOA Encoder-To-Breaker Contract
 
@@ -157,9 +164,8 @@ selection remain covered by the step-3 integration and discretionary tests.
 
 Modern Knuth–Plass no longer declares the unused `feasibleBreakpoint` and
 `provisionalMark` types or carries obsolete cursor-loop comments. Its runtime
-algorithm is unchanged by step 4. The legacy `linebreak/kp` implementation still
-compiles, but its useful tests now live on the SOA path. Step 5 removes the legacy
-storage, encoder, cursors, eager hyphenation, and breaker implementation.
+algorithm was unchanged by step 4. Step 5 deleted the legacy implementation
+after its useful coverage had moved to the SOA path.
 
 ## Validation Boundary And Follow-Up
 
@@ -178,9 +184,8 @@ See [KP.md](KP.md) and [HYPHENATION.md](HYPHENATION.md) for current contracts.
 
 This establishes the SOA pipeline contract, not complete international-script
 typesetting. Script-sensitive discardability, font-backed/streaming shaping, and
-durable discretionary glyph/source provenance remain separate work. Legacy
-implementation removal follows in step 5.
+durable discretionary glyph/source provenance remain separate work. Step 6 is
+the final documentation and release-readiness review.
 
-After step 4, `go test ./...` and `go vet ./...` pass, including the root package.
-The legacy package has no remaining tests; the coverage map above records their
-replacements. Freezing remains future work described in [FREEZE.md](FREEZE.md).
+After step 5, `go test ./...`, `go vet ./...`, and `go build ./...` pass.
+The legacy package is absent; the coverage map above records its test replacements. Freezing remains future work described in [FREEZE.md](FREEZE.md).

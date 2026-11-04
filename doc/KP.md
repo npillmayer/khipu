@@ -9,11 +9,10 @@ The modern implementation in `linebreak/knuthplass` works directly on indexed
 (`kinx` is an alias for `int`) and records applied discretionary variants in
 `Khipu.SelectedDiscretionaries`.
 
-The legacy `linebreak/kp` implementation remains available and compiles. It uses
-`KhipuAOS`, marks, and its own cursor support. It is a historical reference,
-not evidence of complete behavioral parity with the modern implementation.
-Its useful test scenarios have moved to the SOA suite; see the coverage map in
-[MIGRATION.md](MIGRATION.md).
+The legacy `linebreak/kp` implementation and its AOS/cursor support have been
+removed. Its useful test scenarios moved to the SOA suite before deletion; see
+the coverage map in [MIGRATION.md](MIGRATION.md). Behavioral parity with the old
+breaker is not promised.
 
 ## Package Boundaries
 
@@ -21,7 +20,6 @@ Its useful test scenarios have moved to the SOA suite; see the coverage map in
 - `linebreak` owns shared `ParShape`, rectangular shapes, and `WSS`.
 - `linebreak/knuthplass` owns dynamic programming, costs, passes, and its parameters.
 - `linebreak/firstfit` owns a greedy indexed breaker and its parameters.
-- `linebreak/kp` owns legacy cursor, measurement, width, and cost support.
 
 The shared package no longer exposes the old cursor API. Modern breakers share
 elastic-width arithmetic without sharing their different cost policies.
@@ -135,7 +133,6 @@ claim has been established by benchmarks.
 - Freezing: materialize chosen lines and assign final widths; see [FREEZE.md](FREEZE.md).
 - Script-sensitive fragment validity beyond UTF-8 and representable byte length.
 - Stronger source/glyph provenance for discretionary fragments and future shaping.
-- Removal of the legacy implementation following the completed coverage migration.
 - Optional fitness classes and consecutive-discretionary demerits.
 - Broader international-script integration coverage.
 
@@ -148,5 +145,5 @@ chosen only on theoretical grounds.
 On November 4, 2026, `go test ./...` and `go vet ./...` pass after the SOA coverage
 migration. Tests include forced breaks, lazy discretionary selection, and the
 short and long paragraph cases from the legacy suite. The root package now passes;
-`linebreak/kp` compiles without its superseded tests. This does not establish
+`linebreak/kp` has been removed and `go build ./...` passes. This does not establish
 complete international-script support or end-to-end typesetting readiness.

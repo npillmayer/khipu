@@ -158,8 +158,8 @@ can be added when their concrete requirements are known.
 
 ## Why This Design Was Chosen
 
-The old `KhipuAOS.HyphenateTextBoxes` path performs eager hyphenation and
-imports its concrete hyphenation dependency. The modern path uses an interface
+The removed `HyphenateTextBoxes` path performed eager hyphenation and
+imported its concrete hyphenation dependency. The modern path uses an interface
 and requests candidates only when a breaker needs them.
 
 Of the original storage options, sparse in-`Khipu` tables were chosen because

@@ -42,8 +42,7 @@ func paragraphBoundaries(source string) []Penalty {
 	}
 	feed(0, len(source))
 	for i, end := range ends[:len(ends)-1] {
-		p := int(max(int64(MaxMerit), min(int64(MaxPenalty), totals[i])))
-		result[end] = normPenalties(penlty(p, 0))
+		result[end] = normPenalty(totals[i])
 	}
 	return result
 }

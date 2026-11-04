@@ -1,460 +1,249 @@
 package khipu
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
+	"strings"
 
+	"github.com/npillmayer/cords/styled"
 	"github.com/npillmayer/khipu/dimen"
-	"github.com/npillmayer/opentype/otshape"
 )
 
-// Knots implement items for typesetting paragraphs. The various knot
-// types more or less implement the corresponding node types from the TeX
-// typesetting system.
+const DefaultInitialKhipuCapa = 20
+const MaxInitialKhipuCapa = 1024
 
-// === Knots =================================================================
+type KnotFlags uint8
 
-// A Knot has a width and may be discardable at line-breaks.
-type Knot interface {
-	Type() KnotType      // type identifier of this knot
-	W() dimen.DU         // width
-	MinW() dimen.DU      // minimum width
-	MaxW() dimen.DU      // maximum width
-	IsDiscardable() bool // is this knot discardable?
+const (
+	KFDiscardable KnotFlags = 1 << iota
+)
+
+type KnotCore struct {
+	Pos           uint64
+	W, MinW, MaxW dimen.DU
+	Len           uint16
+	Penalty       Penalty
+	Kind          KnotType
+	Flags         KnotFlags
 }
 
-// NewKnot is a factory method to create a knot. Parameter is a valid knot type.
-func NewKnot(knottype KnotType) Knot {
-	switch knottype {
-	case KTKern:
-		return Kern(0)
+type KnotStyler interface {
+	AdaptKnot(k KnotCore, style styled.Style) (minW dimen.DU, maxW dimen.DU)
+}
+
+func (k KnotCore) String() string {
+	switch k.Kind {
 	case KTGlue:
-		return Glue{0, 0, 0}
-	case KTPenalty:
-		return PenaltyItem(0)
-	case KTDiscretionary:
-		return Discretionary{HyphenChar: '-', Width: 5 * dimen.BP}
+		return fmt.Sprintf("\u25cb%.2f\u00b1[p=%d]", k.W.Points(), k.Penalty)
 	case KTTextBox:
-		box := &TextBox{}
-		return box
+		return fmt.Sprintf("\u00ab%s\u00bb(%.2f)[p=%d]", "text", k.W.Points(), k.Penalty)
 	}
+	return fmt.Sprintf("%d:%.2f", k.Kind, k.W.Points())
+}
+
+// Khipu is s data type to represent a piece of text in a form suitable for typesetting.
+// Nodes of a khipu are similar in spirit to TeX's `\hlist` and `\hbox` elements.
+// A khipu is a heavily mutated object and therefore will be assocated with a
+// [Khipukamayuq] which controls it. No two instances of [Khipukamayuq] are allowed to
+// share a [khipu].
+type Khipu struct {
+	owner     *Khipukamayuq
+	paragraph *styled.Paragraph
+	W         []dimen.DU
+	MinW      []dimen.DU
+	MaxW      []dimen.DU
+	Penalty   []Penalty
+	Pos       []uint64
+	Len       []uint16
+	Kind      []KnotType
+	Flags     []KnotFlags
+
+	DiscretionaryCandidates map[int][]DiscretionaryCandidate
+	SelectedDiscretionaries map[int]DiscretionarySelection
+}
+
+func (kq *Khipukamayuq) allocKhipu(capacity int) *Khipu {
+	assert(kq != nil, "nil-Khipukamayuq cannot allocate a khipu")
+	if capacity == 0 || capacity > MaxInitialKhipuCapa {
+		capacity = DefaultInitialKhipuCapa
+	}
+	khipu := Khipu{
+		owner:   kq,
+		W:       make([]dimen.DU, 0, capacity),
+		MinW:    make([]dimen.DU, 0, capacity),
+		MaxW:    make([]dimen.DU, 0, capacity),
+		Penalty: make([]Penalty, 0, capacity),
+		Pos:     make([]uint64, 0, capacity),
+		Len:     make([]uint16, 0, capacity),
+		Kind:    make([]KnotType, 0, capacity),
+		Flags:   make([]KnotFlags, 0, capacity),
+
+		DiscretionaryCandidates: make(map[int][]DiscretionaryCandidate),
+		SelectedDiscretionaries: make(map[int]DiscretionarySelection),
+	}
+	return &khipu
+}
+
+func unwireKhipu(khipu *Khipu) *Khipu {
+	khipu.owner = nil
+	khipu.paragraph = nil
+	khipu.W = nil
+	khipu.MinW = nil
+	khipu.MaxW = nil
+	khipu.Penalty = nil
+	khipu.Pos = nil
+	khipu.Len = nil
+	khipu.Kind = nil
+	khipu.Flags = nil
+	khipu.DiscretionaryCandidates = nil
+	khipu.SelectedDiscretionaries = nil
 	return nil
 }
 
-// KnotString is a debugging helper and returns a textual representation of a knot.
-func KnotString(k Knot) string {
-	switch k.Type() {
-	case KTKern:
-		return k.(Kern).String()
-	case KTGlue:
-		//return fmt.Sprintf("[glue %v]", k)
-		//g := k.(Glue)
-		return k.(Glue).String()
-	case KTPenalty:
-		return k.(PenaltyItem).String()
-	case KTTextBox:
-		s, ok := k.(*TextBox)
-		if ok {
-			return s.String()
+func (khipu Khipu) KnotByIndex(index int) KnotCore {
+	if index < 0 || index >= len(khipu.Kind) {
+		return KnotCore{}
+	}
+	return KnotCore{
+		W:       khipu.W[index],
+		MinW:    khipu.MinW[index],
+		MaxW:    khipu.MaxW[index],
+		Kind:    khipu.Kind[index],
+		Penalty: khipu.Penalty[index],
+		Pos:     khipu.Pos[index],
+		Len:     khipu.Len[index],
+		Flags:   khipu.flagsAt(index),
+	}
+}
+
+func (khipu *Khipu) isFull() bool {
+	return len(khipu.Kind) == cap(khipu.Kind)
+}
+
+func (khipu *Khipu) appendKnot(k KnotCore) *Khipu {
+	khipu.W = append(khipu.W, k.W)
+	khipu.MinW = append(khipu.MinW, k.MinW)
+	khipu.MaxW = append(khipu.MaxW, k.MaxW)
+	khipu.Penalty = append(khipu.Penalty, k.Penalty)
+	khipu.Pos = append(khipu.Pos, k.Pos)
+	khipu.Len = append(khipu.Len, k.Len)
+	khipu.Kind = append(khipu.Kind, k.Kind)
+	khipu.Flags = append(khipu.Flags, k.Flags)
+	return khipu
+}
+
+// Unskip removes the last knot if it is discardable glue or kern.
+// A non-discardable paragraph trailer is retained.
+func (khipu *Khipu) Unskip() {
+	if len(khipu.W) == 0 {
+		return
+	}
+	top := len(khipu.W) - 1
+	if (khipu.Kind[top] == KTGlue || khipu.Kind[top] == KTKern) && khipu.flagsAt(top)&KFDiscardable != 0 {
+		khipu.W = khipu.W[:top]
+		khipu.MinW = khipu.MinW[:top]
+		khipu.MaxW = khipu.MaxW[:top]
+		khipu.Penalty = khipu.Penalty[:top]
+		khipu.Pos = khipu.Pos[:top]
+		khipu.Len = khipu.Len[:top]
+		khipu.Kind = khipu.Kind[:top]
+		if len(khipu.Flags) > top {
+			khipu.Flags = khipu.Flags[:top]
 		}
-		return k.(TextBox).String()
-	case KTDiscretionary:
-		return "\u2af6"
 	}
-	return fmt.Sprintf("%v", k)
 }
 
-// --- Kern ------------------------------------------------------------------
-
-// A Kern is an unshrinkable space
-type Kern dimen.DU // fixed width
-
-// Type is part of interface Knot.
-func (k Kern) Type() KnotType {
-	return KTKern
-}
-
-func (k Kern) String() string {
-	//return fmt.Sprintf("\u29e6%.2f", k.W().Points())x25cb
-	return fmt.Sprintf("\u25a1%.2f", k.W().Points())
-}
-
-// W is part of interface Knot. Width of the kern.
-func (k Kern) W() dimen.DU {
-	return dimen.DU(k)
-}
-
-// MinW is part of interface Knot. Kerns do not shrink.
-func (k Kern) MinW() dimen.DU {
-	return dimen.DU(k)
-}
-
-// MaxW is part of interface Knot. Kerns do not stretch.
-func (k Kern) MaxW() dimen.DU {
-	return dimen.DU(k)
-}
-
-// IsDiscardable is part of interface Knot. Kerns are discardable.
-func (k Kern) IsDiscardable() bool {
-	return true
-}
-
-// --- Glue ------------------------------------------------------------------
-
-// A Glue is a space which can shrink and expand
-type Glue [3]dimen.DU
-
-// Type is part of interface Knot.
-func (g Glue) Type() KnotType {
-	return KTGlue
-}
-
-func (g Glue) String() string {
-	// minus := g.W() - g.MinW()
-	// plus := g.MaxW() - g.W()
-	return fmt.Sprintf("\u25cb%.2f\u00b1", g.W().Points())
-}
-
-// W is part of interface Knot. Natural width of the glue.
-func (g Glue) W() dimen.DU {
-	return g[0]
-}
-
-// MinW is part of interface Knot. Minimum width of the glue.
-func (g Glue) MinW() dimen.DU {
-	return g[0] - g[1]
-}
-
-// MaxW is part of interface Knot. Maximum width of the glue.
-func (g Glue) MaxW() dimen.DU {
-	return g[0] + g[2]
-}
-
-// IsDiscardable is part of interface Knot. Glue is discardable.
-func (g Glue) IsDiscardable() bool {
-	return true
-}
-
-// NewGlue creates a new drop of glue with stretch and shrink.
-func NewGlue(w dimen.DU, shrink dimen.DU, stretch dimen.DU) Glue {
-	g := Glue{w, shrink, stretch}
-	return g
-}
-
-// NewFill creates a drop of infinitely stretchable glue.
-func NewFill(f int) Glue {
-	var stretch dimen.DU
-	switch f {
-	case 2:
-		stretch = dimen.Fill
-	case 3:
-		stretch = dimen.Filll
-	default:
-		stretch = dimen.Fil
+func (khipu *Khipu) Discardable(index int) (int, bool) {
+	if index < 0 || index >= len(khipu.Kind) {
+		return 0, false
 	}
-	return NewGlue(0, 0, stretch)
+	discarded := false
+	for i := index; i >= 0; i-- {
+		if khipu.flagsAt(i)&KFDiscardable == 0 {
+			return i, discarded
+		}
+		discarded = true
+	}
+	return 0, discarded
 }
 
-// --- Discretionary ---------------------------------------------------------
-
-// A Discretionary is a hyphenation opportunity
-type Discretionary struct {
-	HyphenChar rune
-	Width      dimen.DU
+// acquire is called by Khipukamayuq to take ownership of a khipu.
+func (kq *Khipukamayuq) acquire(khipu *Khipu) {
+	assert(kq != nil, "nil-Khipukamayuq cannot acquire khipu")
+	assert(khipu != nil, "nil-Khipu cannot be acquired")
+	if khipu.owner == nil {
+		khipu.owner = kq
+	}
+	assert(khipu.owner == kq, "Another Khipukamayuq already owns this Khipu")
 }
 
-// Type is part of interface Knot.
-func (d Discretionary) Type() KnotType {
-	return KTDiscretionary
+func (khipu *Khipu) String() string {
+	var sb strings.Builder
+	for i := range len(khipu.Kind) {
+		if i > 0 {
+			sb.WriteString(" ")
+		}
+		sb.WriteString(khipu.KnotByIndex(i).String())
+	}
+	return sb.String()
 }
 
-// W is part of interface Knot. Returns the width of the un-hyphenated text.
-func (d Discretionary) W() dimen.DU {
-	return 0
+type Khipukamayuq struct {
+	env typEnv
 }
 
-// MinW is part of interface Knot. Returns the width of the pre-hyphen text.
-func (d Discretionary) MinW() dimen.DU {
-	return 0
+// NewKhipukamayuq creates an owner for SOA paragraphs using config.
+// It copies parameters and retains collaborator instances as described by Config.
+// A Khipukamayuq must not be used concurrently.
+func NewKhipukamayuq(config Config) *Khipukamayuq {
+	env := typEnv{
+		shaper:      config.Shaper,
+		hyphenator:  config.Hyphenator,
+		parFillSkip: KnotCore{MaxW: dimen.Fill},
+	}
+	if config.ParFillSkip != nil {
+		env.parFillSkip = *config.ParFillSkip
+	}
+	if env.shaper == nil {
+		env.shaper = newFixedShaper()
+	}
+	if config.Params == nil {
+		env.params = newParameters()
+	} else {
+		params := *config.Params
+		env.params = &params
+	}
+	return &Khipukamayuq{
+		env: env,
+	}
 }
 
-// MaxW is part of interface Knot. Returns the width of the post-hyphen text.
-func (d Discretionary) MaxW() dimen.DU {
-	return d.Width
+func sanitizeKnot(k KnotCore, minW, maxW dimen.DU) KnotCore {
+	k.MinW = minW
+	if k.MinW > k.W {
+		k.MinW = k.W
+	}
+	k.MaxW = maxW
+	if k.MaxW < k.W {
+		k.MaxW = k.W
+	}
+	return k
 }
 
-// IsDiscardable is part of interface Knot. Discretionaries are not discardable.
-func (d Discretionary) IsDiscardable() bool {
-	return false
-}
-
-// --- Boxes -----------------------------------------------------------------
-
-// A TextBox is a fixed unit of text
-type TextBox struct {
-	Width    dimen.DU              // width
-	Height   dimen.DU              // height
-	Depth    dimen.DU              // depth
-	Position uint64                // start position in text
-	text     string                // text, if available
-	glyphs   []otshape.GlyphRecord // result of shaping
-}
-
-// NewTextBox creates a text box.
-func NewTextBox(s string, textpos uint64) *TextBox {
-	box := &TextBox{Position: textpos, text: s}
-	return box
-}
-
-// Text returns the enclosed text as a string.
-func (b TextBox) Text() string {
-	return b.text
-}
-
-// Type is part of interface Knot.
-func (b TextBox) Type() KnotType {
+func kindFromText(s string) KnotType {
+	// TODO identify different space characters and treat them appropriately
+	// e.g., thin space (“Dr. Doolittle”) is a small kern (less breakable).
+	if strings.TrimSpace(s) == "" {
+		return KTGlue
+	}
 	return KTTextBox
 }
 
-func (b TextBox) String() string {
-	//return fmt.Sprintf("\u25a1\u00ab%s\u00bb", b.text)
-	return fmt.Sprintf("\u00ab%s\u00bb", b.text)
-}
-
-// W is part of interface Knot. Width of the glue.
-func (b TextBox) W() dimen.DU {
-	return b.Width
-}
-
-// MinW is part of interface Knot. Width of the glue.
-func (b TextBox) MinW() dimen.DU {
-	return b.Width
-}
-
-// MaxW is part of interface Knot. Width of the glue.
-func (b TextBox) MaxW() dimen.DU {
-	return b.Width
-}
-
-// IsDiscardable is part of interface Knot. Text is not discardable.
-func (b TextBox) IsDiscardable() bool {
-	return false
-}
-
-var _ Knot = &TextBox{}
-
-// --- Penalty ---------------------------------------------------------------
-
-// A PenaltyItem contributes to demerits, i.e. the quality index of paragraphs
-type PenaltyItem int
-
-// Type is part of interface Knot.
-func (p PenaltyItem) Type() KnotType {
-	return KTPenalty
-}
-
-func (p PenaltyItem) String() string {
-	//return fmt.Sprintf("\u2af2%d", p) // crossed-out parallels
-	//return fmt.Sprintf("\u29bb%d", p) // white circle with cross
-	return fmt.Sprintf("!%d", p) // white circle with cross
-	//return fmt.Sprintf("\u20e0%d", p) // white circle with cross
-}
-
-// W is part of interface Knot. Returns 0.
-func (p PenaltyItem) W() dimen.DU {
-	return 0
-}
-
-// MinW is part of interface Knot. Returns 0.
-func (p PenaltyItem) MinW() dimen.DU {
-	return 0
-}
-
-// MaxW is part of interface Knot. Returns 0.
-func (p PenaltyItem) MaxW() dimen.DU {
-	return 0
-}
-
-// IsDiscardable is part of interface Knot. Penalties are discardable.
-func (p PenaltyItem) IsDiscardable() bool {
-	return true
-}
-
-// Demerits returns the penalty as demerits.
-// No numeric changes are made.
-func (p PenaltyItem) Demerits() int32 {
-	return int32(p)
-}
-
-// === Khipus ================================================================
-
-// KhipuAOS is a string of knots.
-// We handle text/paragraphs as khipus.
-type KhipuAOS struct {
-	typ   int    // hlist, vlist or mlist
-	knots []Knot // array of knots of different type
-}
-
-// List types
-const (
-	HList int = iota // horizontal list
-	VList            // vertical list
-	MList            // math list
-)
-
-// NewKhipu creates a new knot list.
-func NewKhipu() *KhipuAOS {
-	kh := &KhipuAOS{}
-	kh.knots = make([]Knot, 0, 50)
-	return kh
-}
-
-// Length gives the number of knots in the list.
-func (kh *KhipuAOS) Length() int64 {
-	return int64(len(kh.knots))
-}
-
-// AppendKnot appends a knot at the end of the list.
-func (kh *KhipuAOS) AppendKnot(knot Knot) *KhipuAOS {
-	kh.knots = append(kh.knots, knot)
-	return kh
-}
-
-// AppendKhipu concatenates two khipus.
-func (kh *KhipuAOS) AppendKhipu(k *KhipuAOS) *KhipuAOS {
-	kh.knots = append(kh.knots, k.knots...)
-	return kh
-}
-
-// ReplaceKnot replaces a knot within the khipu. If inx is not a valid
-// index for the khipu, nothing is done.
-//
-// Returns the current knot at position inx.
-func (kh *KhipuAOS) ReplaceKnot(inx int64, knot Knot) Knot {
-	if inx >= 0 && inx < int64(len(kh.knots)) {
-		k := kh.knots[inx]
-		kh.knots[inx] = knot
-		return k
+func wrapAsRuneReader(br *bufio.Reader, buf []byte) *bufio.Reader {
+	if br == nil {
+		return bufio.NewReader(bytes.NewReader(buf))
 	}
-	return nil
-}
-
-// Measure returns the widths of a subset of this knot list. The subset runs from
-// index [from ... to-1]. The method returns natural, maximum and minimum
-// width.
-func (kh *KhipuAOS) Measure(from, to int64) (dimen.DU, dimen.DU, dimen.DU) {
-	var w, maxx, min dimen.DU
-	to = max(to, int64(len(kh.knots)))
-	for i := from; i < to; i++ {
-		knot := kh.knots[i]
-		w += knot.W()
-		maxx += knot.MaxW()
-		min += knot.MinW()
-	}
-	return w, maxx, min
-}
-
-// Reach iterates over a khipu to find a point beyond a given distance.
-// Starting from a knot (index), return a set of knots which mark possible
-// endpoints for a sequence of knots to cover a certain width distance.
-// The knot set is returned as a pair (from,to) of indices.
-// If the distance cannot be covered, (-1,-1) is returned.
-func (kh *KhipuAOS) Reach(start int, distance dimen.DU) (int, int) {
-	l := len(kh.knots)
-	var max, min dimen.DU
-	var from, to int = -1, -1
-	for i := start; i < l; i++ {
-		knot := kh.knots[i]
-		max += knot.MaxW()
-		min += knot.MinW()
-		if from == -1 && max >= distance {
-			from = i
-		}
-		if min <= distance {
-			to = i
-		}
-	}
-	return from, to
-}
-
-// MaxWidth finds the maximum width of the knots in the range [from ... to-1].
-func (kh *KhipuAOS) MaxWidth(from, to int64) dimen.DU {
-	to = max(to, int64(len(kh.knots)))
-	var w dimen.DU
-	for i := from; i < to; i++ {
-		knot := kh.knots[i]
-		if knot.W() > w {
-			w = knot.W()
-		}
-	}
-	return w
-}
-
-// MaxHeightAndDepth finds the maximum height and depth of the knots in the range
-// [from ... to-1].
-// Only knots of type TextBox are considered.
-func (kh *KhipuAOS) MaxHeightAndDepth(from, to int64) (dimen.DU, dimen.DU) {
-	to = max(from, min(to, int64(len(kh.knots))))
-	var h, d dimen.DU
-	for i := from; i < to; i++ {
-		if knot, ok := kh.knots[i].(*TextBox); ok {
-			if knot.Height > h {
-				h = knot.Height
-			}
-			if knot.Depth > d {
-				d = knot.Depth
-			}
-		}
-	}
-	return h, d
-}
-
-// Text returns the text contents of a khipu segment.
-func (kh *KhipuAOS) Text(from, to int64) string {
-	var b bytes.Buffer
-	to = max(from, min(to, int64(len(kh.knots))))
-	spacecnt := 0
-	for i := from; i < to; i++ {
-		knot := kh.knots[i]
-		if knot.Type() == KTTextBox {
-			b.WriteString(knot.(*TextBox).text)
-			spacecnt = 0
-		} else if knot.Type() == KTGlue {
-			if spacecnt == 0 {
-				b.WriteString(" ")
-			}
-		} else if knot.Type() == KTKern {
-			if spacecnt == 0 {
-				b.WriteString(" ")
-			}
-		}
-	}
-	return b.String()
-}
-
-// Debug representation of a knot list.
-func (kh *KhipuAOS) String() string {
-	buf := make([]byte, 0, 30)
-	w := bytes.NewBuffer(buf)
-	switch kh.typ {
-	case HList:
-		w.WriteString("\\hlist{\n")
-	case VList:
-		w.WriteString("\\vlist{\n")
-	case MList:
-		w.WriteString("\\mlist{\n")
-	}
-	//first := true
-	for _, knot := range kh.knots {
-		// if !first {
-		// 	w.WriteString(" ")
-		// } else {
-		// 	first = false
-		// }
-		w.WriteString(" ")
-		w.WriteString(KnotString(knot))
-		w.WriteString("\n")
-	}
-	w.WriteString("}")
-	return w.String()
+	br.Reset(bytes.NewReader(buf))
+	return br
 }

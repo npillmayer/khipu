@@ -68,6 +68,6 @@ logical order, including explicit cluster starts with zero width.
 The fixed-width shaper is a simple metric provider, not a font shaping backend.
 Freezing, glyph provenance, and script-sensitive spacing remain future work.
 
-SOA is the chosen paragraph model. Legacy APIs remain during migration; see
-[the API migration guide](doc/MIGRATION.md) for the constructor change and planned
-replacements.
+SOA is the only paragraph model. The legacy AOS APIs and `linebreak/kp` have
+been removed; see [the API migration guide](doc/MIGRATION.md) for the removed
+APIs and their migration targets.

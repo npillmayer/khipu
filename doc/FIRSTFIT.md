@@ -42,7 +42,7 @@ All former shared legacy types now live locally or are gone:
 - demerit sentinels are local constants
 
 The root package now contains shared paragraph shapes and elastic-width
-arithmetic. Legacy cursor support lives in `linebreak/kp`.
+arithmetic. Legacy cursor support and `linebreak/kp` have been removed.
 
 ## Algorithmic Shape
 
@@ -235,8 +235,8 @@ At this point, the migration of `firstfit` itself should be considered done.
 
 On November 4, 2026, `go test ./...` and `go vet ./...` pass after migration of
 legacy coverage to SOA. Both modern breakers exercise the short and long paragraph
-regressions, and the root package passes. The legacy breaker still compiles;
-its superseded tests have been retired (see [MIGRATION.md](MIGRATION.md)).
+regressions, and the root package passes. Step 5 removed the legacy breaker
+after its coverage migrated (see [MIGRATION.md](MIGRATION.md)).
 
 Linebreaking chooses indices and discretionary variants; it does not assign
 final knot widths. Freezing is the next planned stage, described in

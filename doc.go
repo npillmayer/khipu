@@ -28,7 +28,8 @@
 //
 // Create Khipus from Text
 //
-// (1) Normalize Unicode text
+// (1) Normalize Unicode text before constructing styled ranges, if needed.
+// EncodeParagraph preserves original source bytes.
 //
 // 	https://godoc.org/golang.org/x/text/unicode/norm
 //
@@ -43,12 +44,11 @@
 // 	https://godoc.org/golang.org/x/text/unicode/bidi
 // 	https://www.w3.org/International/articles/inline-bidi-markup/
 //
-// (4) Hyphenation:
-// Lliang patterns + language-specific code
+// (4) Lazy hyphenation through Config.Hyphenator, when requested by a breaker.
+// The owner shapes alternatives into DiscretionaryCandidate values.
 //
-// 	https://godoc.org/github.com/npillmayer/tyse/core/hyphenation
-//
-// (5) Translate feasible breakpoints to penalties, glue and discretionaries
+// (5) Store widths, source spans, flags, and penalties in Khipu SOA planes.
+// Discretionary candidates and selections are stored separately on the paragraph.
 //
 //     https://wiki.apache.org/xmlgraphics-fop/KnuthsModel
 //

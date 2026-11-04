@@ -262,14 +262,14 @@ func TestSegmentStateTracksLeadingAndTrailingTrim(t *testing.T) {
 	}
 }
 
-func TestSegmentStateTreatsPenaltyAsNeutral(t *testing.T) {
+func TestSegmentStateTreatsCustomKnotAsNeutral(t *testing.T) {
 	seg := &segmentState{}
-	seg.append(knot(0, 0, 0, -100, khipu.KTPenalty))
+	seg.append(knot(0, 0, 0, -100, khipu.KTUserDefined+1))
 	if seg.seenContent {
-		t.Fatalf("penalty must not mark segment as contentful")
+		t.Fatalf("custom knot must not mark segment as contentful")
 	}
 	if seg.leadingTrim.W != 0 || seg.trailingTrim.W != 0 {
-		t.Fatalf("penalty must not contribute to trim state, got leading=%v trailing=%v", seg.leadingTrim, seg.trailingTrim)
+		t.Fatalf("custom knot must not contribute to trim state, got leading=%v trailing=%v", seg.leadingTrim, seg.trailingTrim)
 	}
 }
 

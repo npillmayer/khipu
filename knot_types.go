@@ -1,16 +1,14 @@
 package khipu
 
-// KnotType identifies the kind of a knot in either paragraph representation.
+// KnotType identifies the kind of a knot in the SOA paragraph.
 type KnotType int8
 
-// Knot kinds retain their existing numeric values during the migration.
-// KTPenalty and KTDiscretionary remain until their legacy consumers and the
-// remaining modern fixtures are migrated.
+// Supported kinds retain their numeric values. Values 3 and 4 are reserved:
+// penalties are fields on knots, and discretionary alternatives live in sparse
+// candidate/selection tables rather than standalone knots.
 const (
-	KTKern KnotType = iota
-	KTGlue
-	KTTextBox
-	KTPenalty
-	KTDiscretionary
-	KTUserDefined // clients should use custom knot types above this
+	KTKern        KnotType = 0
+	KTGlue        KnotType = 1
+	KTTextBox     KnotType = 2
+	KTUserDefined KnotType = 5 // clients should use custom knot types above this
 )
