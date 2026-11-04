@@ -162,16 +162,12 @@ The package does not implement:
 
 That is by design, not a migration defect.
 
-### 3. Some edge-case hardening is still possible
+### 3. Remaining spacing policy
 
-The main remaining trimming-related hardening items are:
-
-- explicit paragraph-level kern regressions
-- a final review of paragraph trailer handling once the upstream flag policy is
-  settled
-
-The latter should be straightforward if the final `ParFillSkip` is guaranteed to
-arrive without `KFDiscardable`.
+Paragraph trailer handling is implemented and covered by encoder-to-breaker
+integration tests. The encoder supplies exactly one non-discardable final fill
+knot. Further work includes paragraph-level kern cases and script-sensitive
+upstream flags; these are not blockers for the completed storage migration.
 
 ## Relationship To `knuthplass`
 

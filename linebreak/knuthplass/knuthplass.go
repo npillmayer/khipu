@@ -460,7 +460,10 @@ type pathQuality struct {
 // Paragraphs may be broken with different line counts. Only one of these will be
 // optimal, and BreakParagraph will return that.
 //
-// For a function to get solutions with different linecounts, see FindBreakpoints.
+// Results are zero-based indices of line-ending knots, including the final
+// trailer. SelectedDiscretionaries is replaced on each run. Nil params selects
+// NewKPDefaultParameters. Only the single best path is returned; alternative
+// line-count solutions are not enumerated.
 func BreakParagraph(khipu *khipu.Khipu, parshape linebreak.ParShape, params *Parameters) (
 	[]kinx, error) {
 	//

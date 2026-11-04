@@ -9,7 +9,7 @@ The historical investigation established:
 - which parts of the representation look like candidates for simplification
 
 The inventory records the March 2026 migration. The current-status section was
-checked against the code on November 3, 2026.
+checked against the SOA-only code on November 4, 2026.
 
 ## Current Status
 
@@ -29,7 +29,8 @@ discretionary variants at one textbox occupy distinct states.
 
 `collectOptimalBreakRefs` uses direct `Pred(to, line)` lookups. Logical
 replacement is an overwrite; a separate edge-delete operation is unnecessary.
-The modern package's `graph.go` and graph tests have been removed.
+The modern package's `graph.go` and graph tests have been removed. The legacy
+`linebreak/kp` package and the modern unused mark-based declarations are also gone.
 
 The sections below retain the original inventory and alternatives as historical
 design rationale. Their uses of "current" and raw `kinx` keys refer to that

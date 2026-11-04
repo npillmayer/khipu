@@ -11,18 +11,18 @@ import (
 // The important distinction for the current implementation is:
 //   - PreTolerance screens the rough first pass
 //   - Tolerance screens the second pass
-//   - penalties such as HyphenPenalty belong to one breakpoint candidate
+//   - breakpoint penalties come from KnotCore.Penalty or a discretionary candidate
 //   - demerit extras such as FirstHyphenDemerits / FinalHyphenDemerits are local
 //     linebreaker adjustments on top of the base breakpoint penalty
 type Parameters struct {
 	Tolerance             merits         // admissible badness for pass 2
 	PreTolerance          merits         // admissible badness for pass 1
 	LinePenalty           merits         // base cost added to every accepted line
-	HyphenPenalty         merits         // penalty for hyphenating words
+	HyphenPenalty         merits         // reserved; candidates supply PreBreak.Penalty
 	FirstHyphenDemerits   merits         // demerits for hyphen in the first line
 	DoubleHyphenDemerits  merits         // demerits for consecutive hyphens; currently reserved, not yet applied
 	FinalHyphenDemerits   merits         // demerits for hyphen in the last line
-	EmergencyStretch      dimen.DU       // stretching acceptable when desperate
+	EmergencyStretch      dimen.DU       // reserved; no emergency-stretch pass is implemented
 	LeftSkip              khipu.KnotCore // glue at left edge of paragraphs
 	RightSkip             khipu.KnotCore // glue at right edge of paragraphs
 	ParFillSkip           khipu.KnotCore // upstream trailer dimensions; pass to khipu.Config.ParFillSkip when encoding
@@ -30,7 +30,7 @@ type Parameters struct {
 }
 
 // DefaultParameters are the standard line-breaking parameters.
-// The promote a tolerant configuration, suitable for almost always finding an
+// They promote a tolerant configuration, suitable for almost always finding an
 // acceptable set of linebreaks.
 var DefaultParameters = &Parameters{
 	Tolerance:            5000,

@@ -36,7 +36,7 @@ For each candidate line, the original algorithm conceptually proceeds as follows
 
 This is the classical Knuth-Plass / TeX formulation.
 
-## What The Current Rewrite Now Preserves
+## Implemented Cost Model
 
 The current rewrite keeps the broad structure of the original algorithm and now also matches TeX in several places where the older implementation differed:
 
@@ -64,7 +64,7 @@ TeX treats `p <= -10000` inside the demerits formula as a special case:
 d = q^2
 ```
 
-The current rewrite handles forced breaks earlier, in [constructBreakpointGraph()](/Users/npi/prg/go/khipu/linebreak/knuthplass/knuthplass.go). Before the cost function is called, forced-break penalties are neutralized to `0`, and the forced-break branch is taken in the graph-construction loop.
+The current rewrite handles forced breaks earlier, in [constructBreakpointGraph()](../linebreak/knuthplass/knuthplass.go). Before the cost function is called, forced-break penalties are neutralized to `0`, and the forced-break branch is taken in the graph-construction loop.
 
 This still deviates structurally from TeX, but it is now an intentional design choice rather than a numerical bug. It keeps `calcDemerits(...)` simpler while preserving the intended effect.
 
@@ -100,7 +100,12 @@ state discussed below.
 
 ### 4. Overfull fallback is still a local policy, not a TeX-faithful detail
 
-When the horizon is about to drain, the rewrite inserts an explicit fallback path with `AwfulDemerits` (defined in `linebreak/knuthplass/definitions.go`). That is a pragmatic policy to keep the paragraph breakable, and it interacts with the pass-2 trigger.
+When the horizon is about to drain, or a mandatory boundary is geometrically
+infeasible, the breaker inserts a fallback path with `AwfulDemerits`. Mandatory
+boundaries retire earlier origins so they cannot be skipped. Accumulated costs
+use 64 bits to accommodate repeated fallbacks. This policy keeps the paragraph
+breakable and interacts with the pass-2 trigger. `EmergencyStretch` is currently
+reserved; there is no emergency-stretch pass.
 
 This is useful for robustness, but it is not a direct transcription of TeX's paragraph-breaking internals.
 
@@ -154,7 +159,7 @@ The removed `linebreak/kp` package used an inherited approximate formula:
 
 The current implementation is closer to the paper's TeX model than that historical formula.
 
-## Bottom Line
+## Status Summary
 
 The current rewrite should now be described as:
 
@@ -206,8 +211,8 @@ So fitness is a classification of spacing behavior, not of absolute paragraph qu
 
 The rewrite already computes:
 
-- an adjustment ratio via [`calcAdjustmentRatio(...)`](/Users/npi/prg/go/khipu/linebreak/knuthplass/knuthplass.go)
-- a badness value via [`calcBadness(...)`](/Users/npi/prg/go/khipu/linebreak/knuthplass/knuthplass.go)
+- an adjustment ratio via [`calcAdjustmentRatio(...)`](../linebreak/knuthplass/knuthplass.go)
+- a badness value via [`calcBadness(...)`](../linebreak/knuthplass/knuthplass.go)
 
 Therefore the natural place to classify fitness would be immediately after the adjustment ratio is known.
 
@@ -245,18 +250,18 @@ At the data-model level, a future implementation would likely need:
    - `AdjFitnessDemerits merits`
 
 4. Storage of the current line's fitness on candidate evaluations.
-   The current [`lineEvaluation`](/Users/npi/prg/go/khipu/linebreak/knuthplass/knuthplass.go) would need an additional field:
+   The current [`lineEvaluation`](../linebreak/knuthplass/knuthplass.go) would need an additional field:
    - `fitness fitnessClass`
 
 5. Storage of the previous line's fitness on active path states.
-   The current [`bookkeeping`](/Users/npi/prg/go/khipu/linebreak/knuthplass/knuthplass.go) would need a field such as:
+   The current [`bookkeeping`](../linebreak/knuthplass/knuthplass.go) would need a field such as:
    - `fitness fitnessClass`
 
 ### Where The Extra Demerits Would Be Applied
 
 The extra demerits from fitness incompatibility belong at the point where a new candidate line is appended to an existing path.
 
-In the current rewrite, that point is [`evalNewSegment(...)`](/Users/npi/prg/go/khipu/linebreak/knuthplass/knuthplass.go).
+In the current rewrite, that point is [`evalNewSegment(...)`](../linebreak/knuthplass/knuthplass.go).
 
 The logic would be conceptually:
 
@@ -429,7 +434,7 @@ At minimum, future tests should cover:
 - if the richer state key is adopted:
   - coexistence of multiple `(to, line)` states with different fitness classes
 
-### Bottom Line On Fitness
+### Status Summary On Fitness
 
 The most important reminder is this:
 

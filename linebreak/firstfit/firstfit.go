@@ -2,7 +2,7 @@
 Package firstfit implements a straightforward line-breaking algorithm where
 lines are broken at the first suitable breakpoint.
 
-The current implementation operates directly on the new SOA-style `khipu.Khipu`
+The current implementation operates directly on the SOA `khipu.Khipu`
 and returns breakpoint indices (`[]kinx`). It keeps only the simple local
 bookkeeping required by first-fit:
 
@@ -14,7 +14,8 @@ Compared to `knuthplass`, this package intentionally stays simple:
 
 - no global path comparison
 - no graph / predecessor table
-- no discretionary support yet
+- local discretionary rescue when an overflowing textbox can improve the line
+- no second pass or global discretionary search
 */
 package firstfit
 

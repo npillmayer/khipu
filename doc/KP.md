@@ -92,6 +92,9 @@ later lines from bypassing it. Infeasible forced lines retain a fallback path;
 First-line discretionary extras and terminal-transition extras are
 implemented. Fitness classes and `DoubleHyphenDemerits` remain deferred.
 See [DEMERITS.md](DEMERITS.md) for formulas and future fitness-state design.
+`HyphenPenalty` and `EmergencyStretch` are reserved fields and are not read by
+the algorithm. Candidate penalties come from upstream `PreBreak.Penalty`; there
+is no emergency-stretch pass.
 Parameter defaults differ between `DefaultParameters` and
 `NewKPDefaultParameters`; consult the chosen initializer rather than assuming
 TeX defaults.

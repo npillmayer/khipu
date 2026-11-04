@@ -16,7 +16,7 @@ const (
 	InfinityDemerits = 10000
 )
 
-// Parameters configures the new Khipu-based first-fit breaker.
+// Parameters configures the SOA first-fit breaker.
 // The model is intentionally small: first-fit only needs the paragraph skips
 // for width accounting, not the richer demerit model of Knuth-Plass.
 type Parameters struct {
@@ -26,7 +26,7 @@ type Parameters struct {
 	DiscretionaryProvider DiscretionaryProvider
 }
 
-// DefaultParameters are the standard first-fit parameters for the new Khipu path.
+// DefaultParameters are the standard first-fit parameters for SOA paragraphs.
 var DefaultParameters = &Parameters{
 	LeftSkip:      glue(0, 0, 0),
 	RightSkip:     glue(0, 0, 0),
@@ -44,11 +44,15 @@ func glue(w, wmin int, wmax dimen.DU) khipu.KnotCore {
 }
 
 // BreakParagraph finds first-fit breakpoints for a paragraph represented as the
-// new SOA-style Khipu. It walks the paragraph once from left to right and keeps
+// SOA Khipu. It walks the paragraph once from left to right and keeps
 // the most recent feasible breakpoint as a checkpoint. When a later feasible
 // breakpoint overflows the line, the algorithm commits the remembered
 // checkpoint and carries the already scanned post-break material over to the
 // next line.
+//
+// Results are zero-based indices of line-ending knots, including the final
+// trailer. SelectedDiscretionaries is replaced on each run. Nil params selects
+// DefaultParameters. Configure DiscretionaryProvider for lazy discovery.
 func BreakParagraph(khp *khipu.Khipu, parshape linebreak.ParShape, params *Parameters) ([]kinx, error) {
 	if khp == nil || parshape == nil {
 		return nil, errors.New("cannot break a paragraph without khipu or parshape")

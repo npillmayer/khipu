@@ -1,6 +1,8 @@
 # Khipu: From Text to Typesetting
 
-Package khipu is about encoding text into typesetting items.
+Khipu encodes styled text into SOA paragraphs and breaks them into lines using
+firstfit or Knuth–Plass. Widths, source spans, flags, and penalties are stored in
+aligned arrays; discretionary alternatives are discovered lazily.
 
 ## Metaphor
 
@@ -25,7 +27,7 @@ Knots implement items for typesetting paragraphs.
 
 ## Create Khipus from Text
 
-A Khipukamayuq is part of a typsetting pipeline and will transform text into khipus.
+A Khipukamayuq is part of a typesetting pipeline and will transform text into khipus.
 Khipus are the input for linebreakers. The overall process of creating
 them and the interaction with line breaking is fairly complicated, especially if
 one considers international scripts.
@@ -39,35 +41,104 @@ a single paragraph.
 <img alt="typeset a single paragraph" src="http://npillmayer.github.io/TySE/images/khipukamayuq.svg" width="480px">
 </div>
 
-## Configure SOA Encoding
+## Encode And Break A Paragraph
 
-Use `NewKhipukamayuq` with the public `Config` type. Given a styled paragraph
-`para` and caller-supplied implementations of `Shaper` and `Hyphenator`:
+This complete example uses the built-in fixed-width shaper. It is also exercised
+by [the public examples](example_test.go).
 
 ```go
-kq := khipu.NewKhipukamayuq(khipu.Config{
-    Shaper:     shaper,
-    Hyphenator: hyphenator,
-})
-khp, err := kq.EncodeParagraph(para, nil)
+package main
+
+import (
+	"fmt"
+
+	"github.com/npillmayer/cords/styled"
+	"github.com/npillmayer/khipu"
+	"github.com/npillmayer/khipu/dimen"
+	"github.com/npillmayer/khipu/linebreak"
+	"github.com/npillmayer/khipu/linebreak/firstfit"
+	"github.com/npillmayer/khipu/linebreak/knuthplass"
+	"github.com/npillmayer/uax/bidi"
+)
+
+func main() {
+	text := styled.TextFromString("Hello world")
+	para, err := styled.ParagraphFromText(&text, 0, text.Raw().Len(), bidi.LeftToRight, nil)
+	if err != nil {
+		panic(err)
+	}
+	owner := khipu.NewKhipukamayuq(khipu.Config{})
+	khp, err := owner.EncodeParagraph(para, nil)
+	if err != nil {
+		panic(err)
+	}
+	shape := linebreak.RectangularParShape(100 * dimen.PT)
+	greedy, err := firstfit.BreakParagraph(khp, shape, nil)
+	if err != nil {
+		panic(err)
+	}
+	optimal, err := knuthplass.BreakParagraph(khp, shape, nil)
+	if err != nil {
+		panic(err)
+	}
+	last := khp.KnotByIndex(optimal[len(optimal)-1])
+	fmt.Println("firstfit lines:", len(greedy))
+	fmt.Println("Knuth-Plass lines:", len(optimal))
+	fmt.Println("source end:", last.Pos, "trailer bytes:", last.Len)
+}
 ```
 
-`khp` is the SOA `*khipu.Khipu`. Omitting `Params` selects the existing defaults;
-a supplied `*Params` is copied in full, including zero fields. Omitting
-`Hyphenator` disables lazy discovery while preserving access to cached candidates.
-The collaborators themselves are retained, so a stateful shaper must not be used
-concurrently with its owner.
+Both breakers return zero-based indices of line-ending knots. The final index
+identifies the generated paragraph trailer. Source knots have absolute UTF-8 byte
+positions (`Pos`, including `Paragraph.Offset`) and byte lengths (`Len`). A
+selected discretionary is an alternative inside a source textbox; consult
+`SelectedDiscretionaries` as well as the returned indices. Rerunning a breaker
+replaces those selections.
 
-`Config{}` selects a reusable fixed-width shaper and automatically appends the
-non-discardable paragraph fill and forced break expected by both modern breakers.
-Supply `Config.ParFillSkip` to override the fill dimensions. Encoding preserves
-the original UTF-8 bytes and source positions; normalize text before constructing
-styled ranges if needed. Custom shapers report run-relative byte offsets in
-logical order, including explicit cluster starts with zero width.
+## Configure Shaping And Hyphenation
 
-The fixed-width shaper is a simple metric provider, not a font shaping backend.
-Freezing, glyph provenance, and script-sensitive spacing remain future work.
+Supply `Config.Shaper` for font-backed metrics and `Config.Hyphenator` for lazy
+alternatives. The collaborators are retained, so a stateful shaper must not be
+used concurrently with its owner. Omitting `Params` selects defaults; a supplied
+`*Params` is copied in full, including zero fields.
 
-SOA is the only paragraph model. The legacy AOS APIs and `linebreak/kp` have
-been removed; see [the API migration guide](doc/MIGRATION.md) for the removed
-APIs and their migration targets.
+To enable lazy discovery, pass the same owner as the breaker's provider:
+
+```go
+params := knuthplass.NewKPDefaultParameters()
+params.DiscretionaryProvider = owner
+breaks, err := knuthplass.BreakParagraph(khp, shape, params)
+```
+
+Firstfit has its own `Parameters.DiscretionaryProvider` field. The
+[hyphenation example](example_test.go) demonstrates the complete roundtrip.
+Without a provider, a breaker can use candidates already cached on `khp`.
+
+`EncodeParagraph` appends a non-discardable fill knot carrying the final forced
+break, including for empty paragraphs. Configure its dimensions through
+`Config.ParFillSkip`; do not append another trailer. Text retains its original
+bytes; normalize before constructing styled ranges if needed. Custom shapers
+report run-relative byte offsets in logical order, including zero-width cluster
+starts. See [the encoding contract](doc/MIGRATION.md#soa-encoder-to-breaker-contract).
+
+The default shaper is a fixed-width metric provider, not a font shaping backend.
+Linebreaking does not assign final glyph positions. Freezing, durable glyph
+provenance, and script-sensitive spacing remain future work; `StreamingShaper`
+and font interfaces are drafts.
+
+## Development And Migration
+
+The module declares Go 1.25.6 and currently replaces `cords` and `uax` with sibling
+checkouts (`../cords`, `../uax`). Validation uses those local dependencies:
+
+```sh
+go test ./... -count=1 -timeout=30s
+go vet ./...
+go build ./...
+go mod tidy -diff
+```
+
+SOA is the only paragraph model. The legacy AOS APIs and `linebreak/kp` have been
+removed. See [the migration guide](doc/MIGRATION.md) for API changes and release
+limitations, and [the documentation index](doc/README.md) for implemented
+contracts, design history, and future work.

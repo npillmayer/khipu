@@ -42,11 +42,14 @@ func (k KnotCore) String() string {
 	return fmt.Sprintf("%d:%.2f", k.Kind, k.W.Points())
 }
 
-// Khipu is s data type to represent a piece of text in a form suitable for typesetting.
-// Nodes of a khipu are similar in spirit to TeX's `\hlist` and `\hbox` elements.
-// A khipu is a heavily mutated object and therefore will be assocated with a
-// [Khipukamayuq] which controls it. No two instances of [Khipukamayuq] are allowed to
-// share a [khipu].
+// Khipu stores an elastic paragraph in aligned SOA planes. Source knots carry
+// original UTF-8 byte spans; a generated zero-length trailer terminates the
+// paragraph. KnotByIndex returns a value snapshot, not a mutable reference.
+//
+// Encoded paragraphs belong to the Khipukamayuq that created them. Keep source
+// spans, base knots, and shaping context stable while discretionary caches are
+// in use. A breaker run replaces SelectedDiscretionaries; copy those decisions
+// before rerunning if they must be retained. Concurrent mutation is unsupported.
 type Khipu struct {
 	owner     *Khipukamayuq
 	paragraph *styled.Paragraph

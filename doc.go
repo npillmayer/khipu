@@ -1,63 +1,24 @@
-// Package khipu is about encoding text into typesetting items.
+// Package khipu encodes styled text into struct-of-arrays paragraphs for
+// linebreaking. Khipu stores widths, UTF-8 source spans, flags, and penalties in
+// aligned planes; KnotByIndex returns a KnotCore value snapshot.
 //
-// "Khipu were recording devices fashioned from strings
-// historically used by a number of cultures in the region of
-// Andean South America.
-// Khipu is the word for "knot" in Cusco Quechua.
-// A khipu usually consisted of cotton or camelid fiber strings. The Inca
-// people used them for collecting data and keeping records, monitoring tax
-// obligations, properly collecting census records, calendrical information,
-// and for military organization. The cords stored numeric and other values
-// encoded as knots, often in a base ten positional system. A khipu could
-// have only a few or thousands of cords."
-// ––Excerpt from a Wikipedia article about khipus
+// Construct a Khipukamayuq with Config and call its EncodeParagraph method.
+// Config{} selects a fixed-width metric provider. Applications supply a Shaper
+// for font-backed metrics and an optional Hyphenator for lazy alternatives.
+// Encoding preserves original source bytes and appends the final fill/forced
+// break, including for empty paragraphs. Normalize text before establishing
+// styled source ranges if needed.
 //
-// The Khipukamayuqs (Quechua for “knot-makers”) were the scribes of those
-// times, tasked with encoding tax figures and other administrative
-// information in knots.
-// We will use this analogy to call typesetting items "khipus" or "knots",
-// and objects which produce khipus will be "Khipukamayuqs".
-// Knots implement items for typesetting paragraphs. We will use a
-// box-and-glue model, the various knot types more or less implementing
-// the corresponding node types from the TeX typesetting system.
+// The linebreak/firstfit and linebreak/knuthplass packages consume these
+// paragraphs and return line-ending knot indices. To discover hyphenation
+// alternatives lazily, set the breaker's DiscretionaryProvider to the owner.
+// Chosen variants are retained in Khipu.SelectedDiscretionaries; each breaker
+// run replaces the previous selections.
 //
-// A Khipukamayuqs is part of a typsetting pipeline and will transform
-// text into khipus.
-// Khipus are the input for linebreakers. The overall process of creating
-// them and the interaction with line breaking looks like this:
-//
-// Create Khipus from Text
-//
-// (1) Normalize Unicode text before constructing styled ranges, if needed.
-// EncodeParagraph preserves original source bytes.
-//
-// 	https://godoc.org/golang.org/x/text/unicode/norm
-//
-// (2) Find natural text wrap opportunities
-// (words in many scripts, syllables/character in East Asia, etc.)
-//
-// 	https://godoc.org/github.com/npillmayer/uax
-//
-// (3) Bi-directional text
-//
-// 	https://godoc.org/github.com/npillmayer/uax/bidi
-// 	https://godoc.org/golang.org/x/text/unicode/bidi
-// 	https://www.w3.org/International/articles/inline-bidi-markup/
-//
-// (4) Lazy hyphenation through Config.Hyphenator, when requested by a breaker.
-// The owner shapes alternatives into DiscretionaryCandidate values.
-//
-// (5) Store widths, source spans, flags, and penalties in Khipu SOA planes.
-// Discretionary candidates and selections are stored separately on the paragraph.
-//
-//     https://wiki.apache.org/xmlgraphics-fop/KnuthsModel
-//
-// (6) Shape text -> Glyphs
-// + alternative glyphs (end-of-line condensed in Arabic, etc.)
-//
-// 	http://behdad.org/text/
-//
-// At this point, text has been fully converted to khipus.
+// Owners and their mutable collaborators must not be used concurrently.
+// Linebreaking does not produce final glyph placement or rendering: freezing
+// and glyph provenance remain future work. StreamingShaper and the font
+// interfaces describe draft adapter boundaries, not an active backend.
 //
 /*
 License

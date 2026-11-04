@@ -5,7 +5,7 @@ assigns final widths to the knots of each line.
 
 For now, the working term will be **freezing the khipu**.
 
-Status checked November 3, 2026: this is a design and implementation plan.
+Status checked November 4, 2026: this is a design and implementation plan.
 No `FrozenKhipu` type or freeze entry point is implemented. Both modern
 linebreakers already return breakpoints and retain chosen discretionary
 variants, providing the inputs for this next stage.

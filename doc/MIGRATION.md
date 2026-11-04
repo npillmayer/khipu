@@ -2,7 +2,8 @@
 
 Status: November 4, 2026. The public configuration boundary, shared
 infrastructure extraction, SOA encoder-to-breaker integration, coverage migration,
-and legacy implementation removal are complete (steps 1–5). SOA is the only
+legacy implementation removal, and final documentation/validation review are
+complete (steps 1–6). SOA is the only
 paragraph representation. The removed APIs below are intentional source-level
 breaks; this guide does not promise behavioral parity with the old breaker.
 
@@ -14,9 +15,9 @@ The constructor now accepts an exported configuration value:
 func NewKhipukamayuq(config Config) *Khipukamayuq
 
 type Config struct {
-    Shaper     Shaper
-    Hyphenator Hyphenator
-    Params     *Params
+    Shaper      Shaper
+    Hyphenator  Hyphenator
+    Params      *Params
     ParFillSkip *KnotCore
 }
 ```
@@ -43,13 +44,17 @@ The existing defaults remain unchanged: English, Latin script, left-to-right
 direction, 12 pt baseline skip, zero line skip and line-skip limit, `'-'` as the
 hyphen character, hyphen penalty 10, and minimum hyphen length 2. These are existing
 parameter values, not a claim that every parameter is consumed by the SOA path.
+`Params` is passed to the supplied hyphenator; the module itself uses
+`Hyphenpenalty` as the fallback fragment penalty. The remaining fields are not
+automatically applied to shaping, spacing, or hyphenation filtering. Breaker
+parameters are separate types owned by each linebreaking package.
 
 A `Khipukamayuq` is not safe for concurrent use. It changes the shaper's source
 and style during encoding and discretionary lookup. Do not use the same shaper
 concurrently through another owner or directly. Collaborator interfaces have no
 close operation; any backend resource lifetime remains the caller's responsibility.
 
-The active encoding path still uses `Shaper`. `StreamingShaper` and the font
+Encoding and lazy fragment measurement use `Shaper`. `StreamingShaper` and the font
 interfaces remain draft boundaries and are not wired into this constructor.
 
 ## Removed APIs And Migration Targets
@@ -132,7 +137,11 @@ breaks remain in place. `Config.ParFillSkip` overrides only trailer widths and m
 satisfy `MinW <= W <= MaxW`; an explicit zero value is honored. Breaker parameters
 do not append a second trailer. `Unskip` retains this non-discardable knot.
 
-Both modern breakers consume this output directly. Width-summary arithmetic
+Both modern breakers consume this output directly. They return zero-based
+line-ending knot indices, including the final trailer. Rerunning a breaker
+replaces `SelectedDiscretionaries`; retain a copy when comparing runs. Configure
+its `DiscretionaryProvider` with the same owner to enable lazy discovery. Without
+a provider, already cached alternatives can still be considered. Width-summary arithmetic
 saturates instead of wrapping when paragraph fill is added to finite text/skips.
 Knuth–Plass retires earlier origins after a mandatory break, retains an infeasible
 fallback when necessary, and accumulates costs in 64 bits for repeated fallbacks.
@@ -184,8 +193,40 @@ See [KP.md](KP.md) and [HYPHENATION.md](HYPHENATION.md) for current contracts.
 
 This establishes the SOA pipeline contract, not complete international-script
 typesetting. Script-sensitive discardability, font-backed/streaming shaping, and
-durable discretionary glyph/source provenance remain separate work. Step 6 is
-the final documentation and release-readiness review.
+durable discretionary glyph/source provenance remain separate work.
+See [the documentation index](README.md) for the boundary between implemented
+contracts and future designs.
 
-After step 5, `go test ./...`, `go vet ./...`, and `go build ./...` pass.
-The legacy package is absent; the coverage map above records its test replacements. Freezing remains future work described in [FREEZE.md](FREEZE.md).
+## Final Validation And Release Limits
+
+Step 6 reviewed the surviving public API, documentation links, and examples.
+The quickstart runs both breakers; a second example exercises configured lazy
+hyphenation. Both are executable Go examples in `example_test.go`.
+
+The final local validation commands are:
+
+```sh
+go test ./... -count=1 -timeout=30s
+go vet ./...
+go build ./...
+go mod tidy -diff
+git diff --check
+```
+
+The legacy package is absent and the coverage map above records its test
+replacements. Supported Go source no longer declares or imports the removed
+AOS APIs or `linebreak/kp`. Historical references remain explicitly labeled in
+the design notes. Repository-local documentation links resolve.
+
+These checks use the current sibling `cords` and `uax` checkouts selected by
+`go.mod`, with Go 1.25.6 as the declared minimum. They do not establish a build
+against published dependency versions or compatibility for downstream callers.
+Before publishing a release, select and verify published dependency versions
+that supply the required styled-paragraph and UAX APIs, and migrate affected
+consumers. No dependency versions, local replacements, release tags, or remote
+state were changed by this final review.
+
+This is an intentional API-breaking migration, with no AOS compatibility layer.
+The storage migration is complete; freezing, rendering, font-backed shaping,
+script-specific spacing, and robust discretionary provenance are separate work
+rather than promises of this release. See [FREEZE.md](FREEZE.md).
