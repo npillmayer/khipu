@@ -14,11 +14,6 @@ import (
 const DefaultInitialKhipuCapa = 20
 const MaxInitialKhipuCapa = 1024
 
-type Penalty int16
-
-const MaxPenalty = 10000
-const MaxMerit = -10000
-
 type KnotFlags uint8
 
 const (
@@ -371,27 +366,4 @@ func wrapAsRuneReader(br *bufio.Reader, buf []byte) *bufio.Reader {
 	}
 	br.Reset(bytes.NewReader(buf))
 	return br
-}
-
-func normPenalties(p penalties) Penalty {
-	if p.p1 == 0 {
-		return 0
-	}
-	var p1 int8
-	if p.p1 < 0 { // merit
-		p1 = max(-100, int8(p.p1))
-	} else {
-		p1 = min(100, int8(p.p1))
-	}
-	var p2 int8
-	if p.p1 < 0 { // merit
-		p2 = max(-100, int8(p.p2))
-	} else {
-		p2 = min(100, int8(p.p2))
-	}
-	P := int16(p1) + int16(p2)
-	if P < 0 { // merit
-		return Penalty(max(-100, P))
-	}
-	return Penalty(min(100, P))
 }

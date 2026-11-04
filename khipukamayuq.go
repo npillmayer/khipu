@@ -11,7 +11,6 @@ Copyright © Norbert Pillmayer <norbert@pillmayer.com>
 */
 
 import (
-	"bufio"
 	"io"
 	"math"
 	"strings"
@@ -22,35 +21,9 @@ import (
 	"github.com/npillmayer/hyphenate"
 	"github.com/npillmayer/khipu/dimen"
 	"github.com/npillmayer/opentype/otshape"
-	"github.com/npillmayer/uax"
-	"github.com/npillmayer/uax/bidi"
 	"github.com/npillmayer/uax/segment"
-	"github.com/npillmayer/uax/uax14"
-	"github.com/npillmayer/uax/uax29"
 	"golang.org/x/text/language"
-	"golang.org/x/text/unicode/norm"
 )
-
-// A TypesettingPipeline consists of steps to produce a khipu from text.
-type TypesettingPipeline struct {
-	input       io.RuneReader
-	linewrap    *uax14.LineWrap
-	wordbreaker *uax29.WordBreaker
-	segmenter   *segment.Segmenter
-	words       *segment.Segmenter
-}
-
-type typEnv struct { // typesetting environment
-	shaper Shaper
-	// hyphenator is consulted lazily for textbox-specific discretionaries.
-	// The linebreaker never calls it directly; it reaches it through
-	// Khipukamayuq.DiscretionaryCandidates(...).
-	hyphenator Hyphenator
-	pipeline   *TypesettingPipeline
-	//regs     *params.TypesettingRegisters
-	params *Params
-	levels *bidi.ResolvedLevels
-}
 
 type styledItem struct {
 	offset             uint64
@@ -394,31 +367,6 @@ func HyphenateTextBoxes(khipu *KhipuAOS, pipeline *TypesettingPipeline, regs *Pa
 	khipu.knots = k
 }
 
-// PrepareTypesettingPipeline checks if a typesetting pipeline is correctly
-// initialized and creates a new one if is is invalid.
-//
-// We use a uax14.LineWrapper as the primary breaker and
-// use a segment.SimpleWordBreaker to extract spans of whitespace.
-// For the inner loop we use a uax29.WordBreaker.
-// This is a default configuration adequate for western languages.
-func PrepareTypesettingPipeline(text io.Reader, pipeline *TypesettingPipeline) *TypesettingPipeline {
-	// wrap a normalization-reader around the input
-	if pipeline == nil {
-		pipeline = &TypesettingPipeline{}
-	}
-	pipeline.input = bufio.NewReader(norm.NFC.Reader(text))
-	if pipeline.segmenter == nil {
-		// pipeline.linewrap = uax14.NewLineWrap()
-		// pipeline.segmenter = segment.NewSegmenter(pipeline.linewrap, segment.NewSimpleWordBreaker())
-		pipeline.segmenter = segment.NewSegmenter()
-		pipeline.segmenter.Init(pipeline.input)
-		pipeline.wordbreaker = uax29.NewWordBreaker(1)
-		pipeline.words = segment.NewSegmenter(pipeline.wordbreaker)
-		pipeline.words.BreakOnZero(true, false)
-	}
-	return pipeline
-}
-
 // HyphenateWord hyphenates a single word.
 // Returns true if word was hyphenated.
 func HyphenateWord(word string, dict *hyphenate.Dictionary) (splitWord []string, ok bool) {
@@ -440,26 +388,6 @@ func HyphenateWord(word string, dict *hyphenate.Dictionary) (splitWord []string,
 }
 
 // ---------------------------------------------------------------------------
-
-type penalties struct {
-	p1, p2 int
-}
-
-func penlty(p1, p2 int) penalties {
-	return penalties{p1, p2}
-}
-
-func (p penalties) primaryBreak() bool {
-	return p.p1 < uax.InfinitePenalty
-}
-
-func (p penalties) canWrapLine() bool {
-	return p.p1 < uax.InfinitePenalty
-}
-
-func (p penalties) breaksAtSpace() bool {
-	return p.p2 < uax.InfinitePenalty
-}
 
 func isspace(text string) bool {
 	if len(text) == 0 {

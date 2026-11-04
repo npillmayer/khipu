@@ -1,6 +1,7 @@
 # Migration To The SOA Paragraph Model
 
-Status: November 4, 2026. The public configuration boundary is implemented.
+Status: November 4, 2026. The public configuration boundary and shared
+infrastructure extraction are implemented (steps 1 and 2).
 Legacy storage, encoding, and the `linebreak/kp` package remain available until
 later removal steps. This document distinguishes today's API from planned
 retirement; it does not promise equivalent behavior between the two breakers.
@@ -67,9 +68,31 @@ Both `linebreak/firstfit` and `linebreak/knuthplass` operate on this model and s
 | `linebreak/kp.FindBreakpoints` | Modern single-best-path result | Enumeration of all line-count solutions is intentionally not provided |
 | Legacy list mutation, measurement, text extraction, and box height/depth helpers | Review each consumer against source spans, SOA widths, and the future frozen representation | No blanket compatibility API is planned; freezing and glyph provenance are still separate work |
 
-No legacy APIs are deleted by the configuration change. Their eventual removal
+No legacy APIs are deleted by the configuration or extraction changes. Their eventual removal
 will be an intentional API break. Known downstream callers must be checked before
 release; consumers outside this repository have not been audited.
+
+## Shared Infrastructure Extraction
+
+Shared definitions now live outside the legacy storage and encoder files:
+
+| File | Responsibility |
+| --- | --- |
+| `environment.go` | Internal encoding collaborators, parameters, and pipeline state |
+| `pipeline.go` | NFC input normalization and segmenter setup |
+| `penalties.go` | Segmenter penalty pairs, the SOA penalty type and sentinels, and existing conversion logic |
+| `knot_types.go` | Knot-kind identifiers shared by both representations |
+
+The unused line-wrapper field, redundant stored word-breaker pointer, and unused
+`primaryBreak` helper have been removed. The word scanner remains because legacy
+text encoding and eager hyphenation still use it; `typEnv.levels` likewise remains
+for the legacy text encoder. These dependencies are marked for later retirement.
+
+Public signatures, knot-kind numeric values, segmentation rules, and penalty
+conversion behavior are unchanged by this extraction. Pipeline reuse still retains
+existing segmenter state. Correcting reset behavior, penalty mapping, shaping, and
+paragraph termination belongs to step 3, where integration tests will establish
+the SOA encoder-to-breaker contract.
 
 ## Validation Boundary And Follow-Up
 
@@ -79,7 +102,7 @@ fragment measurement, configured hyphenator use, parameter-copy isolation, nil
 defaults, explicit zero parameters, and independent default shapers. Existing
 modern breaker tests remain applicable.
 
-This step does not resolve the default shaper's EOF/run lifecycle, UAX penalty
+These steps do not resolve the default shaper's EOF/run lifecycle, UAX penalty
 mapping, or automatic creation of the paragraph trailer expected by the breakers.
 Those require encoder-to-breaker integration work before legacy retirement.
 See [KP.md](KP.md) and [HYPHENATION.md](HYPHENATION.md) for current contracts.

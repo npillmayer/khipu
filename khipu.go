@@ -14,19 +14,6 @@ import (
 
 // === Knots =================================================================
 
-// KnotType is a type for the different flavours of knots.
-type KnotType int8
-
-// Knot types
-const (
-	KTKern KnotType = iota
-	KTGlue
-	KTTextBox
-	KTPenalty
-	KTDiscretionary
-	KTUserDefined // clients should use custom knot types above this
-)
-
 // A Knot has a width and may be discardable at line-breaks.
 type Knot interface {
 	Type() KnotType      // type identifier of this knot
