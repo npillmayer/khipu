@@ -38,3 +38,30 @@ a single paragraph.
 <div style="width:480px;padding:5px;padding-bottom:10px">
 <img alt="typeset a single paragraph" src="http://npillmayer.github.io/TySE/images/khipukamayuq.svg" width="480px">
 </div>
+
+## Configure SOA Encoding
+
+Use `NewKhipukamayuq` with the public `Config` type. Given a styled paragraph
+`para` and caller-supplied implementations of `Shaper` and `Hyphenator`:
+
+```go
+kq := khipu.NewKhipukamayuq(khipu.Config{
+    Shaper:     shaper,
+    Hyphenator: hyphenator,
+})
+khp, err := kq.EncodeParagraph(para, nil)
+```
+
+`khp` is the SOA `*khipu.Khipu`. Omitting `Params` selects the existing defaults;
+a supplied `*Params` is copied in full, including zero fields. Omitting
+`Hyphenator` disables lazy discovery while preserving access to cached candidates.
+The collaborators themselves are retained, so a stateful shaper must not be used
+concurrently with its owner.
+
+`Config{}` preserves the built-in fixed-width shaper default. Its EOF/run lifecycle
+and the encoder's paragraph-trailer and penalty contracts still need follow-up;
+this configuration API does not establish a complete default typesetting pipeline.
+
+SOA is the chosen paragraph model. Legacy APIs remain during migration; see
+[the API migration guide](doc/MIGRATION.md) for the constructor change and planned
+replacements.

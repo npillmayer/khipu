@@ -68,9 +68,9 @@ func (sh *testshaper) ReadClusterMetrics() (clusterId int, width dimen.DU, len i
 // --- Khipukamayuq ----------------------------------------------------------
 
 func newTestKq() *Khipukamayuq {
-	env := typEnv{
-		shaper: &testshaper{},
-		params: newParameters(),
+	config := Config{
+		Shaper: &testshaper{},
+		Params: newParameters(),
 	}
-	return NewKhipukamayuq(env)
+	return NewKhipukamayuq(config)
 }

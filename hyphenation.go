@@ -13,6 +13,8 @@ type HyphenationFragment struct {
 // Hyphenator discovers hyphenation alternatives for one textbox string.
 // It returns fragment strings; shaping and final discretionary construction
 // remain the responsibility of Khipukamayuq.
+// The params argument belongs to Khipukamayuq and must not be modified.
+// Implementations needing to retain parameters should copy the value.
 type Hyphenator interface {
 	Discretionaries(word string, params *Params) ([]HyphenationFragment, error)
 }

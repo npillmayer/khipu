@@ -198,12 +198,22 @@ type Khipukamayuq struct {
 	env typEnv
 }
 
-func NewKhipukamayuq(env typEnv) *Khipukamayuq {
+// NewKhipukamayuq creates an owner for SOA paragraphs using config.
+// It copies parameters and retains collaborator instances as described by Config.
+// A Khipukamayuq must not be used concurrently.
+func NewKhipukamayuq(config Config) *Khipukamayuq {
+	env := typEnv{
+		shaper:     config.Shaper,
+		hyphenator: config.Hyphenator,
+	}
 	if env.shaper == nil {
 		env.shaper = newFixedShaper()
 	}
-	if env.params == nil {
+	if config.Params == nil {
 		env.params = newParameters()
+	} else {
+		params := *config.Params
+		env.params = &params
 	}
 	return &Khipukamayuq{
 		env: env,
@@ -270,7 +280,7 @@ func (kq *Khipukamayuq) EncodeParagraph(para *styled.Paragraph, knotAdapt KnotSt
 				// TODO: discardability currently falls back to a simple kind-based
 				// default. This decision belongs with Khipukamayuq and should later
 				// be driven by richer script/segment/shaping information instead.
-				Flags:   defaultFlagsForKind(kindFromText(segment)),
+				Flags: defaultFlagsForKind(kindFromText(segment)),
 			}
 			if knotAdapt != nil {
 				mn, mx := knotAdapt.AdaptKnot(k, styleChange.Style)

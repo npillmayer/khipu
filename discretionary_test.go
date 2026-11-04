@@ -117,10 +117,10 @@ func TestKhipukamayuqProvidesCachedDiscretionaries(t *testing.T) {
 }
 
 func TestKhipukamayuqShapesAndCachesHyphenatorDiscretionaries(t *testing.T) {
-	env := typEnv{
-		shaper: &testshaper{},
-		params: newParameters(),
-		hyphenator: &testhyphenator{
+	config := Config{
+		Shaper: &testshaper{},
+		Params: newParameters(),
+		Hyphenator: &testhyphenator{
 			want: []HyphenationFragment{{
 				Variant:   1,
 				PreBreak:  "break",
@@ -128,7 +128,7 @@ func TestKhipukamayuqShapesAndCachesHyphenatorDiscretionaries(t *testing.T) {
 			}},
 		},
 	}
-	kq := NewKhipukamayuq(env)
+	kq := NewKhipukamayuq(config)
 	text := styled.TextFromString("breaking")
 	para, err := styled.ParagraphFromText(&text, 0, text.Raw().Len(), bidi.LeftToRight, nil)
 	if err != nil {
@@ -152,14 +152,14 @@ func TestKhipukamayuqShapesAndCachesHyphenatorDiscretionaries(t *testing.T) {
 	if got[0].PreBreak.W != 25*dimen.PT || got[0].PostBreak.W != 15*dimen.PT {
 		t.Fatalf("unexpected shaped discretionary widths: %+v", got[0])
 	}
-	if got[0].PreBreak.Penalty != Penalty(env.params.Hyphenpenalty) {
-		t.Fatalf("expected discretionary penalty %d, got %d", env.params.Hyphenpenalty, got[0].PreBreak.Penalty)
+	if got[0].PreBreak.Penalty != Penalty(config.Params.Hyphenpenalty) {
+		t.Fatalf("expected discretionary penalty %d, got %d", config.Params.Hyphenpenalty, got[0].PreBreak.Penalty)
 	}
 	if len(k.DiscretionariesAt(0)) != 1 {
 		t.Fatalf("expected discretionary candidate to be cached on khipu")
 	}
-	if env.hyphenator.(*testhyphenator).calls != 1 {
-		t.Fatalf("expected hyphenator to be called once, got %d", env.hyphenator.(*testhyphenator).calls)
+	if config.Hyphenator.(*testhyphenator).calls != 1 {
+		t.Fatalf("expected hyphenator to be called once, got %d", config.Hyphenator.(*testhyphenator).calls)
 	}
 	got, err = kq.DiscretionaryCandidates(k, 0)
 	if err != nil {
@@ -168,7 +168,7 @@ func TestKhipukamayuqShapesAndCachesHyphenatorDiscretionaries(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected cached discretionary candidate, got %+v", got)
 	}
-	if env.hyphenator.(*testhyphenator).calls != 1 {
-		t.Fatalf("expected cached lookup not to call hyphenator again, got %d", env.hyphenator.(*testhyphenator).calls)
+	if config.Hyphenator.(*testhyphenator).calls != 1 {
+		t.Fatalf("expected cached lookup not to call hyphenator again, got %d", config.Hyphenator.(*testhyphenator).calls)
 	}
 }
