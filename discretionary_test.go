@@ -89,7 +89,7 @@ func TestKhipuStoresDiscretionaries(t *testing.T) {
 }
 
 func TestKhipukamayuqProvidesCachedDiscretionaries(t *testing.T) {
-	kq := newTestKq()
+	kq := NewKhipukamayuq(Config{})
 	k := kq.allocKhipu(1)
 	k.appendKnot(KnotCore{
 		W: 30 * dimen.BP, MinW: 30 * dimen.BP, MaxW: 30 * dimen.BP,
@@ -118,7 +118,6 @@ func TestKhipukamayuqProvidesCachedDiscretionaries(t *testing.T) {
 
 func TestKhipukamayuqShapesAndCachesHyphenatorDiscretionaries(t *testing.T) {
 	config := Config{
-		Shaper: &testshaper{},
 		Params: newParameters(),
 		Hyphenator: &testhyphenator{
 			want: []HyphenationFragment{{

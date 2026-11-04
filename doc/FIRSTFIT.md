@@ -233,8 +233,10 @@ At this point, the migration of `firstfit` itself should be considered done.
 
 ## Verification And Next Pipeline Stage
 
-On November 3, 2026, `go test ./...` passed for all three linebreaker
-packages. Root-package `TestKhipu` and `TestBreaking1` still failed.
+On November 4, 2026, `go test ./...` and `go vet ./...` pass after migration of
+legacy coverage to SOA. Both modern breakers exercise the short and long paragraph
+regressions, and the root package passes. The legacy breaker still compiles;
+its superseded tests have been retired (see [MIGRATION.md](MIGRATION.md)).
 
 Linebreaking chooses indices and discretionary variants; it does not assign
 final knot widths. Freezing is the next planned stage, described in

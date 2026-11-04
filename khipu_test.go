@@ -1,80 +1,39 @@
 package khipu
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/npillmayer/khipu/dimen"
-	"github.com/npillmayer/schuko/tracing/gotestingadapter"
 )
 
-func TestDimen(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "tyse.khipu")
-	defer teardown()
-	//
-	if dimen.BP.String() != "65536sp" {
-		t.Error("a big point BP should be 65536 scaled points SP")
+// Replaces the legacy list-construction test with the SOA value contract.
+func TestKhipuKnotSnapshots(t *testing.T) {
+	owner := NewKhipukamayuq(Config{})
+	khp := owner.allocKhipu(3)
+	want := []KnotCore{
+		{Kind: KTKern, W: dimen.PT, MinW: dimen.PT, MaxW: dimen.PT},
+		{Kind: KTGlue, W: 2 * dimen.PT, MaxW: 4 * dimen.PT, Flags: KFDiscardable},
+		{Kind: KTTextBox, Pos: 10, Len: 5, W: 25 * dimen.PT, MinW: 25 * dimen.PT, MaxW: 25 * dimen.PT, Penalty: MaxPenalty},
 	}
-}
-
-func TestKhipu(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "tyse.khipu")
-	defer teardown()
-	//
-	kh := NewKhipu()
-	kh.AppendKnot(NewKnot(KTKern)).AppendKnot(NewKnot(KTGlue))
-	kh.AppendKnot(NewTextBox("Hello", 0))
-	t.Logf("khipu = %s\n", kh.String())
-	if kh.Length() != 3 {
-		t.Errorf("Length of khipu should be 3")
+	for _, k := range want {
+		khp.appendKnot(k)
 	}
-	t.Fail()
-}
-
-func TestBreaking1(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "tyse.khipu")
-	defer teardown()
-	//
-	kh := KnotEncode(strings.NewReader("Hello World "), 0, nil, nil)
-	if kh.Length() != 10 {
-		t.Logf("khipu = %s", kh)
-		t.Errorf("khipu length is %d, should be 10", kh.Length())
+	if len(khp.Kind) != len(want) {
+		t.Fatalf("got %d knots, want %d", len(khp.Kind), len(want))
 	}
-}
-
-func TestBreaking2(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "tyse.khipu")
-	defer teardown()
-	//
-	kh := KnotEncode(strings.NewReader("The quick !"), 0, nil, nil)
-	if kh.Length() != 10 {
-		t.Logf("khipu = %s", kh)
-		t.Errorf("khipu length is %d, should be 10", kh.Length())
+	for i, k := range want {
+		if got := khp.KnotByIndex(i); got != k {
+			t.Fatalf("knot %d: got %+v, want %+v", i, got, k)
+		}
 	}
-}
-
-func TestText(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "tyse.khipu")
-	defer teardown()
-	//
-	text := "The quick brown fox jumps over the lazy dog!"
-	kh := KnotEncode(strings.NewReader(text), 0, nil, nil)
-	out := kh.Text(0, kh.Length())
-	if out != text {
-		t.Logf("Text: %s", out)
-		t.Errorf("output text != input text")
+	snapshot := khp.KnotByIndex(2)
+	snapshot.W = 0
+	if khp.W[2] != want[2].W {
+		t.Fatal("changing a snapshot mutated stored width")
 	}
-}
-
-func TestExHyphen(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "tyse.khipu")
-	defer teardown()
-	//
-	text := "lime-tree"
-	kh := KnotEncode(strings.NewReader(text), 0, nil, nil)
-	out := kh.Text(0, kh.Length())
-	if out != text {
-		t.Logf("Text: %s", out)
-		t.Errorf("output text != input text")
+	for _, index := range []int{-1, len(want)} {
+		if got := khp.KnotByIndex(index); got != (KnotCore{}) {
+			t.Fatalf("out-of-range knot %d: %+v", index, got)
+		}
 	}
 }

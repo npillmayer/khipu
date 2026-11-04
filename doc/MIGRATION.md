@@ -1,8 +1,8 @@
 # Migration To The SOA Paragraph Model
 
 Status: November 4, 2026. The public configuration boundary, shared
-infrastructure extraction, and SOA encoder-to-breaker integration are implemented
-(steps 1–3).
+infrastructure extraction, SOA encoder-to-breaker integration, and legacy test
+coverage migration are implemented (steps 1–4).
 Legacy storage, encoding, and the `linebreak/kp` package remain available until
 later removal steps. This document distinguishes today's API from planned
 retirement; it does not promise equivalent behavior between the two breakers.
@@ -71,7 +71,7 @@ Both `linebreak/firstfit` and `linebreak/knuthplass` operate on this model and s
 | `linebreak/kp.FindBreakpoints` | Modern single-best-path result | Enumeration of all line-count solutions is intentionally not provided |
 | Legacy list mutation, measurement, text extraction, and box height/depth helpers | Review each consumer against source spans, SOA widths, and the future frozen representation | No blanket compatibility API is planned; freezing and glyph provenance are still separate work |
 
-No legacy APIs are deleted by steps 1–3. Their eventual removal
+No public legacy APIs are deleted by steps 1–4. Their eventual removal
 will be an intentional API break. Known downstream callers must be checked before
 release; consumers outside this repository have not been audited.
 
@@ -131,6 +131,36 @@ Knuth–Plass retires earlier origins after a mandatory break, retains an infeas
 fallback when necessary, and accumulates costs in 64 bits for repeated fallbacks.
 These are linebreaking summaries, not freeze-time allocation of fill orders.
 
+## Legacy Coverage Migration
+
+Step 4 preserves useful legacy scenarios as SOA assertions. Tests no longer
+construct AOS lists or depend on legacy cursors, marks, concrete knots, or eager
+hyphenation. The two formerly failing root tests have been replaced, not skipped.
+
+| Previous coverage | SOA coverage / disposition |
+| --- | --- |
+| `TestKhipu`: append kern, glue, and text; unconditional failure | `TestKhipuKnotSnapshots`: indexed values, stored dimensions/flags/source spans, snapshot isolation, and out-of-range access |
+| `TestBreaking1`, `TestBreaking2`: counts of separate penalty items | `TestEncodedParagraphTextRegressions`: the same source cases, legal byte boundaries, content/space kinds, and discardability |
+| `TestText`, `TestExHyphen`: source extraction and literal hyphen | `TestEncodedParagraphTextRegressions`: exact reconstruction from source spans, a permitted break after the literal hyphen, and no discretionary replacement |
+| `TestParaSimple`: styled paragraph smoke test | `TestEncodedParagraphStyleAdaptation`: exact styled span and style-dependent widths on each source knot |
+| `TestDimen` | `dimen.TestBigPointString`, colocated with dimension code |
+| Legacy `TestGraph1`: breakpoint registration/lookup | Existing modern `TestPathTableAddBreakpoint`, with additional predecessor/cost/tie coverage in `path_test.go` |
+| Legacy underfull, exact-fit, and wrapping cases | `TestModernBreakersParagraphRegressions`: both modern breakers, complete/legal break sequences, expected line counts, width bounds, and source preservation |
+| Legacy king/princess paragraphs with flexible spaces | The same corpus in `TestModernBreakersParagraphRegressions`, with elasticity supplied through `KnotStyler` |
+
+Legacy line-count enumeration, cursor-driven metric mutation, GraphViz test output,
+and the test-only justification printer are not supported SOA contracts and were
+retired with their fixtures. The commented-out HTML/DOM test had no executable
+coverage and was removed; styled input is exercised directly. The redundant
+test shaper was replaced by the repaired default shaper. Lazy hyphenation and
+selection remain covered by the step-3 integration and discretionary tests.
+
+Modern Knuth–Plass no longer declares the unused `feasibleBreakpoint` and
+`provisionalMark` types or carries obsolete cursor-loop comments. Its runtime
+algorithm is unchanged by step 4. The legacy `linebreak/kp` implementation still
+compiles, but its useful tests now live on the SOA path. Step 5 removes the legacy
+storage, encoder, cursors, eager hyphenation, and breaker implementation.
+
 ## Validation Boundary And Follow-Up
 
 External-package tests exercise public construction, configured shaper error
@@ -149,8 +179,8 @@ See [KP.md](KP.md) and [HYPHENATION.md](HYPHENATION.md) for current contracts.
 This establishes the SOA pipeline contract, not complete international-script
 typesetting. Script-sensitive discardability, font-backed/streaming shaping, and
 durable discretionary glyph/source provenance remain separate work. Legacy
-coverage migration and implementation removal follow in later steps.
+implementation removal follows in step 5.
 
-The known root-package baseline failures remain `TestKhipu` (unconditional failure)
-and `TestBreaking1` (legacy item-count expectation). They are not hidden or removed
-by the API migration. Freezing remains future work described in [FREEZE.md](FREEZE.md).
+After step 4, `go test ./...` and `go vet ./...` pass, including the root package.
+The legacy package has no remaining tests; the coverage map above records their
+replacements. Freezing remains future work described in [FREEZE.md](FREEZE.md).
