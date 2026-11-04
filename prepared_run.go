@@ -65,9 +65,9 @@ type runParameters struct {
 // not determine discardability or prescribe numerical stretch/shrink amounts.
 // Although the zero value denotes fixed spacing, preparation must resolve the
 // policy explicitly rather than treat zero as an unspecified paragraph default.
-type spacingMode uint8
+type spacingMode = SpacingMode
 
 const (
-	spacingFixed   spacingMode = iota // Interword spaces retain their natural width.
-	spacingElastic                    // Interword spaces may receive stretch/shrink capacity.
+	spacingFixed   = SpacingFixed
+	spacingElastic = SpacingElastic
 )
