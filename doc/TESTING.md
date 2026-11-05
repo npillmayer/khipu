@@ -101,6 +101,16 @@ classes, paragraph offsets, owned glyph storage, width errors and terminal fill.
 Unsupported glyphless mandatory-break sequences fail without partial results.
 These intermediate candidates are not yet persistent `Khipu` nodes.
 
+`stream_candidates_test.go` exercises the connected internal pipeline from a
+styled paragraph to candidate knots. Synthetic cases cover buffered/unbuffered
+output, mixed direction, omitted controls, empty input and retained metadata.
+Scripted backends exercise pre-Shape errors with open output, Shape/Finish
+failures, terminal Err, invalid glyph anchors and cancellation. Consumer failure
+tests verify that the producer exits before the operation returns. Preparation
+and finalization failures return no partial candidate paragraph. This is not
+yet public encoder integration; source and prepared metadata remain retained
+in the internal result rather than installed in `Khipu`.
+
 Boundary preparation also retains independent default UAX#29 word-boundary
 hints. Explicit tests cover punctuation, contractions, numeric punctuation,
 combining marks, CJK text, consecutive spaces, CRLF, and omitted bidi controls.

@@ -208,8 +208,30 @@ the assembled cluster endpoint uses the normal source penalty path.
 Candidates are returned only on successful finalization. The final content
 penalty is prohibited and a non-discardable fill/forced-break candidate is
 appended at paragraph end. Invalid source spans, width conversions and knot
-length overflow discard all accumulated candidates. Production orchestration,
+length overflow discard all accumulated candidates. Public owner configuration,
 persistent glyph storage and active encoder migration remain future work.
+
+### Connected Candidate Pipeline
+
+`streamCandidateParagraph` now connects all the internal knotting stages. It
+accepts a paragraph, resolver and defaults, layout parameters, fill dimensions,
+and a fresh caller-supplied streaming shaper. It prepares boundaries and runs
+synchronously, starts one producer goroutine, and consumes glyphs through the
+assembler and accumulator on the calling execution path.
+
+The consumer observes glyph output and producer completion independently.
+Successful producer completion does not skip buffered output; channel closure
+does not imply producer success. On any consumer error or cancellation it cancels
+and joins the producer before returning. Preparation checks cancellation between
+stages; it is not interruptible within a stage. Backend reads remain subject to
+the streaming contract's cancellation limitations.
+
+Only complete success returns a `candidateParagraph`, retaining candidate knots,
+prepared runs and source boundaries together so their indices remain meaningful.
+The original paragraph remains borrowed. Every error returns nil, including
+terminal shaper errors and width/fill finalization failures. This internal
+operation does not allocate a persistent `Khipu`, alter public configuration,
+or replace `EncodeParagraph`.
 
 ```
 [ Initialize an empty khipu `K` ]
