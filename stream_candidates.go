@@ -128,5 +128,10 @@ func streamCandidateParagraph(ctx context.Context, para *styled.Paragraph, resol
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return &candidateParagraph{paragraph: para, runs: runs, boundaries: boundaries, knots: knots}, nil
+	return &candidateParagraph{
+		paragraph:  para,
+		runs:       runs,
+		boundaries: boundaries,
+		knots:      knots,
+	}, nil
 }
