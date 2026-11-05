@@ -23,7 +23,7 @@ Each run `R` is associated with a "Param-Environment" `P`, which determines prop
 - selected `font`
 - current script `script`
 - current language `lang`
-- current `bidi` direction (LTR or RTL) and level
+- current `bidi` direction (LTR or RTL)
 - treatment of inter-word spaces: `spacing` = either `elastic` or `fixed`
 
 The top-level paragraph has `P(¶)`, which will provide default values for all properties.
@@ -37,7 +37,7 @@ Styles will always be translated to concrete properties, e.g. "*bold*" will be t
 
 ### Bidi Intervals
 
-Paragraphs may contain character sequences in mixed LTR and RTL scripts. These sub-sequences will be described (in terms of bidi) as bidi-intervals, denoted as `B`. Bidi intervals are independent (orthogonal) to rune runs. Each `B` has a property `bidi`, either of value `LTR` or `RTL`, together with its level number. We have a Go package available to produce these for a given paragraph.
+Paragraphs may contain character sequences in mixed LTR and RTL scripts. These sub-sequences will be described (in terms of bidi) as bidi-intervals, denoted as `B`. Bidi intervals are independent (orthogonal) to rune runs. Each `B` has a property `bidi`, either of value `LTR` or `RTL`. The `uax/bidi` package resolves the paragraph into `*ResolvedLevels`, which we retain for line-local ordering after line-breaking. We do not store a numeric embedding level in each run's Param-Environment; direction is still required for shaping and later glyph placement.
 
 If a paragraph is split at a bidi interval boundary, the style hierarchy is split appropriately.
 
@@ -74,8 +74,8 @@ For sketching out the algorithm we will rely on a Shaper version which offers a 
 ### Character Input End
 
 ```
-[ Repeat until character data for ¶ is drained ] :
-    [ Split off the next bidi interval `B` from ¶ ]
+[ Intersect bidi intervals with style spans ]
+[ For every interval `B` in `ResolvedLevels.LogicalSegments()` ] :
     // Runs are split off at style boundaries
     [ For every run `R` split off from `B` ] :
         [ `P(R).bidi = B.bidi` ]
@@ -90,6 +90,32 @@ For sketching out the algorithm we will rely on a Shaper version which offers a 
 [ Signal EOF to the Shaper channel ]
 ```
 
+Here, splitting off shaping intervals means traversing the paragraph in logical
+order, not consuming `ResolvedLevels.Split`. The latter is reserved for the
+chosen line boundaries. `LogicalSegments()` includes nested isolates without
+modifying the resolution. Intersect its source-byte intervals with
+`Paragraph.StyleRanges()`, preserving isolate boundaries and gaps for omitted
+controls. The internal `intersectParagraphRuns` stage performs this intersection
+without flattening the cord: a forward reader scan records original scalar
+positions, including skipped controls. Results retain source ranges, style and
+direction; font resolution and streaming-shaper submission are not yet wired.
+
+```
+[ Intersect bidi intervals with style spans ] :=
+    [ Resolve bidi for the whole paragraph ]
+    [ Obtain flattened style spans in original source-byte coordinates ]
+    [ For each segment B in levels.LogicalSegments() ] :
+        [ Visit style spans S overlapping B ]
+        [ Compute from = max(B.From, S.From) ]
+        [ Compute to = min(B.To, S.To) ]
+        [ For each nonempty intersection [from, to) ] :
+            [ Resolve style-controlled shaping parameters from S ]
+            [ Set shaping direction to B.Dir ]
+            [ Subdivide further where script/language requires it ]
+            [ Record original byte and scalar ranges in preparedRun ]
+            [ Submit original logical text with these parameters to the Shaper ]
+    [ Retain levels for splitting at the finally selected line boundaries ]
+```
 
 ### Glyph Output End
 
@@ -186,12 +212,56 @@ Each Knuth-Plass pass has the following structure:
 ```
 
 
+## Line-Local Bidi Ordering
+
+Line-breaking operates entirely in logical order. Only after the final path has
+been chosen do we split the retained bidi resolution at the same source
+boundaries. We split `ResolvedLevels`, not an already computed `Ordering`, and
+then compute an `Ordering` separately for each line.
+
+```
+[ Map the chosen breakpoint sequence to paragraph-relative UTF-8 byte boundaries ]
+[ Let `remaining` be the retained paragraph `ResolvedLevels` ]
+[ For every line in logical paragraph order ] :
+    [ If this is not the final line ] :
+        [ `lineLevels, remaining = remaining.Split(lineEndByte, false)` ]
+    [ Else ] :
+        [ `lineLevels = remaining` ]
+    [ Account for line-boundary whitespace direction rules (UAX#9 L1) ]
+    [ Store `lineLevels.Reorder()` as this line's `Ordering` ]
+```
+
+The following operation is applied to each materialized line immediately before
+freezing. We choose left-to-right physical traversal, independently of the
+paragraph's base direction.
+
+```
+[ Arrange the line's knots using its `Ordering` ] :=
+    [ For every `run` in `Ordering.Runs` ] :
+        [ For every `segment` in `run.Segments(run.IsOpposite(bidi.LeftToRight))` ] :
+            [ Locate the knot/box groups associated with `[segment.From, segment.To)` ]
+            [ Arrange those groups in the segment's directional traversal order ]
+            [ Preserve the glyph sequence within each box and its direction metadata ]
+    [ Place generated material according to its associated fragment or line edge ]
+```
+
+**Implementation remarks**:
+- All bidi positions are half-open UTF-8 byte offsets into the original paragraph, not knot indices or cluster IDs. `Split(..., false)` preserves those coordinates across lines. A run can contain noncontiguous source intervals; use `Segments`, not `run.Length`, to locate them.
+- A selected discretionary needs its original source split position and fragment provenance. The length of the shaped PreBreak text is not a substitute: substitutions or inserted glyphs may change it. The terminal parfillskip maps to paragraph end, not an additional source character.
+- Source coverage is partitioned before trimming. Discarded source spaces still participate in the bidi line boundary calculation, even though their knots will not be emitted. L1 handling remains a client responsibility and needs refinement independently of width trimming.
+- Boxes must be compatible with directional segment boundaries. A segment may cover multiple boxes, which need directional ordering, but glyph arrays inside boxes are not reversed here. Later placement must still honor their direction because the streaming shaper emits logical shaping order.
+- Generated fragments and zero-source glue need explicit attachment rules. Left/right skips are attached to physical line edges after ordering; source-less material cannot be located by byte intervals alone.
+- `Split` and `Reorder` mutate backing state. Do not consume the retained resolution during candidate-path exploration; copying the structs does not create independent snapshots.
+- The current `uax/bidi` implementation does not preserve the paragraph embedding-direction field when splitting. This and its unfinished nested-isolate splitting paths need attention before enabling general multiline bidi layout. The sketch describes the intended pipeline, not a claim that these upstream paths are ready.
+
+
 ## Freezing the Khipu
 
 
 **Prerequisites**:
 - A set of breakpoints is available, pointing to knots in `K`.
 - Glyphs are knotted in logical order.
+- A line-local bidi `Ordering` is available for each chosen line.
 - Selected discretionaries (SelectedDiscretionaries)
 - Paragraph shape (ParShape) or explicit target line lengths
 - The same left/right skip dimensions used during linebreaking
@@ -203,6 +273,7 @@ Each Knuth-Plass pass has the following structure:
     // Consider the sub-khipu from `S` to `E` as the current line
     [ Remove trimmed discardables at both line edges ]
     [ Replace selected discretionary textbox, if present ]
+    [ Arrange the line's knots using its `Ordering` ]
     [ Pre-/append left/right skip dimension glue to the current line ]
     [ Calculate delta = target_line_width - natural_line_width ]
     [ Distribute delta between elastic knots present in the line ]
@@ -241,5 +312,8 @@ and
 
 ## Create Visual Representation
 
-This part of paragraph typesetting is outside the responsibility of this module. This means that reversing RTL intervals into visual order is out of scope.
-
+Box creation, directional glyph placement, and rendering are outside the
+responsibility of this phase. The frozen line already has its knot/box groups
+arranged for physical traversal. This does not reverse glyph sequences within
+boxes or remove the need for direction-aware placement later; paragraph bidi
+ordering must not be applied a second time.
