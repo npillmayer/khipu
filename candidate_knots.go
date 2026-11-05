@@ -83,6 +83,12 @@ func (a *candidateKnotAccumulator) gapBoundary(from, to uint64) (sourceBoundary,
 	if start > 0 {
 		start--
 	}
+	// Filtered markers can extend the preceding cluster's source span. Retain
+	// an ordinary space/hard break immediately before that marker suffix; it
+	// is not a discretionary break at the marker itself.
+	for start > 0 && a.boundaries[start].softHyphen {
+		start--
+	}
 	forced := 0
 	for i := start; i < to; i++ {
 		b := a.boundaries[i]
@@ -137,7 +143,11 @@ func (a *candidateKnotAccumulator) push(c *glyphCluster) error {
 	// An absent anchor can mean either a ligature or omitted characters. We
 	// cannot safely split this interval, but must not silently lose a required
 	// source break. Optional breaks/hints inside the cluster remain suppressed.
-	for i := s.scalarStart; i+1 < s.scalarEnd; i++ {
+	visibleEnd := s.scalarEnd
+	for visibleEnd > s.scalarStart && a.boundaries[visibleEnd-1].softHyphen {
+		visibleEnd--
+	}
+	for i := s.scalarStart; i+1 < visibleEnd; i++ {
 		if a.boundaries[i].penalty <= MaxMerit {
 			return a.fail(fmt.Errorf("%w: inside cluster at scalar %d", ErrUnrepresentableMandatoryBreak, i+1))
 		}

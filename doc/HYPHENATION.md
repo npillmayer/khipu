@@ -7,13 +7,16 @@ Reviewed against the code on November 4, 2026.
 The streaming encoder now produces the same width/penalty/flag planes consumed
 by both linebreakers, plus textbox shaping storage. Ordinary breaking requires
 no glyph-aware algorithm. Narrow-width integration tests cover actual wrapping,
-trimming, forced breaks and unchanged base knots. Lazy streaming discretionaries
-are still guarded by `ErrStreamingDiscretionariesUnsupported`: the metric
-fragment shaper must not measure alternatives for streaming text.
+trimming, forced breaks and unchanged base knots. Lazy streaming lookup now
+supports explicit U+00AD inside a single retained textbox/context. Configure the
+Khipukamayuq as the breaker's `DiscretionaryProvider`. Unmarked streaming boxes
+return no alternatives: automatic streaming discovery remains disabled and never
+falls back to metric shaping. `ErrStreamingDiscretionariesUnsupported` now guards
+missing streaming configuration when explicit fragment shaping is needed.
 
 ### Initial Request Scope
 
-Keep the existing knot-index provider interfaces initially. Accept a request
+For future automatic discovery, keep the knot-index provider interfaces. Accept a request
 only when the textbox contains a complete eligible source word in one retained
 shaping context. Use the original source and independent word-boundary metadata,
 not whitespace or the mere existence of a textbox boundary. A style or bidi
@@ -42,7 +45,7 @@ The two provenance intervals partition the request, not the replacement input.
 Tests cover changed spellings, multibyte input, a removed soft-hyphen marker,
 known zero, empty fragments, invalid metadata and large coordinates. Endpoint
 splits are valid provenance, not automatically eligible hyphenation opportunities.
-This helper is not yet wired into discovery, shaping or candidate publication.
+The explicit provider now connects this helper to shaping and publication.
 
 Keep replacement text and original provenance separate. The fragment shaper's
 scalar clusters describe its replacement input, not the original paragraph.
@@ -52,6 +55,51 @@ enough to map all internal feature positions. Whole-fragment settings can be
 supported first; ambiguous mappings must be rejected rather than guessed.
 
 ### Shape, Cache And Select
+
+The private `shapeDiscretionaryInput` stage is now implemented independently of
+the owner provider. It accepts validated replacement input and explicit pre/post
+run parameters, creates a fresh stream for each side, and returns an owned pair
+only after both streams and width conversion succeed. Producers run in
+goroutines; the caller consumes glyphs and cancels/joins on failure. Empty and
+glyphless fragments retain their input and provenance with zero width.
+
+Each result retains replacement text, original-source provenance, shaping
+context, glyph IDs, advances and offsets. Cluster anchors are local replacement
+scalar positions, nondecreasing and in range; repeated anchors retain cluster
+groups. No per-character mapping back to original text is inferred. Horizontal
+advances are accumulated in fractional DU and rounded once per fragment using
+the ordinary candidate-width rules. Current fragment widths are fixed
+(`W == MinW == MaxW`); offsets do not contribute to advance.
+
+Only features with both bounds nonpositive (whole-input settings) are accepted.
+Positive bounds are conservatively rejected before factory invocation, even if
+they happen to cover the original run. Prepared-run feature extraction/rebasing
+is not implemented here. Each result owns its feature slice; font/scale services
+remain shared immutable objects. The function inserts no hyphen itself.
+
+Shaping itself does not write to the arena or candidate cache. The separate
+private `Khipu.publishDiscretionary` stage now stores a successful pair and its
+candidate atomically with respect to returned errors. It validates both sides,
+their source partition, metrics and target textbox before appending anything.
+Duplicate variant IDs are rejected rather than replacing existing records.
+Publication is single-owner, not concurrent-safe; allocation failures are not
+recoverable transaction errors. The provider stages every alternative privately
+before committing a complete batch. A failure in a later fragment leaves both
+arena and cache unchanged, allowing a clean retry.
+
+Candidates retain optional private `preBox`/`postBox` arena IDs. Zero means a
+metric-only candidate. Ordinary knot associations and metrics remain unchanged.
+Replacement boxes retain generated input separately from original provenance;
+their glyphs, cluster ranges and context ranges use replacement-local coordinates.
+Empty replacement input is distinct from an ordinary box and may have no glyphs.
+Glyph/feature slices are copied; IDs remain stable across append-only arena growth.
+Streaming fragment `KnotCore.Pos/Len` describe original source spans (Pos includes
+the paragraph offset), not replacement spelling. The selected `(Source, Variant)`
+still identifies the candidate carrying both metrics and stored box references.
+
+These stages themselves do not discover markers; the explicit provider now
+connects marker preparation, shaping and batch publication. Renderer-facing
+access remains future work.
 
 1. Recover original text, word bounds and the retained font/scale/direction/
    script/language context from the requested box. Do not reconstruct it from
@@ -64,11 +112,11 @@ supported first; ambiguous mappings must be rejected rather than guessed.
 4. Build fragment metrics and owned replacement-input/glyph/context records
    privately. Publish a complete batch to the arena/cache only after every
    required shaping operation succeeds. Keep IDs stable and immutable.
-5. Extend candidate storage with optional pre-/post-break box references while
+5. Candidate storage now has optional pre-/post-break box references while
    preserving the metric PreBreak/PostBreak payload expected by the breakers.
    A selected `(Source, Variant)` must resolve both metrics and stored fragments.
-6. Remove the streaming guard only after end-to-end tests demonstrate equivalent
-   measured and retained fragment output. Preserve the legacy metric path.
+6. Explicit streaming lookup is enabled and covered end to end; automatic
+   streaming lookup remains disabled. The legacy metric path is unchanged.
 
 Ordinary break results remain knot indices. Downstream line extraction and bidi
 splitting must consult retained exact break provenance, not `Pos + Len`;
@@ -77,19 +125,71 @@ renderer helpers are needed for this bridge.
 
 ### Suggested PR Sequence
 
+Explicit fragment preparation is now available privately through
+`Khipukamayuq.prepareExplicitDiscretionaries`. For one caller-established
+textbox/context it requests `Hyphenator.Discretionaries("\u00ad", params)` once.
+This special request supplies break material rather than discovering word
+boundaries: PreBreak is appended to the left text, PostBreak prepended to the
+right. For example, material `"-"`/`""` produces `"co-"`/`"operate"`, which are
+shaped as complete fragments by the existing common stage. There is no implicit
+ASCII-hyphen default. Nil policy or no returned alternatives declines preparation;
+one alternative with empty material still represents an explicit opportunity.
+
+All soft-hyphen markers are removed from replacement strings. Original source
+splits remain after their selected marker, including it in pre-break provenance.
+Markers with no remaining text on either side are ignored. Returned material
+must be valid UTF-8 and contain no recursive soft-hyphen markers. Variants are
+numbered by source position then material order, independently of policy variant
+IDs; they must not yet be merged with a separate automatic-variant namespace.
+Penalties follow the existing owner policy and default fallback. This simple
+attachment mechanism does not implement contextual spelling changes.
+
+Public streaming encoding now implements the no-break side of U+00AD. A reader
+filters markers before shaping; it does not discard glyphs afterward. Compatible
+contiguous bidi intersections separated only by markers are coalesced within an
+original style span and direction, so a marker does not itself interrupt shaping.
+Style changes, direction changes and source gaps remain separate. Transient
+scalar maps restore backend anchors to original paragraph coordinates before
+cluster assembly, including clusters spanning markers. Feature ranges are mapped
+to surviving input scalars for submission; retained contexts keep original ranges.
+
+The retained source-boundary table flags explicit markers even inside clusters,
+but suppresses their ordinary penalties and knot-partition hints. Original byte
+and scalar endpoints remain unchanged. Ordinary spaces and mandatory breaks
+immediately preceding markers retain their own break positions. Marker-only
+input produces no text glyphs. This changes only streaming encoding, not the
+metric encoder or the standalone synthetic shaper's character policy.
+
+Provider wiring is now active. K&P requests retained explicit opportunities when
+pass 2 reaches their textbox, before evaluating its cached variants. Firstfit
+requests them on overflow; an explicit marker may salvage a first word without
+an earlier plain checkpoint. Its existing fit and MinHyphenGain rules still
+apply. K&P retains its pass-1 acceptance and demerit policies, so an explicit
+marker is available, not mandatory. Neither breaker uses an ordinary penalty-only
+break at a marker. Selected variants retain their source split and arena IDs.
+
+The provider reads only the target textbox's bounded source, reuses its retained
+font/scale/direction/script/language, and normalizes features covering the whole
+box to whole-fragment settings. Interior feature boundaries are rejected rather
+than guessed. Provider methods still lack a context parameter; internal shaping
+uses Background with cancellation/joining on failure, not caller cancellation.
+Successful nonempty results are cached. Empty/declined requests may be retried.
+Cross-style/multi-box replacements and repeated breaks within one original box
+are not supported. Multiple markers currently supply alternative single splits.
+
 - Source split/replacement-input contracts and validation tests are implemented.
   Feature mapping and single-word/single-context eligibility remain to be wired.
 - Pursue explicit U+00AD opportunities before automatic streaming hyphenation,
   initially in one context. Automatic discovery must not cross structural/style
   boundaries or hyphenate their partial-word boxes. Cross-style manual breaks
   require a later multi-box replacement design.
-- Implement standalone streaming fragment shaping and atomic arena publication;
-  test backend failures, glyph omission, changed spellings and owned storage.
-- Wire the owner provider, then test both breakers' choices and retained selected
-  fragments. Add cache lifetime/invalidation rules before supporting mutable input.
+- Fragment shaping, batch publication, explicit provider integration and both
+  breakers' selection paths are implemented and tested. Automatic streaming
+  discovery and cross-style explicit replacements remain separate next steps.
+- Add cache lifetime/invalidation rules before supporting mutable input.
 
-Apart from the source-input foundation described above, this section is a
-proposal. It does not enable streaming hyphenation or imply
+Apart from the source-input, shaping and storage foundations above, this section
+is a proposal. It does not enable streaming hyphenation or imply
 that default Unicode word segmentation alone handles Thai or other scripts
 requiring language-specific analysis.
 

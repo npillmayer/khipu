@@ -1,5 +1,14 @@
 # Firstfit Status And Notes
 
+Streaming U+00AD support is now connected through the existing discretionary
+provider. Configure the encoding Khipukamayuq as `DiscretionaryProvider`.
+On textbox overflow firstfit requests explicit fragments and applies its existing
+fit/MinHyphenGain selection. Unlike automatic discovery, a retained explicit
+marker can also salvage a first word without an earlier feasible checkpoint.
+The selected candidate retains its source split and shaped fragment box IDs;
+base knots are not rewritten. Automatic streaming discovery and multi-box or
+repeated same-box splits remain unsupported.
+
 Streaming integration regressions now cover narrow lines and repeated spaces.
 After an earlier checkpoint is committed on overflow, the already-scanned
 current candidate is reconsidered against the next line's width and retained

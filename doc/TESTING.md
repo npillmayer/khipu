@@ -2,6 +2,46 @@
 
 ## Purpose and Status
 
+`stream_explicit_linebreak_test.go` exercises public streaming encoding through
+both breakers with the owner configured as provider: wide lines avoid discovery,
+explicit variants can split a first word or extend a preceding line, multiple
+markers offer alternative splits, non-fitting variants stay unselected, caches
+are reused and selections are cleared on a later run. Base knots remain unchanged.
+`discretionary_provider_test.go` verifies retained replacement boxes, batch
+atomicity/retry after a later factory failure, feature-policy rejection, cache
+reuse and declining marker-edge/unmarked boxes without automatic discovery.
+
+`stream_nobreak_test.go` covers public streaming U+00AD suppression, unchanged
+natural width versus marker-free text, original glyph anchors and marker source
+positions, multiple/leading/trailing/marker-only inputs, mixed directions,
+ligature-like clusters spanning markers, feature-range remapping, invalid backend
+anchors and preservation of style boundaries and pre-marker space/hard breaks.
+The encoding stage does not discover candidates; linebreaker provider lookup now does.
+
+`discretionary_explicit_test.go` covers private U+00AD preparation: marker-only
+policy requests, complete left/right replacement strings, multiple positions
+and material variants, UTF-8 provenance, empty material, owner penalty fallback,
+declined requests and invalid/error results. A recording backend verifies that
+the common shaper receives `co-`, not an isolated hyphen. End-to-end explicit
+linebreaking and no-break suppression are covered separately above.
+
+`discretionary_input_test.go` covers explicit source splits independently of
+replacement spelling. `discretionary_stream_test.go` covers standalone fragment
+pair shaping: fresh streams, buffered/unbuffered output, local scalar anchors,
+original provenance, empty/silent fragments, retained glyph positions, fractional
+width accumulation, owned features/glyphs, whole-input feature policy, backend
+failures, invalid output and cancellation with producer joining. Failure of the
+second fragment returns no pair. This is private-stage coverage, not arena
+publication, soft-hyphen discovery or active provider integration.
+
+`discretionary_storage_test.go` separately covers private pair publication into
+the arena/cache: original versus replacement coordinates, byte/scalar clusters,
+retained metrics and penalties, independent glyph/feature ownership, stable IDs
+after arena growth, selection lookup, empty/silent fragments and arena teardown.
+Malformed second fragments and duplicate variants leave the existing arena and
+cache unchanged. Metric-only candidates retain absent box references. Discovery
+and active provider integration remain outside this coverage.
+
 `stream_linebreak_contract_test.go` checks both breakers at narrow widths using
 streaming-encoded paragraphs: increasing legal knot indices, terminal trailer,
 forced breaks, trimmed minimum widths, no discretionary choices and unchanged

@@ -46,6 +46,11 @@ func classifyCandidateSource(source io.Reader) (candidateSourceClass, error) {
 		if c == utf8.RuneError && n == 1 {
 			return candidateEmpty, fmt.Errorf("%w: invalid candidate UTF-8", contracts.ErrIllegalArguments)
 		}
+		// A suppressed soft hyphen may lie in an inferred cluster source span.
+		// It must not turn otherwise elastic/discardable whitespace into text.
+		if c == '\u00ad' {
+			continue
+		}
 		switch {
 		case c == ' ':
 			space = true

@@ -29,6 +29,17 @@ type SourceSplit struct {
 // remain the responsibility of Khipukamayuq.
 // The params argument belongs to Khipukamayuq and must not be modified.
 // Implementations needing to retain parameters should copy the value.
+//
+// The explicit-marker preparation stage also uses this interface: a request
+// containing exactly U+00AD asks for break material, not word segmentation.
+// Returned PreBreak is appended to the left text and PostBreak prepended to the
+// right text before shaping both complete fragments. Empty material is valid;
+// returning no alternatives declines the request. No ASCII hyphen is inferred.
+// For this request SourceSplit and Variant are not used: the owner supplies the
+// original marker positions and assigns unique variants across those positions.
+// Implementations supporting only automatic discovery may decline this request.
+// Streaming lazy lookup uses this convention; paragraph encoding does not query
+// the policy. Automatic metric discovery retains its existing word requests.
 type Hyphenator interface {
 	Discretionaries(word string, params *Params) ([]HyphenationFragment, error)
 }

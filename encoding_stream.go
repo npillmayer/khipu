@@ -8,10 +8,10 @@ import (
 	"github.com/npillmayer/cords/styled"
 )
 
-// ErrStreamingDiscretionariesUnsupported prevents metric-only discretionary
-// measurement from being mixed with streaming-shaped paragraph text. Explicit
-// cached candidates remain caller-supplied; lazy streaming reshaping is future work.
-var ErrStreamingDiscretionariesUnsupported = errors.New("khipu: streaming discretionary shaping is not implemented")
+// ErrStreamingDiscretionariesUnsupported reports missing streaming configuration
+// when an explicit alternative requires reshaping. Never fall back to metric
+// shaping. Automatic streaming discovery is disabled and returns no candidates.
+var ErrStreamingDiscretionariesUnsupported = errors.New("khipu: streaming discretionary shaping is unavailable")
 
 // ErrUnrepresentableMandatoryBreak means source analysis requires a break that
 // cannot be retained without splitting a shaped cluster or representing a
@@ -34,6 +34,10 @@ var ErrUnrepresentableMandatoryBreak = errors.New("khipu: mandatory break cannot
 // Mandatory breaks inside clusters or unsupported glyphless ranges return
 // ErrUnrepresentableMandatoryBreak. Optional opportunities inside clusters are
 // suppressed. The final source boundary is represented by the paragraph trailer.
+// U+00AD is filtered before shaping, with returned anchors restored to original
+// source coordinates. Its location is retained, but ordinary breaks there are
+// prohibited. Configure this owner as the breaker's DiscretionaryProvider to
+// prepare and select explicit replacement fragments lazily during linebreaking.
 func (kq *Khipukamayuq) EncodeParagraphStreaming(ctx context.Context, para *styled.Paragraph) (*Khipu, error) {
 	if kq == nil {
 		return nil, ErrVoidKhipukamayuq

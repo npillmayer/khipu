@@ -19,8 +19,12 @@ type DiscretionaryCandidate struct {
 	// SourceSplit, when Valid, is relative to the original paragraph in UTF-8
 	// bytes (unlike HyphenationFragment.SourceSplit, which is word-relative).
 	// It is never derived from PreBreak.Len or replacement text length. Legacy
-	// metric candidates leave it unknown; streaming publication will supply it.
+	// metric candidates leave it unknown; streaming publication supplies it.
 	SourceSplit SourceSplit
+	// Owner-local optional references into the khipu's shaping arena. Zero
+	// denotes a metric-only candidate. Breakers copy candidates unchanged and
+	// continue to read KnotCore metrics; glyph access is not part of their API.
+	preBox, postBox shapedBoxID
 }
 
 // DiscretionarySelection records which discretionary candidate was selected
@@ -103,6 +107,9 @@ func (khipu *Khipu) SelectedDiscretionaryAt(breakpoint int) (DiscretionarySelect
 // for one textbox knot. If no candidates are cached yet, Khipukamayuq will
 // consult its Hyphenator, shape the returned fragments, and cache the resulting
 // discretionary candidates on the Khipu.
+// Streaming paragraphs currently support explicit U+00AD within one textbox
+// only; unmarked boxes return no alternatives, never metric-shaped substitutes.
+// Configure the owner as the linebreaker's provider to enable lazy discovery.
 func (kq *Khipukamayuq) DiscretionaryCandidates(khp *Khipu, at int) ([]DiscretionaryCandidate, error) {
 	if kq == nil {
 		return nil, ErrVoidKhipukamayuq
@@ -123,7 +130,7 @@ func (kq *Khipukamayuq) DiscretionaryCandidates(khp *Khipu, at int) ([]Discretio
 		return nil, nil
 	}
 	if khp.shaping.sources != nil {
-		return nil, ErrStreamingDiscretionariesUnsupported
+		return kq.streamingExplicitCandidates(khp, at)
 	}
 	word, pos, err := textboxSource(khp, at)
 	if err != nil {

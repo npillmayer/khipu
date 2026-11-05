@@ -22,12 +22,21 @@ import (
 // Errors preserve their cause and return no partial result. Script subdivision
 // and font fallback are not performed here; the resolver supplies those values.
 func prepareParagraphRuns(para *styled.Paragraph, resolver contracts.StyleResolver, defaults contracts.ResolvedRunStyle) ([]preparedRun, error) {
+	return prepareParagraphRunsForInput(para, resolver, defaults, nil)
+}
+
+// boundaries enables streaming no-break coalescing before feature intersection.
+// Ordinary callers retain the original run-preparation behavior.
+func prepareParagraphRunsForInput(para *styled.Paragraph, resolver contracts.StyleResolver, defaults contracts.ResolvedRunStyle, boundaries []sourceBoundary) ([]preparedRun, error) {
 	if nilRunService(resolver) {
 		return nil, fmt.Errorf("%w: missing style resolver", contracts.ErrIllegalArguments)
 	}
 	items, err := intersectParagraphRuns(para)
 	if err != nil {
 		return nil, err
+	}
+	if boundaries != nil {
+		items = coalesceMarkerIntersections(items, boundaries)
 	}
 	var result []preparedRun
 	var span runSourceRange

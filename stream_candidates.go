@@ -46,11 +46,15 @@ func streamCandidateParagraph(ctx context.Context, para *styled.Paragraph, resol
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	runs, err := prepareParagraphRuns(para, resolver, defaults)
+	runs, err := prepareParagraphRunsForInput(para, resolver, defaults, boundaries)
 	if err != nil {
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	maps, err := prepareNoBreakRuns(runs, boundaries)
+	if err != nil {
 		return nil, err
 	}
 	assembler, err := newGlyphClusterAssembler(runs, boundaries)
@@ -67,7 +71,7 @@ func streamCandidateParagraph(ctx context.Context, para *styled.Paragraph, resol
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
-	go func() { done <- producePreparedRuns(ctx, para, runs, shaper, options) }()
+	go func() { done <- produceNoBreakRuns(ctx, para, runs, maps, shaper, options) }()
 	// A separate joined flag avoids racing producer completion against output
 	// closure and preserves the consumer's original error when cancellation
 	// subsequently makes Shape fail.
@@ -79,6 +83,7 @@ func streamCandidateParagraph(ctx context.Context, para *styled.Paragraph, resol
 		}
 	}()
 	completion := done
+	inputRun := 0
 	for output != nil || completion != nil {
 		select {
 		case <-ctx.Done():
@@ -94,6 +99,10 @@ func streamCandidateParagraph(ctx context.Context, para *styled.Paragraph, resol
 			if !ok {
 				output = nil
 				continue
+			}
+			glyph, err = restoreNoBreakAnchor(glyph, runs, maps, &inputRun)
+			if err != nil {
+				return nil, err
 			}
 			cluster, err := assembler.push(glyph)
 			if err != nil {

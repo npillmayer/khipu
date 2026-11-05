@@ -93,7 +93,9 @@ func BreakParagraph(khp *khipu.Khipu, parshape linebreak.ParShape, params *Param
 			// it with one of its discretionary variants. This is firstfit's only
 			// hyphenation hook: no second pass, no global search, just a greedy
 			// "does one variant fit better than the last plain checkpoint?" test.
-			if lastFeasible >= 0 && k.Kind == khipu.KTTextBox && segw.Min > linelen {
+			// An explicit marker may also salvage an overflowing first word,
+			// even when no earlier space supplied a plain checkpoint.
+			if (lastFeasible >= 0 || khp.HasExplicitDiscretionary(i)) && k.Kind == khipu.KTTextBox && segw.Min > linelen {
 				cand, nextSeg, ok, err := tryLooseHyphenation(khp, i, prevSeg, lastFeasibleWidth, linelen, params)
 				if err != nil {
 					return nil, err
@@ -137,7 +139,7 @@ func BreakParagraph(khp *khipu.Khipu, parshape linebreak.ParShape, params *Param
 			// A candidate that cannot shrink enough no longer fits this line. The
 			// first-fit decision is therefore to commit the last acceptable
 			// checkpoint and continue with the carried post-break material.
-			if lastFeasible >= 0 && k.Kind == khipu.KTTextBox {
+			if (lastFeasible >= 0 || khp.HasExplicitDiscretionary(i)) && k.Kind == khipu.KTTextBox {
 				cand, nextSeg, ok, err := tryLooseHyphenation(khp, i, prevSeg, lastFeasibleWidth, linelen, params)
 				if err != nil {
 					return nil, err

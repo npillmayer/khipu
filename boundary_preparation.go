@@ -27,6 +27,10 @@ type sourceBoundary struct {
 	// the UAX#14 penalty. It neither permits a line break nor splits a glyph
 	// cluster. Language-specific dictionary segmentation is not provided here.
 	wordBoundary bool
+	// softHyphen records an explicit opportunity even when it lies inside a
+	// shaped cluster. Streaming no-break preparation suppresses its ordinary
+	// penalty; a later discretionary provider must supply replacement fragments.
+	softHyphen bool
 }
 
 // prepareParagraphBoundaries analyzes the intact original paragraph before
@@ -92,7 +96,7 @@ func readParagraphBoundaries(source io.Reader) ([]sourceBoundary, error) {
 		}
 		bytes += uint64(size)
 		scalars++
-		result = append(result, sourceBoundary{byteEnd: bytes, scalarEnd: scalars})
+		result = append(result, sourceBoundary{byteEnd: bytes, scalarEnd: scalars, softHyphen: r == '\u00ad'})
 		// NUL is the breaker's EOF marker. Preserve source coordinates but
 		// substitute U+FFFD for classification, matching the metric encoder.
 		if r == 0 {

@@ -535,6 +535,15 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu) error {
 	kp.end = PlainBreak(len(khipu.W) - 1)
 	for last := range len(khipu.W) {
 		k := khipu.KnotByIndex(last)
+		// Explicit markers can be inside an otherwise unbreakable textbox.
+		// Request them once when pass 2 reaches it, before evaluating variants.
+		if kp.hyphenating && khipu.HasExplicitDiscretionary(last) {
+			cands, err := kp.discretionaryCandidates(khipu, last)
+			if err != nil {
+				return err
+			}
+			cacheDiscretionaryCandidates(khipu, last, cands)
+		}
 		tracer().Debugf("_______________ %d/%v ___________________", last, khipu.KnotByIndex(last))
 		assert(len(kp.horizon) > 0, "K&P: no more active breakpoints, but input available")
 		tracer().Debugf("horizon: %v", elements(kp.horizon))

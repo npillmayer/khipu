@@ -95,7 +95,7 @@ func TestPublicStreamingConfigurationErrors(t *testing.T) {
 	}
 }
 
-func TestStreamingLazyDiscretionaryGuard(t *testing.T) {
+func TestStreamingAutomaticDiscretionariesRemainDisabled(t *testing.T) {
 	owner := khipu.NewKhipukamayuq(khipu.Config{Hyphenator: exampleHyphenator{}, Streaming: &khipu.StreamingConfig{
 		NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(1) },
 		Resolver:  helpers.DefaultStyleResolver{}, Defaults: contracts.ResolvedRunStyle{Font: helpers.NewSyntheticFont(), EmSize: 10 * dimen.PT},
@@ -104,8 +104,8 @@ func TestStreamingLazyDiscretionaryGuard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := owner.DiscretionaryCandidates(k, 0); !errors.Is(err, khipu.ErrStreamingDiscretionariesUnsupported) {
-		t.Fatal(err)
+	if candidates, err := owner.DiscretionaryCandidates(k, 0); err != nil || len(candidates) != 0 {
+		t.Fatal("unexpected automatic streaming candidates", candidates, err)
 	}
 }
 

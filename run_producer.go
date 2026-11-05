@@ -23,6 +23,13 @@ import (
 // the producer before discarding output. Cancellation cannot interrupt every
 // backend source read. The caller must not reuse the stream, even on failure.
 func producePreparedRuns(ctx context.Context, para *styled.Paragraph, runs []preparedRun, shaper contracts.StreamingShaper, options contracts.ShapeBufferOptions) error {
+	return produceNoBreakRuns(ctx, para, runs, nil, shaper, options)
+}
+
+// produceNoBreakRuns optionally filters markers using previously published
+// mapping metadata. Retained run parameters stay in original coordinates;
+// only the backend request receives adjusted feature ranges.
+func produceNoBreakRuns(ctx context.Context, para *styled.Paragraph, runs []preparedRun, maps []*noBreakRun, shaper contracts.StreamingShaper, options contracts.ShapeBufferOptions) error {
 	if ctx == nil || para == nil || nilRunService(shaper) {
 		return fmt.Errorf("%w: producer requires context, paragraph and shaper", contracts.ErrIllegalArguments)
 	}
@@ -43,8 +50,13 @@ func producePreparedRuns(ctx context.Context, para *styled.Paragraph, runs []pre
 		if err := shaper.SetInitialCluster(uint32(s.scalarStart)); err != nil {
 			return fmt.Errorf("khipu: setting cluster base for run %d: %w", i, err)
 		}
-		reader := bufio.NewReader(para.Raw().BoundedReader(s.byteStart, s.byteEnd))
-		if err := shaper.Shape(ctx, run.params.shaping, reader, options); err != nil {
+		var reader contracts.RuneReader = bufio.NewReader(para.Raw().BoundedReader(s.byteStart, s.byteEnd))
+		params := run.params.shaping
+		if maps != nil && maps[i] != nil {
+			reader = noBreakReader{reader}
+			params.Features = maps[i].features
+		}
+		if err := shaper.Shape(ctx, params, reader, options); err != nil {
 			return fmt.Errorf("khipu: shaping run %d: %w", i, err)
 		}
 		byteEnd, scalarEnd = s.byteEnd, s.scalarEnd

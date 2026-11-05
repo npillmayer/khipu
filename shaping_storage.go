@@ -13,16 +13,21 @@ type shapedBoxID int
 
 type arenaRange struct{ start, end int }
 
-// shapedBox retains ordinary text shaping. source is original paragraph text
-// and, for this first storage path, also the shaping input. Generated replacement
-// text for discretionary fragments will need a distinct input representation.
+// shapedBox.source always describes original paragraph provenance. With nil
+// replacement it also identifies shaping input. Otherwise replacement retains
+// distinct generated input (including an empty string); glyph/cluster coordinates
+// and the associated context's source range are local to that replacement.
 type shapedBox struct {
-	source   runSourceRange
-	context  int
-	glyphs   arenaRange
-	clusters arenaRange
+	source      runSourceRange
+	context     int
+	glyphs      arenaRange
+	clusters    arenaRange
+	replacement *replacementInput
 }
 
+// source uses original paragraph coordinates for ordinary boxes and local
+// replacement-input coordinates for replacement boxes. It is not a per-glyph
+// mapping from generated text back to the original paragraph.
 type storedGlyphCluster struct {
 	source runSourceRange
 	glyphs arenaRange
@@ -36,11 +41,12 @@ type knotSource struct {
 }
 
 // shapingArena owns immutable glyphs, clusters and feature slices. Contexts
-// retain original prepared-run ranges: feature coordinates are relative to that
-// run, not a particular box. Reshaping a box must clip and rebase those features.
+// retain original prepared-run ranges for ordinary boxes, and local input ranges
+// for replacements. Feature coordinates refer to that context, not provenance.
+// Reshaping an ordinary box must clip and rebase its run's features.
 // Font faces/scales and the paragraph are shared under their stable-lifetime
 // contracts. Appending new records must never mutate published records. No
-// renderer API, discretionary migration or arena compaction is introduced here.
+// renderer API or arena compaction is introduced here.
 type shapingArena struct {
 	boxes      []shapedBox
 	glyphs     []contracts.ShapedGlyph
