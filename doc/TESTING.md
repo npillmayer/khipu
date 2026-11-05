@@ -77,6 +77,15 @@ producer completion and glyph-channel closure: a pre-Shape error need not close
 output, and successful completion does not mean buffered output is drained.
 This stage does not yet construct knots or change the active encoder.
 
+`boundary_preparation_test.go` covers reader-based paragraph-wide UAX#14
+preparation: original byte/scalar endpoints, control gaps, style independence,
+UTF-8 sequences split across reads, malformed input, I/O failures, and EOF
+finalization. Migration comparisons with the existing metric boundary function
+cover spaces, NBSP, mandatory breaks, CRLF, combining characters, NUL, and bidi
+controls. This preserves the existing policy rather than asserting new Unicode
+conformance. The new finalized source-boundary table is not yet consumed by the
+active encoder or a streaming knot builder.
+
 `KnotStyler`, which currently adjusts knot width bounds, is distinct from the
 draft `StyleResolver`. The existing fixed shaper ignores `SetStyle`; this does
 not mean that the encoder ignores style boundaries or knot adaptation.

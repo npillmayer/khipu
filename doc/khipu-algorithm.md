@@ -74,6 +74,7 @@ For sketching out the algorithm we will rely on a Shaper version which offers a 
 ### Character Input End
 
 ```
+[ Prepare finalized source boundaries for the complete original paragraph ]
 [ Intersect bidi intervals with style spans ]
 [ For every interval `B` in `ResolvedLevels.LogicalSegments()` ] :
     // Runs are split off at style boundaries
@@ -85,10 +86,25 @@ For sketching out the algorithm we will rely on a Shaper version which offers a 
         // i.e. it is "pulling" characters
         [ For every rune pulled into the Shaper ] :
             [ Generate a cluster-ID for `c` ]
-            [ Calculate `U(c)` ]
+            // Finalized `U(c)` is already available in source-boundary metadata
         [ Associate the Cluster-ID of the first rune of `R` with `P(R)` ]
 [ Signal EOF to the Shaper channel ]
 ```
+
+`prepareParagraphBoundaries` reads the original cord through a buffered reader,
+without flattening it into a string. Its table contains one entry after every
+original scalar: the exclusive byte and scalar positions and the finalized
+penalty. Controls omitted from shaping remain in this table. The UAX#14 breaker
+may revise earlier penalties, so preparation applies all contributions, including
+EOF, before normalizing and publishing the table. The synthetic EOF marker has
+no table entry; the terminal fill/forced-break knot remains separate. Source
+NUL is classified as U+FFFD, matching the existing encoder policy, without
+altering its source coordinates. Errors return no partial table.
+
+This implements the existing UAX#14 policy only; no new UAX#29 policy is added.
+The table is metadata, not permission to break within a shaped cluster. It will
+be available before starting the producer, but is not yet wired into the active
+encoder or a streaming glyph consumer.
 
 Here, splitting off shaping intervals means traversing the paragraph in logical
 order, not consuming `ResolvedLevels.Split`. The latter is reserved for the
@@ -129,11 +145,15 @@ for this streaming path remains future work.
         [ For each nonempty intersection [from, to) ] :
             [ Resolve style-controlled shaping parameters from S ]
             [ Set shaping direction to B.Dir ]
-            [ Subdivide further where script/language requires it ]
+            [ Preserve script/language supplied through the style resolver ]
             [ Record original byte and scalar ranges in preparedRun ]
             [ Submit original logical text with these parameters to the Shaper ]
     [ Retain levels for splitting at the finally selected line boundaries ]
 ```
+
+Script changes are currently the author's responsibility and are expressed as
+style spans. Run preparation does not automatically detect scripts or subdivide
+runs for them.
 
 ### Glyph Output End
 
