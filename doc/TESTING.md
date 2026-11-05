@@ -60,6 +60,14 @@ The table records evidence, not exhaustive coverage. The
 [metric helper tests](../helpers/fixed_width_shaper_test.go) and streaming tests cover
 every zero-width exception below, plus representative controls that remain cells.
 
+The internal run-parameter preparation stage now resolves contributing style
+spans once, obtains scales, and produces independently owned feature ranges for
+their bidi intersections. `run_preparation_test.go` uses the synthetic font and
+default resolver alongside private failure fixtures. Feature coordinates in
+resolver input/output are original style-span scalar positions; preparation
+clips and rebases them, preserving control gaps. This is preparation-only
+coverage, not a streaming encoder integration guarantee.
+
 `KnotStyler`, which currently adjusts knot width bounds, is distinct from the
 draft `StyleResolver`. The existing fixed shaper ignores `SetStyle`; this does
 not mean that the encoder ignores style boundaries or knot adaptation.

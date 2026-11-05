@@ -15,9 +15,12 @@ import (
 // resolved direction. It owns no text. Font resolution and shaping are later
 // stages; callers can read its text through Paragraph.Raw().BoundedReader.
 type runIntersection struct {
-	source    runSourceRange
-	style     styled.Style
-	direction bidi.Direction
+	source runSourceRange
+	// styleSource includes omitted controls and identifies the original span,
+	// not merely its first visible intersection. Feature positions start here.
+	styleSource runSourceRange
+	style       styled.Style
+	direction   bidi.Direction
 }
 
 // intersectParagraphRuns intersects style spans with logical bidi segments.
@@ -57,9 +60,11 @@ func intersectParagraphRuns(para *styled.Paragraph) ([]runIntersection, error) {
 			return nil, fmt.Errorf("khipu: invalid style partition")
 		}
 		styleEnd = span.Position + span.Length
-		if _, err := scan.advance(span.Position); err != nil {
+		styleStart, err := scan.advance(span.Position)
+		if err != nil {
 			return nil, err
 		}
+		first := len(result)
 		for more && seg.From < styleEnd {
 			from, to := max(span.Position, seg.From), min(styleEnd, seg.To)
 			start, err := scan.advance(from)
@@ -82,8 +87,12 @@ func intersectParagraphRuns(para *styled.Paragraph) ([]runIntersection, error) {
 				return nil, err
 			}
 		}
-		if _, err := scan.advance(styleEnd); err != nil {
+		styleScalarEnd, err := scan.advance(styleEnd)
+		if err != nil {
 			return nil, err
+		}
+		for i := first; i < len(result); i++ {
+			result[i].styleSource = runSourceRange{span.Position, styleEnd, styleStart, styleScalarEnd}
 		}
 	}
 	if styleEnd != length || more {

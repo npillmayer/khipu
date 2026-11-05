@@ -16,8 +16,8 @@ import (
 // After publication, the record and its referenced data must remain immutable
 // while producer, consumer, or later paragraph processing uses them.
 //
-// These types establish the streaming data model only. The current encoder
-// does not yet prepare or consume these records.
+// prepareParagraphRuns constructs these records independently. The current
+// encoder does not yet prepare or consume them.
 type preparedRun struct {
 	source runSourceRange
 	params runParameters
@@ -58,10 +58,6 @@ type runParameters struct {
 	scale  contracts.FontScale
 	// spacing governs interword spaces, not the adjustability of textboxes.
 	spacing spacingMode
-	// bidiLevel is the resolved embedding level retained for downstream visual
-	// ordering. It must agree with shaping.Direction and cannot be inferred
-	// from direction alone. Zero is a valid level, not an unknown sentinel.
-	bidiLevel uint8
 }
 
 // spacingMode describes the run's resolved interword-spacing policy. It does

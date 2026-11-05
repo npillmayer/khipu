@@ -70,6 +70,14 @@ follows resolution; bidi analysis, script-based run subdivision, and font
 fallback are separate responsibilities. `SpacingElastic` describes a policy,
 not numerical stretch/shrink capacities.
 
+Features in `ResolvedRunStyle` and its supplied defaults refer to original
+scalar positions within the originating style span, including omitted bidi
+controls. Preparation resolves each contributing span once, clips features to
+each bidi intersection, and rebases them for `ShapeParams`. Nonpositive bounds
+mean beginning/end; empty overlaps are omitted and positive reversed ranges
+are errors. Explicit bounds beyond the span are clipped. The internal
+preparation stage is available, but the encoder does not call it yet.
+
 ## Streaming Shaping
 
 [`StreamingShaper`](shaping_stream.go) accepts uniform runs and publishes glyph

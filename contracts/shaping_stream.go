@@ -32,7 +32,7 @@ type StreamingShaper interface {
 }
 
 // ShapeParams describes one uniform run. Font, script, language, and direction
-// stay fixed during a call. Spacing, font size/scale, resolved bidi level, and
+// stay fixed during a call. Spacing, font size/scale, and
 // source mappings remain in Khipukamayuq's run metadata. Publish metadata needed
 // by the consumer before the corresponding glyphs can arrive.
 type ShapeParams struct {
@@ -48,6 +48,8 @@ type ShapeParams struct {
 // run-relative Unicode scalar indices, not bytes or glyph indices. Start <= 0
 // means the beginning; End <= 0 means the end. Value is a one-based alternate,
 // zero requests the default, and negative values request random selection.
+// In ResolvedRunStyle, these coordinates instead refer to the original style
+// span; run preparation clips and rebases them before constructing ShapeParams.
 type ShapeFeature struct {
 	Tag        [4]byte
 	Enabled    bool

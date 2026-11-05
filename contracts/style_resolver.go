@@ -7,7 +7,7 @@ import (
 )
 
 // StyleResolver translates an application's opaque style into concrete
-// parameters for one already identified run. For example, a bold style selects
+// parameters for one original style span, before bidi subdivision. For example, a bold style selects
 // a heavier FontFace while inheriting unchanged properties from defaults.
 // Implementations know the concrete styled.Style representation and may use a
 // FontLoader or a font cache internally.
@@ -21,7 +21,7 @@ import (
 // Neither style nor defaults (including its Features slice) may be mutated.
 // Returned feature storage must remain stable; run preparation will copy it
 // before publication. The caller supplies inherited defaults independently for
-// each run rather than inheriting from the preceding run's result.
+// each style span rather than inheriting from the preceding span's result.
 //
 // This interface does not inspect or subdivide text for script changes or font
 // fallback. Script and language are resolved from defaults and explicit style
@@ -33,8 +33,12 @@ type StyleResolver interface {
 }
 
 // ResolvedRunStyle is the style-controlled portion of a run's parameters.
-// Features use ShapeFeature's run-relative scalar coordinates. Direction and
-// bidi level come from paragraph analysis, while scale is derived from Font
+// Features (including those in defaults) use original style-span-relative
+// Unicode scalar coordinates, counting omitted bidi controls. Nonpositive
+// Start/End mean the span's beginning/end. Preparation clips features to the
+// span and each bidi intersection, omits empty overlaps, and rebases them to
+// shaping-run coordinates. Positive reversed ranges are invalid.
+// Direction comes from paragraph analysis, while scale is derived from Font
 // and EmSize; none of those is resolved through the style interface.
 type ResolvedRunStyle struct {
 	Font     FontFace

@@ -98,7 +98,13 @@ modifying the resolution. Intersect its source-byte intervals with
 controls. The internal `intersectParagraphRuns` stage performs this intersection
 without flattening the cord: a forward reader scan records original scalar
 positions, including skipped controls. Results retain source ranges, style and
-direction; font resolution and streaming-shaper submission are not yet wired.
+direction and the original style-span range. `prepareParagraphRuns` then resolves
+each contributing style span once through `contracts.StyleResolver`, acquires
+its font scale, and creates prepared runs with owned feature storage. Feature
+ranges refer to original style-span scalar positions, including omitted controls;
+they are clipped and rebased for each shaping run. Empty overlaps are omitted.
+No numeric bidi level is stored. Neither preparation nor streaming-shaper
+submission is wired into the active encoder yet.
 
 ```
 [ Intersect bidi intervals with style spans ] :=
