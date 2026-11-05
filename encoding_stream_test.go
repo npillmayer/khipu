@@ -95,7 +95,7 @@ func TestPublicStreamingConfigurationErrors(t *testing.T) {
 	}
 }
 
-func TestStreamingAutomaticDiscretionariesRemainDisabled(t *testing.T) {
+func TestStreamingAutomaticPolicyCanDecline(t *testing.T) {
 	owner := khipu.NewKhipukamayuq(khipu.Config{Hyphenator: exampleHyphenator{}, Streaming: &khipu.StreamingConfig{
 		NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(1) },
 		Resolver:  helpers.DefaultStyleResolver{}, Defaults: contracts.ResolvedRunStyle{Font: helpers.NewSyntheticFont(), EmSize: 10 * dimen.PT},

@@ -6,7 +6,9 @@ On textbox overflow firstfit requests explicit fragments and applies its existin
 fit/MinHyphenGain selection. Unlike automatic discovery, a retained explicit
 marker can also salvage a first word without an earlier feasible checkpoint.
 The selected candidate retains its source split and shaped fragment box IDs;
-base knots are not rewritten. Automatic streaming discovery and multi-box or
+base knots are not rewritten. Automatic streaming discovery now uses the same
+provider after structural single-word/context eligibility checks, under the
+existing loose-line policy requiring an earlier checkpoint. Multi-box and
 repeated same-box splits remain unsupported.
 
 Streaming integration regressions now cover narrow lines and repeated spaces.

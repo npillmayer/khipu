@@ -29,6 +29,11 @@ type SourceSplit struct {
 // remain the responsibility of Khipukamayuq.
 // The params argument belongs to Khipukamayuq and must not be modified.
 // Implementations needing to retain parameters should copy the value.
+// Automatic streaming requests receive a local copy with Language, Script and
+// BidiDir taken from the textbox's retained shaping context. Returned fragments
+// must have valid interior SourceSplit positions; replacement lengths are never
+// used to infer them. Nonzero Variant IDs must be unique; zero IDs are assigned
+// unused positive IDs. Empty replacement halves are skipped after validation.
 //
 // The explicit-marker preparation stage also uses this interface: a request
 // containing exactly U+00AD asks for break material, not word segmentation.

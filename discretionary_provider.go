@@ -6,6 +6,8 @@ import (
 	"io"
 
 	"github.com/npillmayer/khipu/contracts"
+	"github.com/npillmayer/uax/bidi"
+	textbidi "golang.org/x/text/unicode/bidi"
 )
 
 // HasExplicitDiscretionary reports retained U+00AD source metadata inside a
@@ -28,15 +30,17 @@ func (k *Khipu) HasExplicitDiscretionary(at int) bool {
 	return false
 }
 
-// streamingExplicitCandidates deliberately does not fall back to automatic or
-// metric hyphenation. Requests without explicit markers are ordinary misses.
+// streamingDiscretionaryCandidates chooses explicit marker preparation or
+// eligible whole-segment automatic discovery, never metric shaping. Explicit
+// requests have precedence and never fall back to automatic discovery.
 // All alternatives are shaped and staged before committing the complete batch;
 // errors leave arena/cache unchanged, so retry cannot see a partial batch.
 // The legacy provider interface has no context: each stream uses Background,
 // with internal cancellation/joining on failure. Caller cancellation requires a
 // future provider-interface extension.
-func (kq *Khipukamayuq) streamingExplicitCandidates(k *Khipu, at int) ([]DiscretionaryCandidate, error) {
-	if !k.HasExplicitDiscretionary(at) {
+func (kq *Khipukamayuq) streamingDiscretionaryCandidates(k *Khipu, at int) ([]DiscretionaryCandidate, error) {
+	explicit := k.HasExplicitDiscretionary(at)
+	if !explicit && !k.automaticHyphenationEligible(at) {
 		return nil, nil
 	}
 	if at >= len(k.boxRefs) || k.boxRefs[at] <= 0 || int(k.boxRefs[at]) > len(k.shaping.boxes) {
@@ -56,7 +60,18 @@ func (kq *Khipukamayuq) streamingExplicitCandidates(k *Khipu, at int) ([]Discret
 	if err != nil {
 		return nil, err
 	}
-	inputs, err := kq.prepareExplicitDiscretionaries(string(raw), s)
+	var inputs []preparedDiscretionary
+	if explicit {
+		inputs, err = kq.prepareExplicitDiscretionaries(string(raw), s)
+	} else {
+		policyParams := *kq.env.params
+		policyParams.Language, policyParams.Script = run.params.shaping.Language, run.params.shaping.Script
+		policyParams.BidiDir = bidi.LeftToRight
+		if run.params.shaping.Direction == textbidi.RightToLeft {
+			policyParams.BidiDir = bidi.RightToLeft
+		}
+		inputs, err = kq.prepareAutomaticDiscretionaries(string(raw), s, policyParams)
+	}
 	if err != nil || len(inputs) == 0 {
 		return nil, err
 	}
@@ -72,7 +87,7 @@ func (kq *Khipukamayuq) streamingExplicitCandidates(k *Khipu, at int) ([]Discret
 	}
 	for i := range features {
 		if features[i].Start != 0 || uint64(features[i].End) != s.scalarEnd-s.scalarStart {
-			return nil, fmt.Errorf("%w: explicit replacement has range-limited features", contracts.ErrIllegalArguments)
+			return nil, fmt.Errorf("%w: replacement has range-limited features", contracts.ErrIllegalArguments)
 		}
 		// A feature covering the entire original box applies to both complete
 		// fragments. Interior feature boundaries cannot be guessed after edits.

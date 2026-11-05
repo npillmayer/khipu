@@ -103,6 +103,9 @@ func TestStreamingExplicitBreaksEndToEnd(t *testing.T) {
 				if !found || policy.calls != 1 {
 					t.Fatal("missing cached variant", policy.calls)
 				}
+				if positions, err := k.BreakpointPositions(breaks); err != nil || !reflect.DeepEqual(positions, []uint64{tc.split, uint64(len(tc.text))}) {
+					t.Fatal("wrong source positions", positions, err)
+				}
 				if _, err = breakAt(tc.width); err != nil || policy.calls != 1 {
 					t.Fatal("cache not reused", err, policy.calls)
 				}

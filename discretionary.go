@@ -107,8 +107,8 @@ func (khipu *Khipu) SelectedDiscretionaryAt(breakpoint int) (DiscretionarySelect
 // for one textbox knot. If no candidates are cached yet, Khipukamayuq will
 // consult its Hyphenator, shape the returned fragments, and cache the resulting
 // discretionary candidates on the Khipu.
-// Streaming paragraphs currently support explicit U+00AD within one textbox
-// only; unmarked boxes return no alternatives, never metric-shaped substitutes.
+// Streaming paragraphs support explicit U+00AD and automatic requests for one
+// complete eligible source segment, never metric-shaped substitutes.
 // Configure the owner as the linebreaker's provider to enable lazy discovery.
 func (kq *Khipukamayuq) DiscretionaryCandidates(khp *Khipu, at int) ([]DiscretionaryCandidate, error) {
 	if kq == nil {
@@ -130,7 +130,7 @@ func (kq *Khipukamayuq) DiscretionaryCandidates(khp *Khipu, at int) ([]Discretio
 		return nil, nil
 	}
 	if khp.shaping.sources != nil {
-		return kq.streamingExplicitCandidates(khp, at)
+		return kq.streamingDiscretionaryCandidates(khp, at)
 	}
 	word, pos, err := textboxSource(khp, at)
 	if err != nil {

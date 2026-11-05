@@ -12,9 +12,9 @@ import (
 // Unicode defines `U+00AD` as soft hyphens
 const softHyphenMarker = "\u00ad"
 
-// explicitDiscretionary is ready for the common fragment-shaping stage. It
+// preparedDiscretionary is ready for the common fragment-shaping stage. It
 // carries a whole-text replacement pair, never an independently shaped hyphen.
-type explicitDiscretionary struct {
+type preparedDiscretionary struct {
 	input   discretionaryInput
 	variant uint16
 	penalty Penalty
@@ -33,7 +33,7 @@ type explicitDiscretionary struct {
 // are ignored. This is not a general word/fragment-length or script-validity rule.
 // Variant IDs are deterministic in source order then material order; callers
 // must not merge this namespace with independently numbered automatic variants.
-func (kq *Khipukamayuq) prepareExplicitDiscretionaries(original string, source runSourceRange) ([]explicitDiscretionary, error) {
+func (kq *Khipukamayuq) prepareExplicitDiscretionaries(original string, source runSourceRange) ([]preparedDiscretionary, error) {
 	if kq == nil {
 		return nil, ErrVoidKhipukamayuq
 	}
@@ -79,7 +79,7 @@ func (kq *Khipukamayuq) prepareExplicitDiscretionaries(original string, source r
 			return nil, fmt.Errorf("%w: invalid explicit break material", contracts.ErrIllegalArguments)
 		}
 	}
-	result := make([]explicitDiscretionary, 0, len(opportunities)*len(materials))
+	result := make([]preparedDiscretionary, 0, len(opportunities)*len(materials))
 	for _, op := range opportunities {
 		for _, m := range materials {
 			fragment := HyphenationFragment{PreBreak: op.left + m.PreBreak, PostBreak: m.PostBreak + op.right, SourceSplit: SourceSplit{op.split, true}}
@@ -87,7 +87,7 @@ func (kq *Khipukamayuq) prepareExplicitDiscretionaries(original string, source r
 			if err != nil {
 				return nil, err
 			}
-			result = append(result, explicitDiscretionary{input: input, variant: uint16(len(result) + 1), penalty: discretionaryPenalty(m, kq.env.params)})
+			result = append(result, preparedDiscretionary{input: input, variant: uint16(len(result) + 1), penalty: discretionaryPenalty(m, kq.env.params)})
 		}
 	}
 	return result, nil

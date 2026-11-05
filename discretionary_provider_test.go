@@ -88,7 +88,7 @@ func TestExplicitProviderDeclinesMarkerEdges(t *testing.T) {
 		Resolver: helpers.DefaultStyleResolver{}, Defaults: preparationDefaults(),
 		NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(0) },
 	}})
-	for _, text := range []string{"abc", "ab\u00ad", "\u00adcd"} {
+	for _, text := range []string{"ab\u00ad", "\u00adcd"} {
 		k, err := owner.EncodeParagraphStreaming(t.Context(), preparationParagraph(t, text))
 		if err != nil {
 			t.Fatal(err)

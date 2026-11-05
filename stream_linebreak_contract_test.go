@@ -59,6 +59,17 @@ func TestStreamingLinebreakContractAtNarrowWidths(t *testing.T) {
 				if len(breaks) < 2 || breaks[len(breaks)-1] != len(k.Kind)-1 {
 					t.Fatalf("%s: missing wrapped path: %v", name, breaks)
 				}
+				positions, err := k.BreakpointPositions(breaks)
+				if err != nil || len(positions) != len(breaks) || positions[len(positions)-1] != uint64(len(tc.text)) {
+					t.Fatalf("%s: invalid source positions %v: %v", name, positions, err)
+				}
+				for i, at := range breaks {
+					// These ordinary fixtures have no omitted glyphs or marker
+					// suffixes: source coverage includes the trailing whitespace.
+					if positions[i] != k.Pos[at]-para.Offset+uint64(k.Len[at]) {
+						t.Fatalf("%s: wrong source endpoint at knot %d: %d", name, at, positions[i])
+					}
+				}
 				prev := -1
 				for _, end := range breaks {
 					if end <= prev || end >= len(k.Kind) || k.Penalty[end] >= 10000 {

@@ -370,9 +370,9 @@ boundaries. We split `ResolvedLevels`, not an already computed `Ordering`, and
 then compute an `Ordering` separately for each line.
 
 ```
-[ Map the chosen breakpoint sequence to paragraph-relative UTF-8 byte boundaries ]
+[ `lineEnds = khp.BreakpointPositions(chosenBreakpoints)`; stop on error ]
 [ Let `remaining` be the retained paragraph `ResolvedLevels` ]
-[ For every line in logical paragraph order ] :
+[ For every `lineEndByte` in `lineEnds`, in logical paragraph order ] :
     [ If this is not the final line ] :
         [ `lineLevels, remaining = remaining.Split(lineEndByte, false)` ]
     [ Else ] :
@@ -396,6 +396,7 @@ paragraph's base direction.
 ```
 
 **Implementation remarks**:
+- `BreakpointPositions` is implemented for encoded paragraphs. It reads the selections from the same linebreaking run, maps ordinary breaks through retained source boundaries and selected alternatives through `SourceSplit`, and performs no bidi mutation. The remaining ordering operations in this section are still planned. Metric-only selected candidates without a known source split are rejected rather than guessed.
 - All bidi positions are half-open UTF-8 byte offsets into the original paragraph, not knot indices or cluster IDs. `Split(..., false)` preserves those coordinates across lines. A run can contain noncontiguous source intervals; use `Segments`, not `run.Length`, to locate them.
 - A selected discretionary needs its original source split position and fragment provenance. The length of the shaped PreBreak text is not a substitute: substitutions or inserted glyphs may change it. The terminal parfillskip maps to paragraph end, not an additional source character.
 - Source coverage is partitioned before trimming. Discarded source spaces still participate in the bidi line boundary calculation, even though their knots will not be emitted. L1 handling remains a client responsibility and needs refinement independently of width trimming.

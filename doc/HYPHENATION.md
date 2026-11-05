@@ -7,22 +7,57 @@ Reviewed against the code on November 4, 2026.
 The streaming encoder now produces the same width/penalty/flag planes consumed
 by both linebreakers, plus textbox shaping storage. Ordinary breaking requires
 no glyph-aware algorithm. Narrow-width integration tests cover actual wrapping,
-trimming, forced breaks and unchanged base knots. Lazy streaming lookup now
-supports explicit U+00AD inside a single retained textbox/context. Configure the
-Khipukamayuq as the breaker's `DiscretionaryProvider`. Unmarked streaming boxes
-return no alternatives: automatic streaming discovery remains disabled and never
-falls back to metric shaping. `ErrStreamingDiscretionariesUnsupported` now guards
-missing streaming configuration when explicit fragment shaping is needed.
+trimming, forced breaks and unchanged base knots. Lazy streaming lookup supports
+explicit U+00AD and automatic alternatives for structurally eligible source
+segments in one retained textbox/context. Configure the Khipukamayuq as the
+breaker's `DiscretionaryProvider`. Ineligible boxes return no alternatives;
+streaming lookup never falls back to metric shaping.
+`ErrStreamingDiscretionariesUnsupported` guards missing streaming configuration
+when fragment shaping is needed.
 
 ### Initial Request Scope
 
-For future automatic discovery, keep the knot-index provider interfaces. Accept a request
-only when the textbox contains a complete eligible source word in one retained
-shaping context. Use the original source and independent word-boundary metadata,
-not whitespace or the mere existence of a textbox boundary. A style or bidi
-boundary inside a word is not a word boundary. Decline such multi-box words
-without silently hyphenating only one fragment. This eligibility policy is
-proposed, not implemented; language-specific segmentation remains upstream.
+The private `Khipu.automaticHyphenationEligible` predicate now implements the
+structural prerequisite for automatic streaming discovery. It requires
+an ordinary, non-discardable textbox with retained original shaping storage,
+consistent byte/scalar source coordinates, and a source range contained in one
+retained context. Both endpoints must coincide with original UAX#29 word hints
+(paragraph edges count), with no internal word hint hidden by a shaped cluster.
+It never uses the line-break penalty or `breakAfter` as a word-boundary proxy.
+
+A style or bidi boundary inside a word is not a word boundary. Both partial
+textboxes are declined, even when their fonts happen to agree; no neighbors are
+concatenated. A style boundary at an actual word boundary is acceptable.
+Glyphless source gaps must not truncate the source segment. Boxes containing
+U+00AD are reserved for explicit discovery, avoiding competing variant namespaces.
+Legacy metric-only nodes and generated replacement boxes are not eligible here.
+
+True means one complete default word *segment*, not proven linguistic
+hyphenatability. Punctuation and numbers may also form complete segments, and
+default UAX#29 is not dictionary segmentation for all scripts. The downstream
+hyphenator must decide whether any alternatives exist; no Western letter test
+or minimum word length is imposed by this metadata-only predicate. Feature
+mapping and fragment validity are separate checks after structural eligibility.
+
+The predicate allocates no text, invokes no collaborators and changes no state.
+The provider now applies it before automatic requests. Explicit markers take
+precedence and never fall back to automatic discovery, even when declined.
+
+Automatic requests read only the bounded original textbox and pass a local
+parameter copy using its retained Language, Script and BidiDir. The policy must
+return complete replacement strings with known interior original-byte splits at
+UTF-8 scalar boundaries. Unknown, endpoint, out-of-range or malformed splits
+fail the batch; replacement lengths cannot supply a missing split. Invalid UTF-8
+and recursive soft-hyphen material also fail. Empty replacement halves are
+skipped after validation, matching the metric discovery policy. No new
+Western character-count minimum is imposed; script-specific validity remains
+with the policy.
+
+Nonzero policy variant IDs are retained and duplicates rejected. Zero IDs receive
+the lowest unused positive IDs in response order, reserving all supplied IDs
+first. Exhausting the uint16 identity space is an error. All response metadata
+is validated before any shaping; all shaped alternatives are staged before
+publication. Failures leave arena/cache unchanged and can be retried.
 
 Extending a request across boxes requires a separate design: the current breaker
 substitutes one knot with PreBreak/PostBreak. A multi-box replacement would need
@@ -115,8 +150,8 @@ access remains future work.
 5. Candidate storage now has optional pre-/post-break box references while
    preserving the metric PreBreak/PostBreak payload expected by the breakers.
    A selected `(Source, Variant)` must resolve both metrics and stored fragments.
-6. Explicit streaming lookup is enabled and covered end to end; automatic
-   streaming lookup remains disabled. The legacy metric path is unchanged.
+6. Explicit and automatic streaming lookup are enabled and covered end to end.
+   The legacy metric path is unchanged.
 
 Ordinary break results remain knot indices. Downstream line extraction and bidi
 splitting must consult retained exact break provenance, not `Pos + Len`;
@@ -177,15 +212,16 @@ Successful nonempty results are cached. Empty/declined requests may be retried.
 Cross-style/multi-box replacements and repeated breaks within one original box
 are not supported. Multiple markers currently supply alternative single splits.
 
-- Source split/replacement-input contracts and validation tests are implemented.
-  Feature mapping and single-word/single-context eligibility remain to be wired.
+- Source split/replacement-input contracts, structural single-segment/context
+  eligibility and automatic provider wiring are implemented and tested. Richer
+  feature mapping remains future work.
 - Pursue explicit U+00AD opportunities before automatic streaming hyphenation,
   initially in one context. Automatic discovery must not cross structural/style
   boundaries or hyphenate their partial-word boxes. Cross-style manual breaks
   require a later multi-box replacement design.
-- Fragment shaping, batch publication, explicit provider integration and both
-  breakers' selection paths are implemented and tested. Automatic streaming
-  discovery and cross-style explicit replacements remain separate next steps.
+- Fragment shaping, batch publication, explicit/automatic provider integration
+  and both breakers' selection paths are implemented and tested. Cross-style
+  explicit replacements remain a separate extension.
 - Add cache lifetime/invalidation rules before supporting mutable input.
 
 Apart from the source-input, shaping and storage foundations above, this section
@@ -258,7 +294,7 @@ accumulate width; zero-width anchors still mark boundaries; EOF has no metric.
 
 ## Lazy Roundtrip
 
-For a textbox requested by a breaker, `Khipukamayuq`:
+For a metric-encoded textbox requested by a breaker, `Khipukamayuq`:
 
 1. Validates the paragraph/index and ownership, and reuses nonempty cached candidates.
 2. Recovers textbox source text and its style from the owning paragraph.
@@ -267,6 +303,14 @@ For a textbox requested by a breaker, `Khipukamayuq`:
 5. Shapes each fragment under the original style and measures its width.
 6. Assigns a nonzero variant ID if the provider returned zero.
 7. Sets `PreBreak.Penalty` and caches the resulting pair.
+
+Streaming paragraphs instead use the shared pipeline described above:
+bounded source access, retained contexts, full-fragment streaming shaping and
+atomic batch publication. Explicit boxes request marker material; eligible
+unmarked boxes request complete-word alternatives. The existing breaker triggers
+are unchanged for automatic lookup: K&P's bad-line pass-2 requests and firstfit's
+loose-line overflow requests after an earlier checkpoint. This does not add an
+automatic first-word rescue to firstfit or revise K&P's geometric screening.
 
 A nonzero fragment penalty is used directly; zero currently means fallback to
 `Params.Hyphenpenalty`. Thus an explicit zero override cannot presently be
@@ -321,29 +365,49 @@ For Knuth-Plass, the winning `[]BreakRef` is authoritative for selection
 write-back. Firstfit commits each greedy choice directly. The resulting
 `Source` and `Variant` identify the chosen cached candidate.
 
-The next consumer is planned freezing, followed by box creation and later
-rendering. No renderer-specific selection helpers or post-processing API
-have been implemented. See [FREEZE.md](FREEZE.md).
+`Khipu.BreakpointPositions(breakpoints)` now maps these decisions to exclusive
+UTF-8 byte endpoints in the original paragraph. Call it before another breaker
+run replaces the selections. It resolves the selected `Source`/`Variant` to its
+cached `SourceSplit`, not to a replacement length. Ordinary streaming breaks use
+retained boundary provenance, including glyphless gaps; the terminal fill maps
+to paragraph end. Positions are paragraph-relative, without `paragraph.Offset`.
+Source whitespace remains included, independently of line-edge trimming.
+
+The mapper accepts increasing knot indices, including partial or empty lists;
+it does not certify path feasibility. Missing/ambiguous candidates, unknown or
+invalid splits, or decreasing source endpoints return an error and no partial
+result. It neither discovers alternatives nor changes the paragraph. Ordinary
+metric knots can be mapped, but selected metric alternatives need an explicitly
+known `SourceSplit`; the legacy provider does not currently supply one.
+
+The next consumer is planned line-local bidi ordering and freezing, followed by
+box creation and later rendering. No bidi splitting, line materialization, or
+renderer-specific helpers are included in this mapper. See [FREEZE.md](FREEZE.md).
 
 ## Ownership And Deferred Work
 
 Fragment validity and length filtering belong to `Khipukamayuq`, with
-script/shaping knowledge supplied by its collaborators. Empty fragments are
-filtered; invalid UTF-8 or fragments exceeding the `uint16` byte-length field
-return errors during shaping. A complete script-sensitive validity policy is
+script/shaping knowledge supplied by its collaborators. The metric path skips
+empty fragments and bounds replacement lengths by its `uint16` field. Streaming
+storage allows empty/silent fragments and separates replacement text from
+original source spans; the original spans must fit the KnotCore length field.
+Both validate UTF-8. Explicit discovery requires nonempty surrounding text, but
+permits empty break material. A complete script-sensitive validity policy is
 still missing. Breakers should not impose Western character-count rules.
 
 The cache assumes stable base knots, shaping context, and variant identities
 within a paragraph instance. Nonempty results are reused; empty results are not
-currently negative-cached. Cache invalidation and transactional population on
-shaping errors remain future hardening topics.
+currently negative-cached. Cache invalidation remains future work. Streaming
+explicit and automatic population is transactional across the full request batch; the metric
+path still publishes alternatives incrementally.
 
-The current payload retains metrics and source-like positions, not a durable
-glyph sequence or fragment string. In particular, post-break position is
-computed from the byte length of the pre-break string. For altered spellings
-or inserted glyphs this is not a general source mapping. Freezing/shaping
-design must settle fragment provenance before downstream consumers rely on
-these fields as faithful original-text ranges.
+Metric candidates retain metrics and source-like positions only; their post-break
+position still uses the pre-break replacement length and is not a general source
+mapping. Streaming candidates retain owned glyphs, replacement strings, contexts
+and original-source provenance through private arena references. Their explicit
+`SourceSplit` is independent of replacement spelling and is exposed for selected
+breaks through `BreakpointPositions`. Applying those positions to bidi resolution
+and materializing line contents remain downstream integration tasks.
 
 There is no separate explicit-hyphen cost model in the new path. The producer
 supplies the candidate penalty; richer script metadata and shaper feedback

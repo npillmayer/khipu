@@ -9,8 +9,7 @@ import (
 )
 
 // ErrStreamingDiscretionariesUnsupported reports missing streaming configuration
-// when an explicit alternative requires reshaping. Never fall back to metric
-// shaping. Automatic streaming discovery is disabled and returns no candidates.
+// when an alternative requires reshaping. Never fall back to metric shaping.
 var ErrStreamingDiscretionariesUnsupported = errors.New("khipu: streaming discretionary shaping is unavailable")
 
 // ErrUnrepresentableMandatoryBreak means source analysis requires a break that

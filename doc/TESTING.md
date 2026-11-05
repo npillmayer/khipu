@@ -2,6 +2,32 @@
 
 ## Purpose and Status
 
+`breakpoint_positions_test.go` covers original-source endpoint mapping for
+streaming and metric paragraphs: multibyte text, nonzero paragraph offsets,
+whitespace, empty/final fills, glyphless gaps, pre-marker breaks, selected
+changed-spelling alternatives, and invalid or missing provenance. Unknown
+legacy discretionary splits fail instead of using replacement lengths.
+Both public breaker integration suites now verify mapped explicit/automatic
+split positions; ordinary narrow-line contract tests check source coverage too.
+
+`discretionary_eligibility_test.go` covers the metadata-only automatic-streaming
+eligibility prerequisite: complete source segments, multibyte/combining/RTL text,
+style boundaries at word ends, rejected style/direction/control-gap word fragments,
+clusters spanning multiple word segments, explicit-marker exclusion, legacy or
+invalid metadata, and unchanged source/caches. Numbers and punctuation test the
+distinction between structural eligibility and linguistic hyphenatability.
+The provider now applies this gate before automatic discovery.
+
+`discretionary_automatic_test.go` covers lazy automatic lookup, retained run
+language/script/direction, changed-spelling provenance, unique variant assignment,
+malformed response rejection before shaping, batch failure/retry, cached results,
+and rejected partial-word requests. Explicit and automatic requests coexist in
+one paragraph without sharing fragment identity or discovery routes.
+`stream_automatic_linebreak_test.go` exercises selection and cache reuse through
+both breakers under their existing lookup policies, plus wide-line no-lookup
+behavior and unchanged base knots. Policies must now provide SourceSplit for
+streaming automatic alternatives; legacy metric-only examples may omit it.
+
 `stream_explicit_linebreak_test.go` exercises public streaming encoding through
 both breakers with the owner configured as provider: wide lines avoid discovery,
 explicit variants can split a first word or extend a preceding line, multiple
@@ -9,7 +35,7 @@ markers offer alternative splits, non-fitting variants stay unselected, caches
 are reused and selections are cleared on a later run. Base knots remain unchanged.
 `discretionary_provider_test.go` verifies retained replacement boxes, batch
 atomicity/retry after a later factory failure, feature-policy rejection, cache
-reuse and declining marker-edge/unmarked boxes without automatic discovery.
+reuse and declining marker-edge boxes without automatic fallback.
 
 `stream_nobreak_test.go` covers public streaming U+00AD suppression, unchanged
 natural width versus marker-free text, original glyph anchors and marker source
