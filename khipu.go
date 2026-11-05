@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/npillmayer/cords/styled"
@@ -225,6 +226,11 @@ func NewKhipukamayuq(config Config) *Khipukamayuq {
 		shaper:      config.Shaper,
 		hyphenator:  config.Hyphenator,
 		parFillSkip: KnotCore{MaxW: dimen.Fill},
+	}
+	if config.Streaming != nil {
+		streaming := *config.Streaming
+		streaming.Defaults.Features = slices.Clone(streaming.Defaults.Features)
+		env.streaming = &streaming
 	}
 	if config.ParFillSkip != nil {
 		env.parFillSkip = *config.ParFillSkip

@@ -2,6 +2,27 @@
 
 ## Purpose and Status
 
+The knotting correctness audit adds `knotting_regression_test.go` for mandatory
+breaks inside clusters, omitted newline glyphs, silent runs, trailing source
+gaps, and style changes without new break opportunities. Public breaker tests
+also cover CRLF, repeated newlines, mixed direction, NBSP, typographic spaces,
+zero-width space and combining marks. Boundary preparation now explicitly
+preserves UAX#14 hard-break precedence: additive upstream contributions had
+weakened breaks between consecutive hard separators. The CRLF exception is
+retained; this intentional streaming correction is not applied to the legacy
+metric encoder. `ErrUnrepresentableMandatoryBreak` documents rejected inputs
+whose required breaks need cluster splitting or glyphless blank-line support.
+Real-font/backend adapter integration remains a separate validation gap.
+
+**Integration update:** `Config.Streaming` and `EncodeParagraphStreaming` now
+provide the opt-in public pipeline through retained textbox glyph storage.
+`encoding_stream_test.go` exercises configuration snapshots, fresh factories,
+factory errors, cancellation, both linebreakers without hyphenation, and the
+explicit guard against metric-only lazy discretionary shaping. Internal tests
+verify published arena associations and owned default feature storage. Earlier
+draft/integration labels in this document describe the stages before this public
+connection; the legacy metric encoder remains available unchanged.
+
 Clients should be able to exercise the complete supported encoding and
 linebreaking path without installing a typography backend or implementing
 dependencies they do not yet understand. Adapter authors should be able to

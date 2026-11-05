@@ -96,7 +96,7 @@ func (a *candidateKnotAccumulator) gapBoundary(from, to uint64) (sourceBoundary,
 		best.wordBoundary = word
 	}
 	if forced > 1 || (from == 0 && forced > 0) {
-		return sourceBoundary{}, fmt.Errorf("%w: glyphless mandatory breaks require blank-line representation", contracts.ErrIllegalArguments)
+		return sourceBoundary{}, fmt.Errorf("%w: glyphless mandatory breaks require blank-line representation", ErrUnrepresentableMandatoryBreak)
 	}
 	return best, nil
 }
@@ -132,6 +132,14 @@ func (a *candidateKnotAccumulator) push(c *glyphCluster) error {
 	for _, g := range c.glyphs {
 		if uint64(g.Cluster) != s.scalarStart {
 			return bad()
+		}
+	}
+	// An absent anchor can mean either a ligature or omitted characters. We
+	// cannot safely split this interval, but must not silently lose a required
+	// source break. Optional breaks/hints inside the cluster remain suppressed.
+	for i := s.scalarStart; i+1 < s.scalarEnd; i++ {
+		if a.boundaries[i].penalty <= MaxMerit {
+			return a.fail(fmt.Errorf("%w: inside cluster at scalar %d", ErrUnrepresentableMandatoryBreak, i+1))
 		}
 	}
 	class, err := classifyCandidateSource(a.para.Raw().BoundedReader(s.byteStart, s.byteEnd))
@@ -210,8 +218,8 @@ func (a *candidateKnotAccumulator) finish() ([]candidateKnot, error) {
 	if err != nil {
 		return nil, a.fail(err)
 	}
-	if gapEnd > a.lastEnd && b.penalty <= MaxMerit {
-		return nil, a.fail(fmt.Errorf("%w: trailing glyphless mandatory break requires blank-line representation", contracts.ErrIllegalArguments))
+	if end > a.lastEnd && b.penalty <= MaxMerit {
+		return nil, a.fail(fmt.Errorf("%w: trailing glyphless mandatory break requires blank-line representation", ErrUnrepresentableMandatoryBreak))
 	}
 	if err := a.flush(b); err != nil {
 		return nil, a.fail(err)

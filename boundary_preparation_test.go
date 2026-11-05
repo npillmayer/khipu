@@ -152,3 +152,22 @@ func TestWordHintDoesNotAuthorizeLineBreak(t *testing.T) {
 		t.Fatalf("before space: expected word hint but prohibited line break, got %+v", got[0])
 	}
 }
+
+func TestHardBreakPrecedence(t *testing.T) {
+	for _, text := range []string{"\n\n", "\r\r", "\u2028\u2028", "\u0085\u0085"} {
+		b, err := readParagraphBoundaries(strings.NewReader(text))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(b) != 2 || b[0].penalty != MaxMerit || b[1].penalty != MaxMerit {
+			t.Fatalf("%q: %+v", text, b)
+		}
+	}
+	b, err := readParagraphBoundaries(strings.NewReader("\r\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b[0].penalty != MaxPenalty || b[1].penalty != MaxMerit {
+		t.Fatal("CRLF must remain one separator", b)
+	}
+}

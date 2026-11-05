@@ -117,6 +117,9 @@ func (kq *Khipukamayuq) DiscretionaryCandidates(khp *Khipu, at int) ([]Discretio
 	if khp.Kind[at] != KTTextBox {
 		return nil, nil
 	}
+	if khp.shaping.sources != nil {
+		return nil, ErrStreamingDiscretionariesUnsupported
+	}
 	word, pos, err := textboxSource(khp, at)
 	if err != nil {
 		return nil, err

@@ -21,9 +21,10 @@ and a shared argument-error sentinel. Concrete defaults are in
 | `StyleResolver` | `ResolvedRunStyle`, `SpacingMode` | Draft run-resolution boundary; a default implementation is available in `helpers` |
 | `StreamingShaper` | `ShapeParams`, `ShapeFeature`, `ShapeBufferOptions`, `ShapeFlushBoundary`, `ShapedGlyph` | Draft streaming boundary; a standalone synthetic implementation is available in `helpers` |
 
-The font, resolver, and streaming APIs are not yet integrated into paragraph
-encoding. `StreamingShaper` cannot be supplied to `Config.Shaper`; these are
-different interfaces with different units and lifecycles.
+The font, resolver, and streaming APIs are used by the opt-in
+`EncodeParagraphStreaming` entry point through `Config.Streaming`.
+`StreamingShaper` cannot be supplied to `Config.Shaper`; the metric and streaming
+interfaces have different units and lifecycles. `EncodeParagraph` is unchanged.
 
 Paragraph-specific `KnotStyler` and `Hyphenator` remain in the root `khipu`
 package. Paragraph shapes and discretionary-provider interfaces remain with

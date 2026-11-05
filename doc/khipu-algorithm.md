@@ -1,7 +1,18 @@
 # Overall Algorithm to Shape Text into Type
 
-The streaming/glyph sections below describe the intended architecture. The
-implemented SOA encoder uses the synchronous `Shaper` metric interface; see
+**Streaming integration:** `EncodeParagraphStreaming(ctx, para)` now connects
+the preparation, producer, cluster assembly, candidate and publication stages
+described below. It requires explicit `Config.Streaming` configuration with a
+resolver, font/style defaults and a fresh-shaper factory. `EncodeParagraph` still
+uses the metric path. Both linebreakers can consume streaming paragraphs without
+hyphenation. Lazy discretionary reshaping is not migrated; an attempted owner
+lookup with a configured hyphenator returns
+`ErrStreamingDiscretionariesUnsupported`. Freezing and rendering remain future
+work. Knotting is implemented for the supported contract described below;
+unrepresentable mandatory breaks return an explicit error, not partial output.
+
+The knotting sections below describe the implemented streaming architecture.
+The separate legacy SOA encoder uses the synchronous `Shaper` interface; see
 [MIGRATION.md](MIGRATION.md) for its byte-offset and cluster contract. It preserves
 original source bytes. Any normalization must precede construction of styled
 source ranges. UAX#14 is evaluated across the whole paragraph before intersecting
@@ -81,19 +92,14 @@ For sketching out the algorithm we will rely on a Shaper version which offers a 
 ```
 [ Prepare finalized source boundaries for the complete original paragraph ]
 [ Intersect bidi intervals with style spans ]
-[ For every interval `B` in `ResolvedLevels.LogicalSegments()` ] :
-    // Runs are split off at style boundaries
-    [ For every run `R` split off from `B` ] :
-        [ `P(R).bidi = B.bidi` ]
-        [ Configure the Shaper with `P(R)` ] // Set font, script, etc.
-        [ Point the Shaper to `R` ]
-        // The Shaper reads from a RuneSource,
-        // i.e. it is "pulling" characters
-        [ For every rune pulled into the Shaper ] :
-            [ Generate a cluster-ID for `c` ]
-            // Finalized `U(c)` is already available in source-boundary metadata
-        [ Associate the Cluster-ID of the first rune of `R` with `P(R)` ]
-[ Signal EOF to the Shaper channel ]
+[ Resolve each contributing style span once; prepare intersection parameters ]
+[ Publish immutable run/source metadata before starting the producer ]
+[ In the producer goroutine, for every prepared run `R` ] :
+    [ Check cancellation and scalar-ID bounds ]
+    [ Set the Shaper's initial cluster to R's original scalar start ]
+    [ Call Shape with P(R) and a bounded reader of R's original text ]
+    // The shaper assigns cluster anchors; source penalties are already final
+[ Finish the stream and report producer completion separately from glyph output ]
 ```
 
 `prepareParagraphBoundaries` reads the original cord through a buffered reader,
@@ -102,7 +108,9 @@ original scalar: the exclusive byte and scalar positions and the finalized
 penalty and a separate `wordBoundary` flag. Controls omitted from shaping remain
 in this table. Both the UAX#14 and UAX#29 breakers
 may revise earlier penalties, so preparation applies all contributions, including
-EOF, before normalizing and publishing the table. The synthetic EOF marker has
+EOF, before normalizing and publishing the table. Hard-break classes retain
+mandatory precedence even where additive upstream contributions cancel; CRLF
+remains a single separator. The synthetic EOF marker has
 no table entry; the terminal fill/forced-break knot remains separate. Source
 NUL is classified as U+FFFD, matching the existing encoder policy, without
 altering its source coordinates. Errors return no partial table.
@@ -114,9 +122,8 @@ It does not provide dictionary-based or language-specific word segmentation
 cluster boundaries, but must not split a glyph cluster at an interior hint or
 move that hint to another source position. Word hints do not classify glue or
 determine elasticity or discardability.
-The table is metadata, not permission to break within a shaped cluster. It will
-be available before starting the producer, but is not yet wired into the active
-encoder or a streaming glyph consumer.
+The table is metadata, not permission to break within a shaped cluster. It is
+available to the streaming consumer before starting the producer.
 
 Here, splitting off shaping intervals means traversing the paragraph in logical
 order, not consuming `ResolvedLevels.Split`. The latter is reserved for the
@@ -131,8 +138,8 @@ each contributing style span once through `contracts.StyleResolver`, acquires
 its font scale, and creates prepared runs with owned feature storage. Feature
 ranges refer to original style-span scalar positions, including omitted controls;
 they are clipped and rebased for each shaping run. Empty overlaps are omitted.
-No numeric bidi level is stored. Neither preparation nor streaming-shaper
-submission is wired into the active encoder yet.
+No numeric bidi level is stored. These stages are used by the opt-in streaming
+encoder; the metric encoder remains independent.
 
 The internal `producePreparedRuns` function implements the prepared input end.
 Its caller starts it in a goroutine after publishing the immutable run table;
@@ -143,23 +150,18 @@ calls `Finish` after all runs succeed. Empty input still finishes the stream.
 The caller must observe producer completion separately from glyph-channel
 closure, cancel and join the producer if consumption fails, and publish no
 partial result. Consumer metadata lookup must use glyph cluster coordinates,
-not a mutable producer-side current-run pointer. Glyph-to-knot construction
-for this streaming path remains future work.
+not a mutable producer-side current-run pointer.
 
 ```
 [ Intersect bidi intervals with style spans ] :=
-    [ Resolve bidi for the whole paragraph ]
+    [ Use the paragraph's retained bidi resolution ]
     [ Obtain flattened style spans in original source-byte coordinates ]
     [ For each segment B in levels.LogicalSegments() ] :
         [ Visit style spans S overlapping B ]
         [ Compute from = max(B.From, S.From) ]
         [ Compute to = min(B.To, S.To) ]
         [ For each nonempty intersection [from, to) ] :
-            [ Resolve style-controlled shaping parameters from S ]
-            [ Set shaping direction to B.Dir ]
-            [ Preserve script/language supplied through the style resolver ]
-            [ Record original byte and scalar ranges in preparedRun ]
-            [ Submit original logical text with these parameters to the Shaper ]
+            [ Record source byte/scalar ranges, originating style span and B.Dir ]
     [ Retain levels for splitting at the finally selected line boundaries ]
 ```
 
@@ -185,11 +187,11 @@ until then; any failure requires discarding the result.
 Missing anchors do not identify why glyphs were omitted. Interior/trailing
 omissions are included in the inferred preceding cluster span; leading omissions
 and completely silent runs remain uncovered source metadata, not fabricated
-glyph clusters. Later knotting must account for those ranges explicitly. A
+glyph clusters. Candidate accumulation accounts for those ranges explicitly. A
 finite source penalty does not by itself prove a safe shaping break.
 
 `candidateKnotAccumulator` now groups completed clusters into intermediate
-candidates, without changing persistent `Khipu` storage or the active encoder.
+candidates before publication into persistent `Khipu` storage.
 It separates candidates at permitted line breaks, word hints, prepared-run
 changes, whitespace-class changes, and uncovered source gaps. Cluster interiors
 are never split. Widths use the candidate arithmetic and U+0020 elasticity
@@ -208,8 +210,16 @@ the assembled cluster endpoint uses the normal source penalty path.
 Candidates are returned only on successful finalization. The final content
 penalty is prohibited and a non-discardable fill/forced-break candidate is
 appended at paragraph end. Invalid source spans, width conversions and knot
-length overflow discard all accumulated candidates. Public owner configuration,
-persistent glyph storage and active encoder migration remain future work.
+length overflow discard all accumulated candidates. The public streaming entry
+point then publishes them, retaining shaping data for textboxes only.
+
+**Supported mandatory-break policy:** a required source break inside an inferred
+cluster, or a glyphless gap requiring unsupported blank-line representation,
+returns `ErrUnrepresentableMandatoryBreak` with no paragraph. Optional breaks
+inside a cluster are suppressed. A required boundary at an ordinary cluster
+endpoint is retained, including zero-advance newline glyphs. The final source
+boundary is represented once by the terminal fill knot. This policy is a
+deliberate limitation, not a claim that all Unicode paragraphs can be encoded.
 
 ### Connected Candidate Pipeline
 
@@ -230,8 +240,8 @@ Only complete success returns a `candidateParagraph`, retaining candidate knots,
 prepared runs and source boundaries together so their indices remain meaningful.
 The original paragraph remains borrowed. Every error returns nil, including
 terminal shaper errors and width/fill finalization failures. This internal
-operation does not allocate a persistent `Khipu`, alter public configuration,
-or replace `EncodeParagraph`.
+operation feeds `publishCandidateParagraph` inside `EncodeParagraphStreaming`.
+It does not replace the legacy `EncodeParagraph`.
 
 ### Textbox Shaping Storage
 
@@ -252,20 +262,24 @@ Publication copies glyph and feature slices and source-boundary metadata; the
 original styled paragraph and immutable font/scale services remain shared. Knot
 source spans and exact break provenance are retained even for glue. Ordinary
 box input is currently its original source range. Replacement input for
-discretionaries, arena compaction, renderer access APIs and public streaming
-encoder integration remain separate work.
+discretionaries, arena compaction and renderer access APIs remain separate work.
 
 ```
-[ Initialize an empty khipu `K` ]
-[ Repeat until Shaper output channel is drained ] :
-    [ Collect glyph info `g` as long as `U(c) = ∞`, where `g` stems from `c` ]
-    // The last `c` has `U(c) < ∞` or the channel is drained
-    [ Create a knot `k` for the collected glyph infos ]
-    [ Set a penalty for `k` to `U(c)` ]
-    [ Append knot `k` to `K` ]
+[ Initialize cluster assembler and candidate accumulator ]
+[ Observe glyph output and producer completion on the calling execution path ] :
+    [ Validate glyph anchors and assemble complete clusters ]
+    [ Associate each cluster with its run and original source span ]
+    [ Reject mandatory breaks inside inseparable clusters ]
+    [ Separate candidates at line opportunities, word hints, run/class changes or gaps ]
+    [ Preserve the independent source penalty and exact break position ]
+    [ Accumulate fractional widths and retain owned glyph records ]
+[ On failure, cancel and join producer; discard all candidates ]
+[ After output is drained and producer/shaper succeed, finalize the last cluster ]
+[ Finalize candidate widths and whitespace elasticity ]
 [ Retain source spaces; breakers trim flagged discardables at line edges ]
 [ Prohibit the break on the final source knot ]
 [ Append one non-discardable parfillskip knot carrying the mandatory penalty ]
+[ Publish SOA knots and textbox shaping arena into a new khipu `K` ]
 ```
 
 where
@@ -273,8 +287,8 @@ where
 
 ```
 [ Create a knot `k` for the collected glyph infos ] :=
-    [ If the collected glyphs represent space only ] :
-        // Stretchability of glue drop depends on `P(c).spacing` (`elastic` or `fixed`)
+    [ If the original source range is whitespace only ] :
+        // Only all-U+0020 source with elastic spacing receives percentage elasticity
         [ Create a glue knot `k` ]
     [ Else ] :  // Deal with a sequence of letter glyphs
         [ Create a box knot `k` from the collected glyph infos ]

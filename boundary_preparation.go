@@ -55,6 +55,8 @@ func readParagraphBoundaries(source io.Reader) ([]sourceBoundary, error) {
 	var result []sourceBoundary
 	var totals []int64
 	var wordTotals []int64
+	var mandatory []bool
+	previousCR := false
 	accumulate := func(b uax.UnicodeBreaker, r rune, sums []int64) []int64 {
 		sums = append(sums, 0)
 		class := b.CodePointClassFor(r)
@@ -96,11 +98,26 @@ func readParagraphBoundaries(source io.Reader) ([]sourceBoundary, error) {
 		if r == 0 {
 			r = utf8.RuneError
 		}
+		// Preserve LB4/LB5 precedence explicitly. The upstream additive rule
+		// contributions can otherwise cancel a required break before another
+		// hard separator (e.g. LF LF). CR LF is one separator, not two.
+		class := uax14.UAX14Class(breaker.CodePointClassFor(r))
+		if previousCR && class != uax14.LFClass {
+			mandatory[len(mandatory)-1] = true
+		}
+		mandatory = append(mandatory, class == uax14.BKClass || class == uax14.LFClass || class == uax14.NLClass)
+		previousCR = class == uax14.CRClass
 		feed(r)
+	}
+	if previousCR {
+		mandatory[len(mandatory)-1] = true
 	}
 	feed(0)
 	for i := range result {
 		result[i].penalty = normPenalty(totals[i])
+		if mandatory[i] {
+			result[i].penalty = MaxMerit
+		}
 		result[i].wordBoundary = wordTotals[i] < int64(uax.InfinitePenalty)
 	}
 	return result, nil

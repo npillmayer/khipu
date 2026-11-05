@@ -79,6 +79,29 @@ Pass independently inherited defaults for each run.
 
 ## Standalone Streaming Example
 
+For paragraph encoding, configure the opt-in path with these helpers:
+
+```go
+owner := khipu.NewKhipukamayuq(khipu.Config{
+    Streaming: &khipu.StreamingConfig{
+        NewShaper: func() (contracts.StreamingShaper, error) {
+            return helpers.NewSyntheticStreamingShaper(16)
+        },
+        Resolver: helpers.DefaultStyleResolver{},
+        Defaults: contracts.ResolvedRunStyle{
+            Font: helpers.NewSyntheticFont(), EmSize: 10 * dimen.PT,
+            Spacing: contracts.SpacingElastic,
+        },
+    },
+})
+khp, err := owner.EncodeParagraphStreaming(ctx, para)
+```
+
+The owner copies configuration and default feature storage. The factory must
+return a fresh stream each time. Both breakers can consume `khp`; leave lazy
+hyphenation disabled until streaming discretionary reshaping is implemented.
+The existing `EncodeParagraph` and `Config.Shaper` path is unchanged.
+
 `SyntheticStreamingShaper` implements `contracts.StreamingShaper`. It remains
 separate from the current paragraph encoder and cannot be used as `Config.Shaper`.
 This complete program resolves defaults, creates a scale, and shapes a run while
