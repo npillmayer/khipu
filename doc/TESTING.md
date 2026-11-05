@@ -68,6 +68,15 @@ resolver input/output are original style-span scalar positions; preparation
 clips and rebases them, preserving control gaps. This is preparation-only
 coverage, not a streaming encoder integration guarantee.
 
+`run_producer_test.go` now exercises `producePreparedRuns` in a producer
+goroutine with a collecting consumer on the calling execution path. Coverage
+includes bounded cord readers, original scalar cluster bases across omitted
+controls, buffered and unbuffered output, cluster-ID limits, cancellation, and
+failures before Shape and during Shape/Finish. The test consumer observes both
+producer completion and glyph-channel closure: a pre-Shape error need not close
+output, and successful completion does not mean buffered output is drained.
+This stage does not yet construct knots or change the active encoder.
+
 `KnotStyler`, which currently adjusts knot width bounds, is distinct from the
 draft `StyleResolver`. The existing fixed shaper ignores `SetStyle`; this does
 not mean that the encoder ignores style boundaries or knot adaptation.

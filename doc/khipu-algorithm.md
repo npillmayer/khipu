@@ -106,6 +106,18 @@ they are clipped and rebased for each shaping run. Empty overlaps are omitted.
 No numeric bidi level is stored. Neither preparation nor streaming-shaper
 submission is wired into the active encoder yet.
 
+The internal `producePreparedRuns` function implements the prepared input end.
+Its caller starts it in a goroutine after publishing the immutable run table;
+glyph consumption stays on the calling execution path. For each run it checks
+cancellation and cluster-ID bounds, sets the original scalar base explicitly,
+and calls `Shape` with a bounded cord reader and the prepared parameters. It
+calls `Finish` after all runs succeed. Empty input still finishes the stream.
+The caller must observe producer completion separately from glyph-channel
+closure, cancel and join the producer if consumption fails, and publish no
+partial result. Consumer metadata lookup must use glyph cluster coordinates,
+not a mutable producer-side current-run pointer. Glyph-to-knot construction
+for this streaming path remains future work.
+
 ```
 [ Intersect bidi intervals with style spans ] :=
     [ Resolve bidi for the whole paragraph ]
