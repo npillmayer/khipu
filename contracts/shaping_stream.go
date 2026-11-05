@@ -85,6 +85,8 @@ const (
 // Cluster anchors the first original Unicode scalar of its shaping group, not
 // the last rune carrying a boundary penalty. IDs continue across successful
 // calls by input scalar count, including scalars producing no output.
+// Within logical-order output anchors are nondecreasing; glyphs sharing an
+// anchor are consecutive, including for RTL runs.
 // SetInitialCluster overrides the next base. Khipukamayuq retains source spans
 // and penalties separately; cluster boundaries alone do not permit line breaks.
 // The channel contains no run or cluster completion markers. Backend feature

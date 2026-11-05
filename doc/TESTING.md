@@ -86,6 +86,20 @@ controls. This preserves the existing policy rather than asserting new Unicode
 conformance. The new finalized source-boundary table is not yet consumed by the
 active encoder or a streaming knot builder.
 
+Boundary preparation also retains independent default UAX#29 word-boundary
+hints. Explicit tests cover punctuation, contractions, numeric punctuation,
+combining marks, CJK text, consecutive spaces, CRLF, and omitted bidi controls.
+A word hint before a space is asserted to leave the UAX#14 line break prohibited;
+the existing line-penalty migration comparisons remain unchanged. This does not
+claim dictionary segmentation for Thai or implement knot aggregation.
+
+`glyph_clusters_test.go` tests the output-side cluster assembler independently
+and with the streaming producer. Cases include shared anchors, multibyte source
+spans, preserved glyph offsets, RTL runs, control gaps, silent runs, leading
+omissions, invalid/decreasing anchors, metadata validation, and final-cluster
+completion. These tests establish assembly of source-associated glyph groups,
+not knot creation, width calculation, or safe-break certification.
+
 `KnotStyler`, which currently adjusts knot width bounds, is distinct from the
 draft `StyleResolver`. The existing fixed shaper ignores `SetStyle`; this does
 not mean that the encoder ignores style boundaries or knot adaptation.

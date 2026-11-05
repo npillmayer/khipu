@@ -55,7 +55,12 @@ We need to keep bidi-interval `B` boundaries and `P(R)` information associated w
 
 Segmentation of rune sequences is done with Unicode segmentation rules in mind, i.e. UAX annex rules. Examples of this would be UAX#9 (bidi), UAX#14 (line segmenting) or UAX#29 (word breaking). We have a Go package available that translates UAX rules into penalty values, i.e. `UAX#29(c)` will give a numerical value (or `∞`, i.e. infinity, for disallowing a breakpoint). Mandatory breakpoints give `-∞`.
 
-Interpretation of UAX lives in the character realm. As a general rule, breaking-information derived from UAX rules will be translated to penalties in the glyph-realm. We will use a function `U` to calculate the accumulated penalties for (the position after) a given input character `c` from the UAX rules: `U(c) = UAX#29(c) + UAX#14(c) + …`. In case of a disallowed break, `U(c) = ∞` (infinity).
+Interpretation of UAX lives in the character realm. `U(c)` denotes the line-break
+penalty after input character `c`, currently obtained from UAX#14. A disallowed
+line break has `U(c) = ∞`. UAX#29 word boundaries are retained separately as knot
+partition hints, not added to line-break penalties. Word boundaries do not
+necessarily permit line breaks, and line-break opportunities need not coincide
+with word boundaries.
 
 
 ## Pseudo-Code
@@ -94,14 +99,21 @@ For sketching out the algorithm we will rely on a Shaper version which offers a 
 `prepareParagraphBoundaries` reads the original cord through a buffered reader,
 without flattening it into a string. Its table contains one entry after every
 original scalar: the exclusive byte and scalar positions and the finalized
-penalty. Controls omitted from shaping remain in this table. The UAX#14 breaker
+penalty and a separate `wordBoundary` flag. Controls omitted from shaping remain
+in this table. Both the UAX#14 and UAX#29 breakers
 may revise earlier penalties, so preparation applies all contributions, including
 EOF, before normalizing and publishing the table. The synthetic EOF marker has
 no table entry; the terminal fill/forced-break knot remains separate. Source
 NUL is classified as U+FFFD, matching the existing encoder policy, without
 altering its source coordinates. Errors return no partial table.
 
-This implements the existing UAX#14 policy only; no new UAX#29 policy is added.
+This preserves the existing UAX#14 policy and records default UAX#29 word hints
+in parallel during the same source scan, using independent contribution totals.
+It does not provide dictionary-based or language-specific word segmentation
+(for example, Thai tailoring). A future knot accumulator may use word hints at
+cluster boundaries, but must not split a glyph cluster at an interior hint or
+move that hint to another source position. Word hints do not classify glue or
+determine elasticity or discardability.
 The table is metadata, not permission to break within a shaped cluster. It will
 be available before starting the producer, but is not yet wired into the active
 encoder or a streaming glyph consumer.
@@ -156,6 +168,26 @@ style spans. Run preparation does not automatically detect scripts or subdivide
 runs for them.
 
 ### Glyph Output End
+
+The internal `glyphClusterAssembler` now implements the first output-side stage,
+but does not create knots. It groups consecutive glyphs sharing a scalar anchor,
+validates nondecreasing anchors against the prepared runs, and uses the complete
+source-boundary table to recover original byte ranges. Glyph order and signed
+font-unit positions are preserved; each emitted cluster identifies its prepared
+run and the source penalty at its exclusive end.
+
+A cluster ends at the next anchor in its run, or at that run's end. It never
+extends into the next run or across omitted bidi controls between runs. The
+final pending cluster is completed only after output is drained and both
+producer and shaper have succeeded. Earlier emitted clusters remain provisional
+until then; any failure requires discarding the result.
+
+Missing anchors do not identify why glyphs were omitted. Interior/trailing
+omissions are included in the inferred preceding cluster span; leading omissions
+and completely silent runs remain uncovered source metadata, not fabricated
+glyph clusters. Later knotting must account for those ranges explicitly. A
+finite source penalty does not by itself prove a safe shaping break. Width
+conversion, knot aggregation and persistent glyph storage remain future work.
 
 ```
 [ Initialize an empty khipu `K` ]

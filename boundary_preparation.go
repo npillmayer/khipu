@@ -9,7 +9,9 @@ import (
 
 	"github.com/npillmayer/cords/styled"
 	"github.com/npillmayer/khipu/contracts"
+	"github.com/npillmayer/uax"
 	"github.com/npillmayer/uax/uax14"
+	"github.com/npillmayer/uax/uax29"
 )
 
 // sourceBoundary describes the position after one original source scalar.
@@ -21,11 +23,16 @@ type sourceBoundary struct {
 	byteEnd   uint64
 	scalarEnd uint64
 	penalty   Penalty
+	// wordBoundary is a default UAX#29 knot-partition hint, independent of
+	// the UAX#14 penalty. It neither permits a line break nor splits a glyph
+	// cluster. Language-specific dictionary segmentation is not provided here.
+	wordBoundary bool
 }
 
 // prepareParagraphBoundaries analyzes the intact original paragraph before
 // shaping begins. Style and bidi boundaries never reset Unicode analysis.
-// Returned penalties are finalized and may be shared as immutable metadata.
+// Returned penalties and word hints are finalized immutable metadata. The two
+// analyses stay independent: word hints never contribute to line demerits.
 // This preparation-only path does not change the active metric encoder.
 func prepareParagraphBoundaries(para *styled.Paragraph) ([]sourceBoundary, error) {
 	if para == nil {
@@ -35,7 +42,7 @@ func prepareParagraphBoundaries(para *styled.Paragraph) ([]sourceBoundary, error
 }
 
 // readParagraphBoundaries retains endpoints and accumulated penalties, not a
-// copy of the source text. UAX#14 can revise earlier positions, so normalization
+// copy of the source text. Both breakers can revise earlier positions, so finalization
 // must wait until EOF contributions have been applied. On failure no partial
 // table is returned. The reader seam also permits injected I/O failures in tests.
 func readParagraphBoundaries(source io.Reader) ([]sourceBoundary, error) {
@@ -44,18 +51,27 @@ func readParagraphBoundaries(source io.Reader) ([]sourceBoundary, error) {
 	}
 	reader := bufio.NewReader(source)
 	breaker := uax14.NewLineWrap()
+	words := uax29.NewWordBreaker(1)
 	var result []sourceBoundary
 	var totals []int64
-	feed := func(r rune) {
-		totals = append(totals, 0)
-		class := breaker.CodePointClassFor(r)
-		breaker.StartRulesFor(r, class)
-		breaker.ProceedWithRune(r, class)
-		for back, p := range breaker.Penalties() {
-			if at := len(totals) - 1 - back; at >= 0 {
-				totals[at] += int64(p)
+	var wordTotals []int64
+	accumulate := func(b uax.UnicodeBreaker, r rune, sums []int64) []int64 {
+		sums = append(sums, 0)
+		class := b.CodePointClassFor(r)
+		b.StartRulesFor(r, class)
+		b.ProceedWithRune(r, class)
+		for back, p := range b.Penalties() {
+			if at := len(sums) - 1 - back; at >= 0 {
+				sums[at] += int64(p)
 			}
 		}
+		return sums
+	}
+	feed := func(r rune) {
+		// Both engines may revise preceding positions. Never mix their
+		// contributions: a word boundary must not change line feasibility.
+		totals = accumulate(breaker, r, totals)
+		wordTotals = accumulate(words, r, wordTotals)
 	}
 	var bytes, scalars uint64
 	for {
@@ -85,6 +101,7 @@ func readParagraphBoundaries(source io.Reader) ([]sourceBoundary, error) {
 	feed(0)
 	for i := range result {
 		result[i].penalty = normPenalty(totals[i])
+		result[i].wordBoundary = wordTotals[i] < int64(uax.InfinitePenalty)
 	}
 	return result, nil
 }

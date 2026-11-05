@@ -108,3 +108,47 @@ func TestBoundaryPreparationFinalReadWithEOF(t *testing.T) {
 		t.Fatalf("%v %v", got, err)
 	}
 }
+
+func TestWordBoundaryHints(t *testing.T) {
+	for _, tc := range []struct {
+		text string
+		ends []uint64
+	}{
+		{"", nil},
+		{"hello world", []uint64{5, 6, 11}},
+		{"can't", []uint64{5}},
+		{"3.14", []uint64{4}},
+		{"a,b", []uint64{1, 2, 3}},
+		{"a  b", []uint64{1, 3, 4}},
+		{"e\u0301!", []uint64{3, 4}},
+		{"a\r\nb", []uint64{1, 3, 4}},
+		{"中文", []uint64{3, 6}},
+		{"a\u2066\u2069b", []uint64{8}},
+	} {
+		t.Run(tc.text, func(t *testing.T) {
+			got, err := readParagraphBoundaries(iotest.OneByteReader(strings.NewReader(tc.text)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var ends []uint64
+			for _, b := range got {
+				if b.wordBoundary {
+					ends = append(ends, b.byteEnd)
+				}
+			}
+			if !reflect.DeepEqual(ends, tc.ends) {
+				t.Fatalf("word ends %v, want %v", ends, tc.ends)
+			}
+		})
+	}
+}
+
+func TestWordHintDoesNotAuthorizeLineBreak(t *testing.T) {
+	got, err := readParagraphBoundaries(strings.NewReader("a b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got[0].wordBoundary || got[0].penalty != MaxPenalty {
+		t.Fatalf("before space: expected word hint but prohibited line break, got %+v", got[0])
+	}
+}
