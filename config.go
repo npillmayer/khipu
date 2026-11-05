@@ -1,5 +1,7 @@
 package khipu
 
+import "github.com/npillmayer/khipu/contracts"
+
 // Config supplies the collaborators and parameters used by a Khipukamayuq.
 // Its zero value selects the existing fixed-width shaper and default parameters,
 // with lazy hyphenation disabled. Segmentation setup remains internal.
@@ -9,7 +11,7 @@ type Config struct {
 	// The supplied instance is retained, not copied. Khipukamayuq changes its
 	// source and style, so callers must not use it concurrently with encoding
 	// or discretionary lookup, including through another Khipukamayuq.
-	Shaper Shaper
+	Shaper contracts.Shaper
 
 	// Hyphenator supplies lazy discretionary alternatives. Nil disables discovery;
 	// candidates already cached on a Khipu remain available.

@@ -1,9 +1,12 @@
 package khipu
 
-import "github.com/npillmayer/khipu/dimen"
+import (
+	"github.com/npillmayer/khipu/contracts"
+	"github.com/npillmayer/khipu/dimen"
+)
 
 // preparedRun describes one uniform shaping run before submission to a
-// StreamingShaper. It is the internal, resolved form of the algorithm's P(R)
+// contracts.StreamingShaper. It is the internal, resolved form of the algorithm's P(R)
 // together with the original source range to which those parameters apply.
 //
 // The paragraph owns the text. This record owns neither a text copy nor a
@@ -30,7 +33,7 @@ type preparedRun struct {
 // the two ranges with the paragraph source. Add the paragraph's Offset only
 // when producing absolute source positions. The uint64 endpoints permit an
 // exclusive scalar end beyond the last uint32 cluster ID; submission must
-// check the StreamingShaper's representable range before narrowing indices.
+// check the contracts.StreamingShaper's representable range before narrowing indices.
 // Per-scalar byte mapping, when needed, is separate from these run endpoints.
 type runSourceRange struct {
 	byteStart   uint64
@@ -44,15 +47,15 @@ type runSourceRange struct {
 // preparation procedure. All shaping properties are uniform over the run.
 //
 // Preparation must take an owned copy of shaping.Features. Its ranges remain
-// run-relative scalar indices, as specified by ShapeFeature. FontFace and
-// FontScale implementations obey their immutable-query contracts.
+// run-relative scalar indices, as specified by contracts.ShapeFeature. contracts.FontFace and
+// contracts.FontScale implementations obey their immutable-query contracts.
 type runParameters struct {
-	shaping ShapeParams
+	shaping contracts.ShapeParams
 	// emSize records the positive selected size; scale must be obtained from
 	// shaping.Font for this same size. Keeping the size allows later reshaping
 	// without attempting to recover it from an opaque conversion object.
 	emSize dimen.DU
-	scale  FontScale
+	scale  contracts.FontScale
 	// spacing governs interword spaces, not the adjustability of textboxes.
 	spacing spacingMode
 	// bidiLevel is the resolved embedding level retained for downstream visual
@@ -65,9 +68,9 @@ type runParameters struct {
 // not determine discardability or prescribe numerical stretch/shrink amounts.
 // Although the zero value denotes fixed spacing, preparation must resolve the
 // policy explicitly rather than treat zero as an unspecified paragraph default.
-type spacingMode = SpacingMode
+type spacingMode = contracts.SpacingMode
 
 const (
-	spacingFixed   = SpacingFixed
-	spacingElastic = SpacingElastic
+	spacingFixed   = contracts.SpacingFixed
+	spacingElastic = contracts.SpacingElastic
 )

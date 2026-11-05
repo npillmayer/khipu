@@ -6,6 +6,7 @@ import (
 	"math"
 	"unicode/utf8"
 
+	"github.com/npillmayer/khipu/contracts"
 	"github.com/npillmayer/khipu/dimen"
 )
 
@@ -14,7 +15,7 @@ type clusterMetrics struct {
 	starts []bool // explicit cluster boundaries, including the end of the run
 }
 
-func getMetrics(source []byte, shaper Shaper) (clusterMetrics, error) {
+func getMetrics(source []byte, shaper contracts.Shaper) (clusterMetrics, error) {
 	m := clusterMetrics{widths: make([]dimen.DU, len(source)), starts: make([]bool, len(source)+1)}
 	m.starts[0] = true
 	m.starts[len(source)] = true

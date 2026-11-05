@@ -3,7 +3,7 @@
 // aligned planes; KnotByIndex returns a KnotCore value snapshot.
 //
 // Construct a Khipukamayuq with Config and call its EncodeParagraph method.
-// Config{} selects a fixed-width metric provider. Applications supply a Shaper
+// Config{} selects a fixed-width metric provider. Applications supply a contracts.Shaper
 // for font-backed metrics and an optional Hyphenator for lazy alternatives.
 // Encoding preserves original source bytes and appends the final fill/forced
 // break, including for empty paragraphs. Normalize text before establishing
@@ -17,8 +17,13 @@
 //
 // Owners and their mutable collaborators must not be used concurrently.
 // Linebreaking does not produce final glyph placement or rendering: freezing
-// and glyph provenance remain future work. StreamingShaper and the font
-// interfaces describe draft adapter boundaries, not an active backend.
+// and glyph provenance remain future work. Package contracts owns the service
+// interfaces and their value types. Package helpers provides deterministic
+// defaults: FixedWidthShaper for Config, and SyntheticFont, DefaultStyleResolver,
+// and SyntheticStreamingShaper for standalone font/style/streaming work. The
+// encoder does not consume those draft streaming services yet. Root aliases and
+// forwarding constructors preserve earlier client code; new code should import
+// contracts and helpers directly. Paragraph-specific interfaces stay here.
 //
 /*
 License
@@ -33,6 +38,8 @@ package khipu
 
 import (
 	"errors"
+
+	"github.com/npillmayer/khipu/contracts"
 
 	"github.com/npillmayer/schuko/tracing"
 )
@@ -49,6 +56,7 @@ func assert(cond bool, msg string) {
 }
 
 var (
-	ErrIllegalArguments = errors.New("khipu: illegal arguments")
+	// ErrIllegalArguments retains identity with contracts.ErrIllegalArguments.
+	ErrIllegalArguments = contracts.ErrIllegalArguments
 	ErrVoidKhipukamayuq = errors.New("khipu: void khipukamayuq")
 )

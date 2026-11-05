@@ -1,4 +1,4 @@
-package khipu
+package contracts
 
 import (
 	"io"

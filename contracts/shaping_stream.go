@@ -1,4 +1,4 @@
-package khipu
+package contracts
 
 import (
 	"context"
@@ -9,7 +9,8 @@ import (
 
 // StreamingShaper is the draft replacement for Shaper. It is deliberately
 // separate: existing encoding and discretionary paths still use Shaper.
-// Adapters supply implementations; this package does not construct a backend.
+// Package helpers supplies a deterministic streaming implementation for tests;
+// applications supply adapters for real font backends.
 //
 // A producer calls Shape sequentially for uniform runs while a consumer drains
 // Glyphs. Shape is synchronous and may block on output backpressure. Successful

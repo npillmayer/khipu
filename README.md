@@ -123,8 +123,38 @@ starts. See [the encoding contract](doc/MIGRATION.md#soa-encoder-to-breaker-cont
 
 The default shaper is a fixed-width metric provider, not a font shaping backend.
 Linebreaking does not assign final glyph positions. Freezing, durable glyph
-provenance, and script-sensitive spacing remain future work; `StreamingShaper`
-and font interfaces are drafts.
+provenance, and script-sensitive spacing remain future work. The public
+`helpers.FixedWidthShaper` supports a configurable positive cell width through
+`helpers.NewFixedWidthShaper(width)`; its zero value uses the existing 5 pt default.
+See the [executable encoding example](helpers_example_test.go).
+
+The `helpers` package's `SyntheticFont`, `DefaultStyleResolver`, and
+`SyntheticStreamingShaper` provide
+standalone deterministic implementations for the draft font/style/streaming
+interfaces. They require no installed fonts. Streaming is not yet integrated
+into `Config` or paragraph encoding. See the [combined streaming example](helpers/synthetic_streaming_shaper_test.go)
+for concurrent production/draining and the [testing guide](doc/TESTING.md)
+for constructor choices, character policies, and lifecycle guarantees.
+
+## Package Structure
+
+| Package | Responsibility |
+| --- | --- |
+| `khipu` | Paragraph storage, encoding, discretionaries, configuration, and paragraph-specific `KnotStyler`/`Hyphenator` contracts |
+| [`contracts`](contracts/ReadMe.md) | Font, metric/streaming shaping, and style interfaces, their value types and constants, and the shared argument-error sentinel |
+| [`helpers`](helpers/ReadMe.md) | The four deterministic defaults, with their focused tests and standalone examples |
+| `dimen` | Dimensions and units |
+| `linebreak` and its subpackages | Paragraph shapes, width summaries, and linebreaking algorithms |
+
+The engine imports `contracts` and `helpers`; `helpers` imports `contracts`.
+Neither subpackage imports the root engine, and `contracts` does not import
+implementations. New adapters can depend on `contracts` without importing
+paragraph storage or default implementations.
+
+The original root names remain as type aliases and forwarding constructors in
+[compat.go](compat.go), including the original error identities. Prefer
+`contracts` and `helpers` in new code. The split changes package ownership, not
+`Config{}` behavior or the implemented shaping policies.
 
 ## Development And Migration
 

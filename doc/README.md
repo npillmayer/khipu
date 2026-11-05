@@ -1,13 +1,14 @@
 # Documentation Guide
 
 The AOS-to-SOA migration is complete. This index separates implemented contracts
-from historical investigations and future designs. Reviewed November 4, 2026.
+from historical investigations and future designs. Reviewed November 5, 2026.
 
 ## Implemented Contracts
 
 | Document | Scope |
 | --- | --- |
 | [Project README](../README.md) | Runnable encoding/linebreaking example, configuration, and local setup |
+| [Service contracts](../contracts/ReadMe.md) and [default helpers](../helpers/ReadMe.md) | Package ownership, dependency direction, and reusable deterministic implementations |
 | [Migration guide](MIGRATION.md) | Removed APIs, current source/cluster/trailer contracts, coverage map, and validation limits |
 | [Knuth–Plass](KP.md) | Predecessor paths, passes, costs, and discretionary selection |
 | [Firstfit](FIRSTFIT.md) | Greedy checkpoints, trimming, and local discretionary rescue |
@@ -20,6 +21,10 @@ separate parameters and policies. Neither materializes or renders final lines.
 
 ## Design History And Future Work
 
+- [Testing strategy and defaults](TESTING.md): current guarantees with source and
+  test evidence, reusable metric and streaming shapers, synthetic font scaling,
+  and default style resolution. Standalone helper behavior is distinguished
+  from future encoder integration, reusable fixtures, and conformance suites.
 - [Graph inventory](GRAPH.md): the opening status describes the current
   predecessor table; the remaining inventory is historical. References there to
   removed graph APIs explain past design choices.
@@ -32,5 +37,5 @@ separate parameters and policies. Neither materializes or renders final lines.
   notes, not an implementation or a claim of full TeX parity.
 
 Draft `StreamingShaper` and font interfaces remain separate from the active
-`Shaper` interface. Completing the storage migration does not implement those
-backends or resolve discretionary glyph/source provenance.
+`Shaper` interface. Their synthetic helpers do not supply a real font backend,
+integrate streaming into encoding, or resolve discretionary glyph/source provenance.

@@ -59,6 +59,23 @@ interfaces remain draft boundaries and are not wired into this constructor.
 
 ## Removed APIs And Migration Targets
 
+The later service-package split (November 5, 2026) preserves source-level names
+through aliases and forwarding constructors in the root package:
+
+| Canonical package | Moved APIs |
+| --- | --- |
+| `contracts` | Font, shaping, and style interfaces; their parameter/result types and constants; `ErrIllegalArguments` |
+| `helpers` | `SyntheticFont`, `FixedWidthShaper`, `DefaultStyleResolver`, `SyntheticStreamingShaper`, their constructors, and streaming lifecycle errors |
+
+New code should import these packages directly. Existing root signatures remain
+compatible because the aliases preserve type identity; error matching also
+retains sentinel identity. Reflection reports the types' new defining packages.
+`Config{}` still constructs a fresh 5 pt metric shaper. The draft streaming
+services remain outside the active encoder. Paragraph-specific `KnotStyler`,
+`Hyphenator`, and their associated model types stay in the root package.
+
+The older removals described below are separate from this package split.
+
 The chosen model consists of `Khipu`, `KnotCore`, `KnotType`, `KnotFlags`,
 `KnotStyler`, and `Khipukamayuq`, with lazy `Hyphenator`/discretionary support.
 Both `linebreak/firstfit` and `linebreak/knuthplass` operate on this model and share

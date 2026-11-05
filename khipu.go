@@ -8,6 +8,7 @@ import (
 
 	"github.com/npillmayer/cords/styled"
 	"github.com/npillmayer/khipu/dimen"
+	"github.com/npillmayer/khipu/helpers"
 )
 
 const DefaultInitialKhipuCapa = 20
@@ -209,7 +210,7 @@ func NewKhipukamayuq(config Config) *Khipukamayuq {
 		env.parFillSkip = *config.ParFillSkip
 	}
 	if env.shaper == nil {
-		env.shaper = newFixedShaper()
+		env.shaper = &helpers.FixedWidthShaper{}
 	}
 	if config.Params == nil {
 		env.params = newParameters()
