@@ -66,6 +66,24 @@ func TestBreakParagraphKhipuBreaksAtFirstFitCheckpoint(t *testing.T) {
 	}
 }
 
+func TestCarriedCandidateBecomesNextLineCheckpoint(t *testing.T) {
+	khp := newKhipu([]node{
+		{w: 10, minw: 10, maxw: 10, p: InfinityDemerits, kind: khipu.KTTextBox},
+		{w: 5, minw: 5, maxw: 5, p: 0, kind: khipu.KTGlue},
+		{w: 10, minw: 10, maxw: 10, p: InfinityDemerits, kind: khipu.KTTextBox},
+		{w: 5, minw: 5, maxw: 5, p: 0, kind: khipu.KTGlue},
+		{w: 10, minw: 10, maxw: 10, p: InfinityDemerits, kind: khipu.KTTextBox},
+		{w: 5, minw: 5, maxw: 5, p: 0, kind: khipu.KTGlue},
+		{w: 10, minw: 10, maxw: 10, p: InfinityDemerits, kind: khipu.KTTextBox},
+		{w: 0, minw: 0, maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
+	})
+	khp.Flags[7] = 0
+	got, err := BreakParagraph(khp, linebreak.RectangularParShape(15*dimen.BP), nil)
+	if err != nil || !slices.Equal(got, []kinx{1, 3, 5, 7}) {
+		t.Fatalf("got %v %v", got, err)
+	}
+}
+
 func TestBreakParagraphKhipuTrimsTrailingDiscardablesAtCheckpoint(t *testing.T) {
 	params := &Parameters{
 		LeftSkip:  glue(0, 0, 0),

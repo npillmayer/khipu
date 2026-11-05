@@ -168,6 +168,17 @@ func BreakParagraph(khp *khipu.Khipu, parshape linebreak.ParShape, params *Param
 				firstInLine = true
 				lastFeasibleWidth = WSS{}
 			}
+			// The current candidate has already been scanned into the carry.
+			// After committing the old checkpoint it may fit the next line;
+			// retain it there instead of losing a legal break until later overflow.
+			if breakpoints[len(breakpoints)-1] != i {
+				nextWidth := seg.width(params)
+				if nextWidth.Min <= parshape.LineLength(int32(len(breakpoints)+1)) {
+					seg.trackcarry()
+					lastFeasible = i
+					lastFeasibleWidth = nextWidth
+				}
+			}
 			continue
 		}
 		// Every non-overflowing candidate becomes the new checkpoint. carry then

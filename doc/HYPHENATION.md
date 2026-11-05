@@ -2,6 +2,97 @@
 
 Reviewed against the code on November 4, 2026.
 
+## Streaming Bridge: Design And Next Steps
+
+The streaming encoder now produces the same width/penalty/flag planes consumed
+by both linebreakers, plus textbox shaping storage. Ordinary breaking requires
+no glyph-aware algorithm. Narrow-width integration tests cover actual wrapping,
+trimming, forced breaks and unchanged base knots. Lazy streaming discretionaries
+are still guarded by `ErrStreamingDiscretionariesUnsupported`: the metric
+fragment shaper must not measure alternatives for streaming text.
+
+### Initial Request Scope
+
+Keep the existing knot-index provider interfaces initially. Accept a request
+only when the textbox contains a complete eligible source word in one retained
+shaping context. Use the original source and independent word-boundary metadata,
+not whitespace or the mere existence of a textbox boundary. A style or bidi
+boundary inside a word is not a word boundary. Decline such multi-box words
+without silently hyphenating only one fragment. This eligibility policy is
+proposed, not implemented; language-specific segmentation remains upstream.
+
+Extending a request across boxes requires a separate design: the current breaker
+substitutes one knot with PreBreak/PostBreak. A multi-box replacement would need
+source-range identity and corresponding width/bookkeeping changes in both
+breakers, not merely a larger string passed to the hyphenator.
+
+### Source Mapping Must Be Explicit
+
+`HyphenationFragment.SourceSplit` now carries an optional original split offset.
+Its `ByteOffset` uses UTF-8 bytes relative to the requested text; `Valid`
+distinguishes unknown from a known zero. `DiscretionaryCandidate.SourceSplit`
+uses original paragraph-relative UTF-8 bytes instead. Legacy metric callers may
+omit these fields; their existing shaping path does not yet propagate the split.
+PreBreak length cannot supply this offset when text is inserted, removed or changed.
+
+The private `prepareDiscretionaryInput` foundation validates UTF-8, original
+byte/scalar ranges and the explicit split at a scalar boundary. It separates
+replacement strings and local scalar counts from original paragraph provenance.
+The two provenance intervals partition the request, not the replacement input.
+Tests cover changed spellings, multibyte input, a removed soft-hyphen marker,
+known zero, empty fragments, invalid metadata and large coordinates. Endpoint
+splits are valid provenance, not automatically eligible hyphenation opportunities.
+This helper is not yet wired into discovery, shaping or candidate publication.
+
+Keep replacement text and original provenance separate. The fragment shaper's
+scalar clusters describe its replacement input, not the original paragraph.
+For range-limited OpenType features, arbitrary replacement text also needs a
+mapping or explicit feature-resolution policy. A split offset alone is not
+enough to map all internal feature positions. Whole-fragment settings can be
+supported first; ambiguous mappings must be rejected rather than guessed.
+
+### Shape, Cache And Select
+
+1. Recover original text, word bounds and the retained font/scale/direction/
+   script/language context from the requested box. Do not reconstruct it from
+   the owner's unrelated metric defaults.
+2. Query the hyphenator lazily, validate source split coordinates and replacement
+   strings, and apply upstream fragment filtering and penalty policy.
+3. Create fresh streaming shapers through the configured factory. Shape the
+   replacement fragments directly; do not run whole-paragraph knotting or append
+   paragraph-fill knots. Reuse the producer lifecycle and width-conversion rules.
+4. Build fragment metrics and owned replacement-input/glyph/context records
+   privately. Publish a complete batch to the arena/cache only after every
+   required shaping operation succeeds. Keep IDs stable and immutable.
+5. Extend candidate storage with optional pre-/post-break box references while
+   preserving the metric PreBreak/PostBreak payload expected by the breakers.
+   A selected `(Source, Variant)` must resolve both metrics and stored fragments.
+6. Remove the streaming guard only after end-to-end tests demonstrate equivalent
+   measured and retained fragment output. Preserve the legacy metric path.
+
+Ordinary break results remain knot indices. Downstream line extraction and bidi
+splitting must consult retained exact break provenance, not `Pos + Len`;
+discretionary choices must use their explicit original split position. No
+renderer helpers are needed for this bridge.
+
+### Suggested PR Sequence
+
+- Source split/replacement-input contracts and validation tests are implemented.
+  Feature mapping and single-word/single-context eligibility remain to be wired.
+- Pursue explicit U+00AD opportunities before automatic streaming hyphenation,
+  initially in one context. Automatic discovery must not cross structural/style
+  boundaries or hyphenate their partial-word boxes. Cross-style manual breaks
+  require a later multi-box replacement design.
+- Implement standalone streaming fragment shaping and atomic arena publication;
+  test backend failures, glyph omission, changed spellings and owned storage.
+- Wire the owner provider, then test both breakers' choices and retained selected
+  fragments. Add cache lifetime/invalidation rules before supporting mutable input.
+
+Apart from the source-input foundation described above, this section is a
+proposal. It does not enable streaming hyphenation or imply
+that default Unicode word segmentation alone handles Thai or other scripts
+requiring language-specific analysis.
+
 ## Current Contract
 
 `Khipukamayuq` owns discretionary discovery and shaping. A discretionary is a
@@ -27,6 +118,7 @@ type HyphenationFragment struct {
     PreBreak  string
     PostBreak string
     Penalty   Penalty
+    SourceSplit SourceSplit // request-relative original UTF-8 bytes
 }
 
 type Hyphenator interface {
@@ -37,6 +129,7 @@ type DiscretionaryCandidate struct {
     Variant   uint16
     PreBreak  KnotCore
     PostBreak KnotCore
+    SourceSplit SourceSplit // paragraph-relative original UTF-8 bytes
 }
 
 type DiscretionarySelection struct {

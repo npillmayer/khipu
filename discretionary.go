@@ -16,6 +16,11 @@ type DiscretionaryCandidate struct {
 	Variant   uint16
 	PreBreak  KnotCore
 	PostBreak KnotCore
+	// SourceSplit, when Valid, is relative to the original paragraph in UTF-8
+	// bytes (unlike HyphenationFragment.SourceSplit, which is word-relative).
+	// It is never derived from PreBreak.Len or replacement text length. Legacy
+	// metric candidates leave it unknown; streaming publication will supply it.
+	SourceSplit SourceSplit
 }
 
 // DiscretionarySelection records which discretionary candidate was selected

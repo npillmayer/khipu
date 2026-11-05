@@ -1,5 +1,11 @@
 # Firstfit Status And Notes
 
+Streaming integration regressions now cover narrow lines and repeated spaces.
+After an earlier checkpoint is committed on overflow, the already-scanned
+current candidate is reconsidered against the next line's width and retained
+as its checkpoint when it fits. Previously that checkpoint was lost, allowing
+avoidable overfull lines. This fix applies equally to metric and streaming input.
+
 This note records the current state of `linebreak/firstfit` after its migration
 to the new `Khipu` representation, its remaining overlap with the root
 `linebreak` package, and the functional gaps that still remain.

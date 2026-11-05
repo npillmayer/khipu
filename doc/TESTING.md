@@ -2,6 +2,14 @@
 
 ## Purpose and Status
 
+`stream_linebreak_contract_test.go` checks both breakers at narrow widths using
+streaming-encoded paragraphs: increasing legal knot indices, terminal trailer,
+forced breaks, trimmed minimum widths, no discretionary choices and unchanged
+base knots. It includes repeated spaces, bidi, NBSP and fixed typographic spaces.
+The tests exposed a firstfit carry-checkpoint omission, now covered independently
+in the firstfit package. The proposed streaming discretionary bridge is recorded
+in [HYPHENATION.md](HYPHENATION.md); it remains guarded pending implementation.
+
 The knotting correctness audit adds `knotting_regression_test.go` for mandatory
 breaks inside clusters, omitted newline glyphs, silent runs, trailing source
 gaps, and style changes without new break opportunities. Public breaker tests

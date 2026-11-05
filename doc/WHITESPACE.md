@@ -56,3 +56,13 @@ Line-break penalties remain independent of classification and elasticity.
 
 These helpers are used by the intermediate candidate accumulator, but not yet
 by the active encoder. Existing `KnotStyler` behavior is unchanged.
+
+## Unicode Characters relevant for Hyphenation
+
+| Code point | Name | Behavior | TeX equivalent |
+|---|---|---|---|
+| `U+00AD` | SOFT HYPHEN | Optional line break with a hyphen when used | `\-` |
+| `U+200B` | ZERO WIDTH SPACE | Optional line break without a visible hyphen | `\discretionary{}{}{}` (approximately) |
+| `U+2010` | HYPHEN | Visible hyphen that normally permits a break afterward | Explicit `-` |
+| `U+2011` | NON-BREAKING HYPHEN | Visible hyphen that prohibits a break | Hyphen in an unbreakable box |
+| `U+2060` | WORD JOINER | Prohibits a line break at its position | `\nobreak` (approximately) |
