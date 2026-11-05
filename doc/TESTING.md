@@ -111,6 +111,12 @@ and finalization failures return no partial candidate paragraph. This is not
 yet public encoder integration; source and prepared metadata remain retained
 in the internal result rather than installed in `Khipu`.
 
+`shaping_storage_test.go` covers the separate internal candidate-publication
+step: textbox-only glyph retention, empty references for glue/fill, shared run
+contexts, independent glyph/feature storage, source gaps, mixed text/space
+clusters, and association-plane cleanup. The legacy metric encoder still
+produces no glyph storage. Discretionary shaping storage is not migrated yet.
+
 Boundary preparation also retains independent default UAX#29 word-boundary
 hints. Explicit tests cover punctuation, contractions, numeric punctuation,
 combining marks, CJK text, consecutive spaces, CRLF, and omitted bidi controls.

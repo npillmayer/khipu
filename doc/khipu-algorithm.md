@@ -233,6 +233,28 @@ terminal shaper errors and width/fill finalization failures. This internal
 operation does not allocate a persistent `Khipu`, alter public configuration,
 or replace `EncodeParagraph`.
 
+### Textbox Shaping Storage
+
+The separate internal `publishCandidateParagraph` operation now transfers a
+successful candidate paragraph into a new owner-associated `Khipu`. Its existing
+metric planes are unchanged. A private per-knot box-reference plane uses zero
+for absent shaping data; glue, paragraph fill and legacy metric-encoded knots
+have no retained glyphs.
+
+Ordinary textboxes reference a khipu-owned arena containing flat glyph records,
+cluster/source mappings, box ranges and shared prepared-run contexts. IDs are
+owner-local indices, not pointers into growable slices. Font-unit advances and
+offsets are preserved. Mixed text/space clusters remain textboxes and retain all
+their glyphs. Context feature ranges remain relative to their original prepared
+run and must be clipped/rebased for later reshaping of a box.
+
+Publication copies glyph and feature slices and source-boundary metadata; the
+original styled paragraph and immutable font/scale services remain shared. Knot
+source spans and exact break provenance are retained even for glue. Ordinary
+box input is currently its original source range. Replacement input for
+discretionaries, arena compaction, renderer access APIs and public streaming
+encoder integration remain separate work.
+
 ```
 [ Initialize an empty khipu `K` ]
 [ Repeat until Shaper output channel is drained ] :

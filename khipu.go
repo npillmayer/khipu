@@ -62,6 +62,10 @@ type Khipu struct {
 	Len       []uint16
 	Kind      []KnotType
 	Flags     []KnotFlags
+	// boxRefs is aligned with knots created through appendKnot. Zero means no
+	// retained shaping output (including all legacy metric-encoded knots).
+	boxRefs []shapedBoxID
+	shaping shapingArena
 
 	DiscretionaryCandidates map[int][]DiscretionaryCandidate
 	SelectedDiscretionaries map[int]DiscretionarySelection
@@ -100,6 +104,8 @@ func unwireKhipu(khipu *Khipu) *Khipu {
 	khipu.Len = nil
 	khipu.Kind = nil
 	khipu.Flags = nil
+	khipu.boxRefs = nil
+	khipu.shaping = shapingArena{}
 	khipu.DiscretionaryCandidates = nil
 	khipu.SelectedDiscretionaries = nil
 	return nil
@@ -126,6 +132,14 @@ func (khipu *Khipu) isFull() bool {
 }
 
 func (khipu *Khipu) appendKnot(k KnotCore) *Khipu {
+	// Pad references for manually constructed metric-only SOA values.
+	for len(khipu.boxRefs) < len(khipu.Kind) {
+		khipu.boxRefs = append(khipu.boxRefs, 0)
+	}
+	khipu.boxRefs = append(khipu.boxRefs, 0)
+	if khipu.shaping.sources != nil {
+		khipu.shaping.sources = append(khipu.shaping.sources, knotSource{})
+	}
 	khipu.W = append(khipu.W, k.W)
 	khipu.MinW = append(khipu.MinW, k.MinW)
 	khipu.MaxW = append(khipu.MaxW, k.MaxW)
@@ -154,6 +168,12 @@ func (khipu *Khipu) Unskip() {
 		khipu.Kind = khipu.Kind[:top]
 		if len(khipu.Flags) > top {
 			khipu.Flags = khipu.Flags[:top]
+		}
+		if len(khipu.boxRefs) > top {
+			khipu.boxRefs = khipu.boxRefs[:top]
+		}
+		if len(khipu.shaping.sources) > top {
+			khipu.shaping.sources = khipu.shaping.sources[:top]
 		}
 	}
 }
