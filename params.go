@@ -16,6 +16,13 @@ type Params struct {
 	Hypenchar       rune
 	Hyphenpenalty   int
 	Minhyphenlength dimen.DU
+	// SpaceStretchPercent and SpaceShrinkPercent apply only to U+0020 in
+	// elastic-spacing runs. Zero explicitly disables the corresponding change.
+	// Values must be finite and nonnegative; shrink must not exceed 100.
+	// These parameters are consumed by the new candidate-width helpers, not
+	// by the current metric encoder's KnotStyler path.
+	SpaceStretchPercent float64
+	SpaceShrinkPercent  float64
 }
 
 func newParameters() *Params {
@@ -29,5 +36,7 @@ func newParameters() *Params {
 	params.Hypenchar = rune('-')
 	params.Hyphenpenalty = 10
 	params.Minhyphenlength = 2
+	params.SpaceStretchPercent = 50
+	params.SpaceShrinkPercent = 33.3
 	return &params
 }

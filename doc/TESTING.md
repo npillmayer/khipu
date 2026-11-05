@@ -86,6 +86,21 @@ controls. This preserves the existing policy rather than asserting new Unicode
 conformance. The new finalized source-boundary table is not yet consumed by the
 active encoder or a streaming knot builder.
 
+`candidate_metrics_test.go` covers source-based whitespace classification,
+parameter defaults and snapshots, fixed versus elastic U+0020, fixed NBSP and
+typographic spaces, mixed whitespace, fractional accumulation and rounding,
+negative advances, invalid conversions, and reserved dimension limits. These
+are independently tested primitives used by candidate accumulation; encoder
+integration remains future work. See [Whitespace](WHITESPACE.md) for the policy.
+
+Candidate accumulation is now tested separately in `candidate_knots_test.go`,
+using both scripted glyphs and output from the synthetic streaming producer.
+Coverage includes structural boundaries with prohibited line breaks, retained
+clusters, omitted U+200B, silent-run boundary provenance, fixed/elastic space
+classes, paragraph offsets, owned glyph storage, width errors and terminal fill.
+Unsupported glyphless mandatory-break sequences fail without partial results.
+These intermediate candidates are not yet persistent `Khipu` nodes.
+
 Boundary preparation also retains independent default UAX#29 word-boundary
 hints. Explicit tests cover punctuation, contractions, numeric punctuation,
 combining marks, CJK text, consecutive spaces, CRLF, and omitted bidi controls.

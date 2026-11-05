@@ -186,8 +186,30 @@ Missing anchors do not identify why glyphs were omitted. Interior/trailing
 omissions are included in the inferred preceding cluster span; leading omissions
 and completely silent runs remain uncovered source metadata, not fabricated
 glyph clusters. Later knotting must account for those ranges explicitly. A
-finite source penalty does not by itself prove a safe shaping break. Width
-conversion, knot aggregation and persistent glyph storage remain future work.
+finite source penalty does not by itself prove a safe shaping break.
+
+`candidateKnotAccumulator` now groups completed clusters into intermediate
+candidates, without changing persistent `Khipu` storage or the active encoder.
+It separates candidates at permitted line breaks, word hints, prepared-run
+changes, whitespace-class changes, and uncovered source gaps. Cluster interiors
+are never split. Widths use the candidate arithmetic and U+0020 elasticity
+policy described in [WHITESPACE.md](WHITESPACE.md). Candidate glyph arrays are
+owned copies; prepared-run associations remain available for later storage.
+
+For a glyphless source gap, the strongest optional penalty is retained on the
+preceding candidate (earliest position on ties). Its exact source endpoint is
+recorded separately from the glyph-bearing span; no placeholder knot is emitted.
+This collapses optional alternatives with identical geometry. Leading, repeated,
+or trailing glyphless mandatory breaks that require blank-line representation
+are rejected rather than silently discarded. Supporting those paragraphs needs
+a separate representation decision. An omitted U+200B whose boundary is already
+the assembled cluster endpoint uses the normal source penalty path.
+
+Candidates are returned only on successful finalization. The final content
+penalty is prohibited and a non-discardable fill/forced-break candidate is
+appended at paragraph end. Invalid source spans, width conversions and knot
+length overflow discard all accumulated candidates. Production orchestration,
+persistent glyph storage and active encoder migration remain future work.
 
 ```
 [ Initialize an empty khipu `K` ]
