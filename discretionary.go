@@ -1,14 +1,5 @@
 package khipu
 
-import (
-	"bufio"
-	"errors"
-	"math"
-	"unicode/utf8"
-
-	"github.com/npillmayer/cords/styled"
-)
-
 // DiscretionaryCandidate stores one lazily discovered hyphenation alternative
 // associated with a textbox knot. Variants are expected to be stable for a given
 // textbox within one paragraph instance.
@@ -18,8 +9,8 @@ type DiscretionaryCandidate struct {
 	PostBreak KnotCore
 	// SourceSplit, when Valid, is relative to the original paragraph in UTF-8
 	// bytes (unlike HyphenationFragment.SourceSplit, which is word-relative).
-	// It is never derived from PreBreak.Len or replacement text length. Legacy
-	// metric candidates leave it unknown; streaming publication supplies it.
+	// It is never derived from PreBreak.Len or replacement text length. Manually
+	// supplied candidates may leave it unknown; encoding supplies it.
 	SourceSplit SourceSplit
 	// Owner-local optional references into the khipu's shaping arena. Zero
 	// denotes a metric-only candidate. Breakers copy candidates unchanged and
@@ -28,7 +19,7 @@ type DiscretionaryCandidate struct {
 }
 
 // DiscretionarySelection records which discretionary candidate was selected
-// for a rendered break decision.
+// for a selected break decision.
 type DiscretionarySelection struct {
 	Source  int
 	Variant uint16
@@ -129,43 +120,7 @@ func (kq *Khipukamayuq) DiscretionaryCandidates(khp *Khipu, at int) ([]Discretio
 	if khp.Kind[at] != KTTextBox {
 		return nil, nil
 	}
-	if khp.shaping.sources != nil {
-		return kq.streamingDiscretionaryCandidates(khp, at)
-	}
-	word, pos, err := textboxSource(khp, at)
-	if err != nil {
-		return nil, err
-	}
-	styleChange, _ := styleChangeForKnot(khp, at)
-	fragments, err := kq.env.hyphenator.Discretionaries(word, kq.env.params)
-	if err != nil {
-		return nil, err
-	}
-	for i, frag := range fragments {
-		if frag.PreBreak == "" || frag.PostBreak == "" {
-			continue
-		}
-		pre, err := kq.shapeDiscretionaryFragment(frag.PreBreak, pos, styleChange)
-		if err != nil {
-			return nil, err
-		}
-		postPos := pos + uint64(len(frag.PreBreak))
-		post, err := kq.shapeDiscretionaryFragment(frag.PostBreak, postPos, styleChange)
-		if err != nil {
-			return nil, err
-		}
-		variant := frag.Variant
-		if variant == 0 {
-			variant = uint16(i + 1)
-		}
-		pre.Penalty = discretionaryPenalty(frag, kq.env.params)
-		khp.AddDiscretionaryCandidate(at, DiscretionaryCandidate{
-			Variant:   variant,
-			PreBreak:  pre,
-			PostBreak: post,
-		})
-	}
-	return khp.DiscretionariesAt(at), nil
+	return kq.streamingDiscretionaryCandidates(khp, at)
 }
 
 // discretionaryPenalty resolves the effective penalty of a discretionary
@@ -179,74 +134,4 @@ func discretionaryPenalty(frag HyphenationFragment, params *Params) Penalty {
 		return 0
 	}
 	return Penalty(params.Hyphenpenalty)
-}
-
-// textboxSource recovers the original textbox text and absolute paragraph
-// position from an already encoded Khipu. This is the anchor for lazy
-// hyphenation: the linebreaker only knows the knot index, while the Hyphenator
-// and Shaper still need the source text.
-func textboxSource(khp *Khipu, at int) (string, uint64, error) {
-	if khp == nil || khp.paragraph == nil || at < 0 || at >= len(khp.Kind) {
-		return "", 0, ErrIllegalArguments
-	}
-	raw := khp.paragraph.Raw().String()
-	start := int(khp.Pos[at] - khp.paragraph.Offset)
-	end := start + int(khp.Len[at])
-	if start < 0 || end < start || end > len(raw) {
-		return "", 0, errors.New("khipu: textbox source out of bounds")
-	}
-	return raw[start:end], khp.Pos[at], nil
-}
-
-// styleChangeForKnot finds the style run containing one textbox knot.
-// Discretionary fragments are re-shaped under the same style as the original
-// textbox so their width metrics stay consistent with the paragraph.
-func styleChangeForKnot(khp *Khipu, at int) (styled.BidiStyleChange, bool) {
-	if khp == nil || khp.paragraph == nil || at < 0 || at >= len(khp.Kind) {
-		return styled.BidiStyleChange{}, false
-	}
-	start := uint64(khp.Pos[at] - khp.paragraph.Offset)
-	end := start + uint64(khp.Len[at])
-	for styleChange, _ := range khp.paragraph.BidiStyleRanges() {
-		s0 := uint64(styleChange.Position)
-		s1 := uint64(styleChange.Position + styleChange.Length)
-		if start >= s0 && end <= s1 {
-			return styleChange, true
-		}
-	}
-	return styled.BidiStyleChange{}, false
-}
-
-// shapeDiscretionaryFragment turns one fragment string into a textbox-like
-// KnotCore carrying measured width information. The resulting KnotCore does not
-// yet decide linebreaking policy; the caller attaches the discretionary penalty
-// afterwards.
-func (kq *Khipukamayuq) shapeDiscretionaryFragment(text string, pos uint64, styleChange styled.BidiStyleChange) (KnotCore, error) {
-	if len(text) > math.MaxUint16 || !utf8.ValidString(text) {
-		return KnotCore{}, errors.New("khipu: invalid discretionary source span")
-	}
-	var br *bufio.Reader
-	buf := []byte(text)
-	br = wrapAsRuneReader(br, buf)
-	kq.env.shaper.SetSource(br)
-	kq.env.shaper.SetStyle(styleChange)
-	metrics, err := getMetrics(buf, kq.env.shaper)
-	if err != nil {
-		return KnotCore{}, err
-	}
-	w, err := metrics.width(0, len(buf))
-	if err != nil {
-		return KnotCore{}, err
-	}
-	k := KnotCore{
-		Pos:     pos,
-		Len:     uint16(len(buf)),
-		W:       w,
-		MinW:    w,
-		MaxW:    w,
-		Kind:    KTTextBox,
-		Flags:   defaultFlagsForKind(KTTextBox),
-		Penalty: 0,
-	}
-	return k, nil
 }

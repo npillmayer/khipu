@@ -32,7 +32,7 @@ func TestAutomaticProviderRetainsChangedSpellingAndCache(t *testing.T) {
 		return []HyphenationFragment{{PreBreak: "EC-", PostBreak: "lair", Penalty: 27, SourceSplit: SourceSplit{3, true}}}, nil
 	}), nil)
 	owner.env.streaming.Defaults.Language = language.French
-	k, err := owner.EncodeParagraphStreaming(t.Context(), preparationParagraph(t, "xx éclair"))
+	k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, "xx éclair"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestAutomaticPreparationRejectsMalformedBatch(t *testing.T) {
 			}
 			streams := 0
 			owner := automaticTestOwner(&testhyphenator{want: []HyphenationFragment{valid, bad}}, func() (contracts.StreamingShaper, error) { streams++; return helpers.NewSyntheticStreamingShaper(0) })
-			k, err := owner.EncodeParagraphStreaming(t.Context(), preparationParagraph(t, "éclair"))
+			k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, "éclair"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -100,7 +100,7 @@ func TestAutomaticVariantsAndEmptyFiltering(t *testing.T) {
 		{Variant: 1, PreBreak: "abc-", PostBreak: "d", SourceSplit: SourceSplit{3, true}},
 		{PreBreak: "", PostBreak: "bcd", SourceSplit: SourceSplit{1, true}},
 	}}, nil)
-	k, err := owner.EncodeParagraphStreaming(t.Context(), preparationParagraph(t, "abcd"))
+	k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, "abcd"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestAutomaticProviderUsesResolvedDirection(t *testing.T) {
 	owner.env.streaming.Defaults.Language = language.Hebrew
 	owner.env.streaming.Defaults.Script = language.MustParseScript("Hebr")
 	original := *owner.env.params
-	k, err := owner.EncodeParagraphStreaming(t.Context(), preparationParagraph(t, "אבגד"))
+	k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, "אבגד"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestAutomaticProviderDoesNotQueryWordFragments(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		k, err := owner.EncodeParagraphStreaming(t.Context(), p)
+		k, err := owner.EncodeParagraph(t.Context(), p)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -169,7 +169,7 @@ func TestAutomaticProviderBatchFailureAndRetry(t *testing.T) {
 		}
 		return helpers.NewSyntheticStreamingShaper(0)
 	})
-	k, err := owner.EncodeParagraphStreaming(t.Context(), preparationParagraph(t, "abcdef"))
+	k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, "abcdef"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestAutomaticAndExplicitRequestsShareParagraph(t *testing.T) {
 		}
 		return []HyphenationFragment{{PreBreak: "ab-", PostBreak: "cd", SourceSplit: SourceSplit{2, true}}}, nil
 	}), nil)
-	k, err := owner.EncodeParagraphStreaming(t.Context(), preparationParagraph(t, "abcd ab\u00adcd"))
+	k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, "abcd ab\u00adcd"))
 	if err != nil {
 		t.Fatal(err)
 	}

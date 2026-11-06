@@ -54,8 +54,8 @@ source is glue and receives the current glue flags, independently of elasticity.
 This is not a new Unicode-wide trimming policy. Empty source creates no candidate.
 Line-break penalties remain independent of classification and elasticity.
 
-These helpers are used by the intermediate candidate accumulator, but not yet
-by the active encoder. Existing `KnotStyler` behavior is unchanged.
+These helpers are used by the candidate accumulator in EncodeParagraph.
+The former metric encoder and its KnotStyler hook have been removed.
 
 ## Unicode Characters relevant for Hyphenation
 

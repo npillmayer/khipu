@@ -1,5 +1,10 @@
 # contracts
 
+Streaming shaping and style resolution are integrated into paragraph encoding
+and discretionary reshaping. The metric-only `Shaper` has been removed;
+`RuneReader` remains the streaming input contract. See
+[metric retirement](../doc/RETIRE-METRICS.md).
+
 `github.com/npillmayer/khipu/contracts` defines the font, shaping, and style
 services used by khipu. Implement an adapter against this package when providing
 a font backend or application-specific style resolution.
@@ -16,36 +21,14 @@ and a shared argument-error sentinel. Concrete defaults are in
 
 | Service | Associated types | Current use |
 | --- | --- | --- |
-| `Shaper` | `RuneReader`, `dimen.DU`, `styled.BidiStyleChange` | Active boundary for paragraph encoding and discretionary measurement through `khipu.Config.Shaper` |
-| `FontLoader`, `FontFace`, `FontScale` | `FontMetrics` | Draft backend boundary; a synthetic face is available in `helpers` |
-| `StyleResolver` | `ResolvedRunStyle`, `SpacingMode` | Draft run-resolution boundary; a default implementation is available in `helpers` |
-| `StreamingShaper` | `ShapeParams`, `ShapeFeature`, `ShapeBufferOptions`, `ShapeFlushBoundary`, `ShapedGlyph` | Draft streaming boundary; a standalone synthetic implementation is available in `helpers` |
+| `FontLoader`, `FontFace`, `FontScale` | `FontMetrics` | Font metrics/scaling used by encoding; loading remains the adapter's responsibility |
+| `StyleResolver` | `ResolvedRunStyle`, `SpacingMode` | Active run resolution; a default implementation is available in `helpers` |
+| `StreamingShaper` | `ShapeParams`, `ShapeFeature`, `ShapeBufferOptions`, `ShapeFlushBoundary`, `ShapedGlyph` | Active shaping boundary; a synthetic implementation is available in `helpers` |
 
-The font, resolver, and streaming APIs are used by the opt-in
-`EncodeParagraphStreaming` entry point through `Config.Streaming`.
-`StreamingShaper` cannot be supplied to `Config.Shaper`; the metric and streaming
-interfaces have different units and lifecycles. `EncodeParagraph` is unchanged.
-
-Paragraph-specific `KnotStyler` and `Hyphenator` remain in the root `khipu`
-package. Paragraph shapes and discretionary-provider interfaces remain with
-their linebreaker consumers.
-
-## Metric Shaping
-
-[`Shaper`](shaping.go) supplies metrics in logical source order:
-
-- `SetSource` starts a run and resets run-relative byte offsets.
-- `SetStyle` supplies the run's style and bidi information.
-- `ReadClusterMetrics` returns a cluster anchor, a width in `dimen.DU`, an
-  informational source length, and an error.
-
-Anchors identify the first UTF-8 byte of each cluster and must not decrease.
-Repeated anchors accumulate width. Zero-width metrics still mark cluster starts.
-EOF carries no metric; other errors abort encoding. The encoder determines
-source spans from anchors rather than the returned informational length.
-
-Instances used by `Config` are retained, not cloned. Do not use a mutable shaper
-concurrently through an owner, another owner, or direct calls.
+The font, resolver, and streaming APIs are used by `EncodeParagraph(ctx, para)`
+through `Config.Streaming`, with synthetic defaults for `Config{}`.
+Paragraph-specific `Hyphenator` remains in the root package. Paragraph shapes
+and discretionary-provider interfaces remain with their linebreaker consumers.
 
 ## Fonts and Style Resolution
 
@@ -76,8 +59,8 @@ scalar positions within the originating style span, including omitted bidi
 controls. Preparation resolves each contributing span once, clips features to
 each bidi intersection, and rebases them for `ShapeParams`. Nonpositive bounds
 mean beginning/end; empty overlaps are omitted and positive reversed ranges
-are errors. Explicit bounds beyond the span are clipped. The internal
-preparation stage is available, but the encoder does not call it yet.
+are errors. Explicit bounds beyond the span are clipped. The encoder performs
+this preparation before starting its shaping producer.
 
 ## Streaming Shaping
 
@@ -106,8 +89,6 @@ the glyph relative to that pen. The channel has no run/cluster completion marker
 
 | Value | Coordinate or unit |
 | --- | --- |
-| `Shaper` cluster anchor | Run-relative UTF-8 byte offset |
-| `Shaper` width | `dimen.DU` |
 | `ShapedGlyph.Cluster` | Continuing original Unicode scalar ID, with an optional initial-base override |
 | Streaming advances and offsets | Signed font units |
 | `ShapeFeature.Start` / `End` | Half-open run-relative original scalar range; nonpositive start/end mean beginning/end |

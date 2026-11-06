@@ -1,21 +1,24 @@
 package khipu
 
-import "github.com/npillmayer/khipu/contracts"
+import (
+	"github.com/npillmayer/khipu/contracts"
+	"github.com/npillmayer/khipu/dimen"
+	"github.com/npillmayer/khipu/helpers"
+)
 
 // Config supplies the collaborators and parameters used by a Khipukamayuq.
-// Its zero value selects the existing fixed-width shaper and default parameters,
-// with lazy hyphenation disabled. Segmentation setup remains internal.
+// Its zero value enables synthetic streaming encoding and default parameters,
+// with lazy hyphenation disabled.
 type Config struct {
-	// Streaming opts into EncodeParagraphStreaming only. Nil leaves that entry
-	// point unavailable; it does not change EncodeParagraph. The configuration
-	// and Defaults.Features are copied; services and the factory are retained.
+	// Streaming configures EncodeParagraph.
+	// Nil selects a fresh synthetic stream per encoding/reshaping call, a default
+	// resolver for unstyled text, a synthetic font at 10 pt, and elastic spaces.
+	// This is a deterministic test/simple-layout backend, not real font shaping.
+	// A non-nil configuration is used in full: missing services and invalid
+	// defaults cause encoding errors, not silent fallback to synthetic shaping.
+	// The configuration and Defaults.Features are copied; services and the factory
+	// are retained.
 	Streaming *StreamingConfig
-	// Shaper supplies cluster metrics for paragraph and discretionary encoding.
-	// Nil selects the built-in fixed-width shaper.
-	// The supplied instance is retained, not copied. Khipukamayuq changes its
-	// source and style, so callers must not use it concurrently with encoding
-	// or discretionary lookup, including through another Khipukamayuq.
-	Shaper contracts.Shaper
 
 	// Hyphenator supplies lazy discretionary alternatives. Nil disables discovery;
 	// candidates already cached on a Khipu remain available.
@@ -34,8 +37,7 @@ type Config struct {
 	ParFillSkip *KnotCore
 }
 
-// StreamingConfig supplies the independent streaming encoding path. No font,
-// resolver or shaper is inferred from the metric Config.Shaper. Defaults are
+// StreamingConfig supplies the streaming encoding path. Defaults are
 // independently applied to each original style span. Callers must keep service
 // implementations stable and serialize owner operations.
 type StreamingConfig struct {
@@ -46,4 +48,20 @@ type StreamingConfig struct {
 	Resolver      contracts.StyleResolver
 	Defaults      contracts.ResolvedRunStyle
 	BufferOptions contracts.ShapeBufferOptions
+}
+
+// defaultStreamingConfig provides a complete synthetic backend, not defaults to
+// merge into an application backend. Keep font/run defaults independent of
+// legacy Params.Language/Script; applications resolve those through style data.
+func defaultStreamingConfig() *StreamingConfig {
+	return &StreamingConfig{
+		NewShaper: func() (contracts.StreamingShaper, error) {
+			return helpers.NewSyntheticStreamingShaper(0)
+		},
+		Resolver: helpers.DefaultStyleResolver{},
+		Defaults: contracts.ResolvedRunStyle{
+			Font: helpers.NewSyntheticFont(), EmSize: 10 * dimen.PT,
+			Spacing: contracts.SpacingElastic,
+		},
+	}
 }

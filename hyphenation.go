@@ -11,7 +11,7 @@ type HyphenationFragment struct {
 	// SourceSplit identifies the original input boundary independently of the
 	// replacement strings. Coordinates are UTF-8 bytes relative to the word
 	// passed to Hyphenator.Discretionaries, not to PreBreak or PostBreak.
-	// Legacy metric callers may omit it; streaming preparation requires Valid.
+	// Automatic preparation requires Valid; explicit-marker requests ignore it.
 	SourceSplit SourceSplit
 }
 
@@ -44,7 +44,7 @@ type SourceSplit struct {
 // original marker positions and assigns unique variants across those positions.
 // Implementations supporting only automatic discovery may decline this request.
 // Streaming lazy lookup uses this convention; paragraph encoding does not query
-// the policy. Automatic metric discovery retains its existing word requests.
+// the policy.
 type Hyphenator interface {
 	Discretionaries(word string, params *Params) ([]HyphenationFragment, error)
 }

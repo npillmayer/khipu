@@ -1,6 +1,7 @@
 package khipu_test
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/npillmayer/cords/styled"
@@ -19,7 +20,7 @@ func ExampleKhipukamayuq_EncodeParagraph() {
 		panic(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	khp, err := owner.EncodeParagraph(para, nil)
+	khp, err := owner.EncodeParagraph(context.Background(), para)
 	if err != nil {
 		panic(err)
 	}
@@ -49,7 +50,7 @@ func (exampleHyphenator) Discretionaries(word string, _ *khipu.Params) ([]khipu.
 	if word != "breaking" {
 		return nil, nil
 	}
-	return []khipu.HyphenationFragment{{Variant: 1, PreBreak: "break-", PostBreak: "ing"}}, nil
+	return []khipu.HyphenationFragment{{Variant: 1, PreBreak: "break-", PostBreak: "ing", SourceSplit: khipu.SourceSplit{ByteOffset: 5, Valid: true}}}, nil
 }
 
 func ExampleConfig_hyphenator() {
@@ -59,7 +60,7 @@ func ExampleConfig_hyphenator() {
 		panic(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{Hyphenator: exampleHyphenator{}})
-	khp, err := owner.EncodeParagraph(para, nil)
+	khp, err := owner.EncodeParagraph(context.Background(), para)
 	if err != nil {
 		panic(err)
 	}

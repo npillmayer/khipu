@@ -3,7 +3,6 @@ package khipu
 import (
 	"fmt"
 	"sort"
-	"unicode/utf8"
 )
 
 // BreakpointPositions maps line-ending knot indices to exclusive UTF-8 byte
@@ -18,14 +17,13 @@ import (
 // decisions, but does not check whether the supplied path is feasible or optimal.
 // It neither discovers candidates nor changes knots, selections or bidi state.
 //
-// Ordinary streaming breaks use retained boundary provenance, which need not
-// equal Pos+Len. Selected alternatives require a valid cached SourceSplit; their
-// replacement lengths never determine source positions. Ordinary metric-encoded
-// knots are supported through their original Pos/Len spans, but legacy metric
-// discretionaries without SourceSplit cannot be mapped. Missing or inconsistent
+// Ordinary breaks use retained boundary provenance, which need not equal
+// Pos+Len. Selected alternatives require a valid cached SourceSplit; their
+// replacement lengths never determine source positions. Manually constructed
+// knots without retained source provenance cannot be mapped. Missing or inconsistent
 // provenance returns an error wrapping ErrIllegalArguments and no partial result.
 func (k *Khipu) BreakpointPositions(breakpoints []int) ([]uint64, error) {
-	if k == nil || k.paragraph == nil {
+	if k == nil || k.paragraph == nil || k.shaping.sources == nil || len(k.shaping.sources) != len(k.Kind) {
 		return nil, fmt.Errorf("%w: breakpoint positions require an encoded paragraph", ErrIllegalArguments)
 	}
 	positions := make([]uint64, len(breakpoints))
@@ -73,44 +71,28 @@ func (k *Khipu) breakpointPosition(at int) (uint64, error) {
 		}
 		return split.ByteOffset, nil
 	}
-	_, end, err := k.knotSourceBytes(at)
-	if err != nil {
+	if _, _, err := k.knotSourceBytes(at); err != nil {
 		return 0, err
 	}
-	if k.shaping.sources != nil {
-		// A boundary in a glyphless gap may lie beyond the knot's source span;
-		// a suppressed marker suffix may instead extend the span past the break.
-		return k.shaping.sources[at].breakAfter.byteEnd, nil
-	}
-	return end, nil
+	// Glyphless gaps and suppressed markers may separate the boundary from
+	// the knot's source span; Pos+Len is not a substitute for this endpoint.
+	return k.shaping.sources[at].breakAfter.byteEnd, nil
 }
 
-// knotSourceBytes reads original spans only. Streaming provenance takes
-// precedence; missing entries must not be concealed by a metric-plane fallback.
+// knotSourceBytes reads retained original spans, never replacement lengths.
 func (k *Khipu) knotSourceBytes(at int) (uint64, uint64, error) {
-	var start, end uint64
-	if k.shaping.sources != nil {
-		if at >= len(k.shaping.sources) {
-			return 0, 0, fmt.Errorf("%w: missing knot provenance", ErrIllegalArguments)
-		}
-		source := k.shaping.sources[at].source
-		start, end = source.byteStart, source.byteEnd
-	} else {
-		if at >= len(k.Pos) || at >= len(k.Len) || k.Pos[at] < k.paragraph.Offset {
-			return 0, 0, fmt.Errorf("%w: missing or invalid knot source span", ErrIllegalArguments)
-		}
-		start = k.Pos[at] - k.paragraph.Offset
-		end = start + uint64(k.Len[at])
+	if at < 0 || at >= len(k.shaping.sources) {
+		return 0, 0, fmt.Errorf("%w: missing knot provenance", ErrIllegalArguments)
 	}
+	source := k.shaping.sources[at].source
+	start, end := source.byteStart, source.byteEnd
 	if end < start || end > k.paragraph.Raw().Len() {
 		return 0, 0, fmt.Errorf("%w: knot source span out of bounds", ErrIllegalArguments)
 	}
 	return start, end, nil
 }
 
-// isSourceByteBoundary avoids flattening the cord: streaming paragraphs retain
-// every scalar endpoint; the metric path needs only the byte at the proposed
-// split to rule out a UTF-8 continuation byte. Encoders already validated UTF-8.
+// isSourceByteBoundary checks retained scalar endpoints without flattening the cord.
 func (k *Khipu) isSourceByteBoundary(pos uint64) bool {
 	length := k.paragraph.Raw().Len()
 	if pos > length {
@@ -119,13 +101,7 @@ func (k *Khipu) isSourceByteBoundary(pos uint64) bool {
 	if pos == 0 || pos == length {
 		return true
 	}
-	if k.shaping.sources != nil {
-		b := k.shaping.boundaries
-		i := sort.Search(len(b), func(i int) bool { return b[i].byteEnd >= pos })
-		return i < len(b) && b[i].byteEnd == pos
-	}
-	for _, b := range k.paragraph.Raw().ByteRangeBounded(pos, pos+1) {
-		return utf8.RuneStart(b)
-	}
-	return false
+	b := k.shaping.boundaries
+	i := sort.Search(len(b), func(i int) bool { return b[i].byteEnd >= pos })
+	return i < len(b) && b[i].byteEnd == pos
 }

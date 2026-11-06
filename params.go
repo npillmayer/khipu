@@ -19,8 +19,7 @@ type Params struct {
 	// SpaceStretchPercent and SpaceShrinkPercent apply only to U+0020 in
 	// elastic-spacing runs. Zero explicitly disables the corresponding change.
 	// Values must be finite and nonnegative; shrink must not exceed 100.
-	// These parameters are consumed by the new candidate-width helpers, not
-	// by the current metric encoder's KnotStyler path.
+	// Candidate-width calculation applies these percentages to shaped advances.
 	SpaceStretchPercent float64
 	SpaceShrinkPercent  float64
 }

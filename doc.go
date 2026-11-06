@@ -2,9 +2,11 @@
 // linebreaking. Khipu stores widths, UTF-8 source spans, flags, and penalties in
 // aligned planes; KnotByIndex returns a KnotCore value snapshot.
 //
-// Construct a Khipukamayuq with Config and call its EncodeParagraph method.
-// Config{} selects a fixed-width metric provider. Applications supply a contracts.Shaper
-// for font-backed metrics and an optional Hyphenator for lazy alternatives.
+// Construct a Khipukamayuq with Config and call EncodeParagraph.
+// Config{} selects synthetic streaming shaping for unstyled text. Applications
+// supply Config.Streaming for font-backed shaping and style resolution, and an
+// optional Hyphenator for lazy alternatives. EncodeParagraph takes a context
+// and a styled paragraph; shaping always uses the streaming contract.
 // Encoding preserves original source bytes and appends the final fill/forced
 // break, including for empty paragraphs. Normalize text before establishing
 // styled source ranges if needed.
@@ -16,12 +18,13 @@
 // run replaces the previous selections.
 //
 // Owners and their mutable collaborators must not be used concurrently.
-// Linebreaking does not produce final glyph placement or rendering: freezing
-// and glyph provenance remain future work. Package contracts owns the service
+// Linebreaking does not produce final glyph placement or rendering; freezing
+// remains future work. Streaming paragraphs retain glyph/source provenance.
+// Package contracts owns the service
 // interfaces and their value types. Package helpers provides deterministic
-// defaults: FixedWidthShaper for Config, and SyntheticFont, DefaultStyleResolver,
-// and SyntheticStreamingShaper for standalone font/style/streaming work. The
-// encoder does not consume those draft streaming services yet. Root aliases and
+// defaults: SyntheticFont, DefaultStyleResolver, and SyntheticStreamingShaper.
+// The default resolver rejects application-defined styles; synthetic glyphs
+// are not real font shaping. Root aliases and
 // forwarding constructors preserve earlier client code; new code should import
 // contracts and helpers directly. Paragraph-specific interfaces stay here.
 //

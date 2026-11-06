@@ -37,7 +37,7 @@ type sourceBoundary struct {
 // shaping begins. Style and bidi boundaries never reset Unicode analysis.
 // Returned penalties and word hints are finalized immutable metadata. The two
 // analyses stay independent: word hints never contribute to line demerits.
-// This preparation-only path does not change the active metric encoder.
+// The resulting boundaries accompany shaped clusters throughout encoding.
 func prepareParagraphBoundaries(para *styled.Paragraph) ([]sourceBoundary, error) {
 	if para == nil {
 		return nil, fmt.Errorf("%w: boundary preparation requires a paragraph", contracts.ErrIllegalArguments)
@@ -98,7 +98,7 @@ func readParagraphBoundaries(source io.Reader) ([]sourceBoundary, error) {
 		scalars++
 		result = append(result, sourceBoundary{byteEnd: bytes, scalarEnd: scalars, softHyphen: r == '\u00ad'})
 		// NUL is the breaker's EOF marker. Preserve source coordinates but
-		// substitute U+FFFD for classification, matching the metric encoder.
+		// substitute U+FFFD for classification.
 		if r == 0 {
 			r = utf8.RuneError
 		}

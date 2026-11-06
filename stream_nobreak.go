@@ -45,8 +45,8 @@ func coalesceMarkerIntersections(items []runIntersection, boundaries []sourceBou
 // prepareNoBreakRuns filters only U+00AD, without flattening paragraph text or
 // splitting shaping calls at markers (which could change ligatures/joining).
 // Boundary flags survive in the arena for later explicit-discretionary lookup.
-// This is streaming policy; raw Unicode analysis and the metric encoder retain
-// their existing behavior. Runs and boundary tables are private at this point.
+// This encoding policy leaves raw Unicode analysis unchanged. Runs and boundary
+// tables are private at this point.
 func prepareNoBreakRuns(runs []preparedRun, boundaries []sourceBoundary) ([]*noBreakRun, error) {
 	for i := range boundaries {
 		if boundaries[i].softHyphen {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/npillmayer/cords/styled"
 	"github.com/npillmayer/khipu"
+	"github.com/npillmayer/khipu/contracts"
 	"github.com/npillmayer/khipu/dimen"
 	"github.com/npillmayer/uax/bidi"
 )
@@ -15,21 +16,23 @@ import (
 // the encoder's still-unsettled segmentation and paragraph-trailer behavior.
 func TestPublicConfigShaperError(t *testing.T) {
 	wantErr := errors.New("shaper failed")
-	shaper := &failingConfigShaper{err: wantErr}
+	shaper := newEncodingScriptStream([]contracts.ShapedGlyph{{Cluster: 0, XAdvance: 500}}, wantErr)
+	cfg := encodingStreamingConfig()
+	cfg.NewShaper = func() (contracts.StreamingShaper, error) { return shaper, nil }
 	kq := khipu.NewKhipukamayuq(khipu.Config{
-		Shaper: shaper,
-		Params: &khipu.Params{Hyphenpenalty: 37},
+		Streaming: cfg,
+		Params:    &khipu.Params{Hyphenpenalty: 37},
 	})
 	text := styled.TextFromString("breaking")
 	para, err := styled.ParagraphFromText(&text, 0, text.Raw().Len(), bidi.LeftToRight, nil)
 	if err != nil {
 		t.Fatalf("create paragraph: %v", err)
 	}
-	khp, err := kq.EncodeParagraph(para, nil)
+	khp, err := kq.EncodeParagraph(t.Context(), para)
 	if !errors.Is(err, wantErr) || khp != nil {
 		t.Fatalf("expected shaper error without partial paragraph, got %v, %v", khp, err)
 	}
-	if shaper.source == nil || shaper.styles != 1 {
+	if shaper.input != "breaking" || shaper.params.Font != cfg.Defaults.Font {
 		t.Fatalf("configured shaper did not receive source and style: %+v", shaper)
 	}
 }
@@ -58,22 +61,4 @@ func TestPublicConfigWithoutHyphenator(t *testing.T) {
 	if err != nil || len(candidates) != 1 || candidates[0] != cached {
 		t.Fatalf("expected cached candidate without a hyphenator, got %v, %v", candidates, err)
 	}
-}
-
-type failingConfigShaper struct {
-	source khipu.RuneReader
-	styles int
-	err    error
-}
-
-func (s *failingConfigShaper) SetSource(source khipu.RuneReader) {
-	s.source = source
-}
-
-func (s *failingConfigShaper) SetStyle(styled.BidiStyleChange) {
-	s.styles++
-}
-
-func (s *failingConfigShaper) ReadClusterMetrics() (int, dimen.DU, int, error) {
-	return 0, 0, 0, s.err
 }

@@ -2,10 +2,9 @@
 // khipu, including their parameter and result types. It owns no paragraph data
 // and does not import the root khipu package or concrete helper implementations.
 //
-// Shaper is the active metric boundary. StreamingShaper and StyleResolver
-// describe draft boundaries with standalone implementations in package helpers;
-// their integration into paragraph encoding remains future work. Paragraph-
-// specific interfaces such as KnotStyler and Hyphenator stay in package khipu.
+// StreamingShaper and StyleResolver drive paragraph encoding and lazy
+// discretionary reshaping. Package helpers supplies synthetic implementations.
+// Paragraph-specific interfaces such as Hyphenator stay in package khipu.
 package contracts
 
 import "errors"

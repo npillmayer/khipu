@@ -36,7 +36,7 @@ func TestPublicStreamingEncodingAndBreakers(t *testing.T) {
 	owner := khipu.NewKhipukamayuq(khipu.Config{Streaming: &cfg})
 	cfg.Defaults.EmSize = 20 * dimen.PT // owner must retain its construction snapshot
 	for i := 0; i < 2; i++ {
-		khp, err := owner.EncodeParagraphStreaming(context.Background(), streamingParagraph(t))
+		khp, err := owner.EncodeParagraph(context.Background(), streamingParagraph(t))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -62,22 +62,19 @@ func TestPublicStreamingEncodingAndBreakers(t *testing.T) {
 	if calls != 2 {
 		t.Fatal("factory reuse", calls)
 	}
-	// Streaming configuration does not replace metric encoding.
-	if _, err := owner.EncodeParagraph(streamingParagraph(t), nil); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestPublicStreamingConfigurationErrors(t *testing.T) {
 	p := streamingParagraph(t)
 	failure := errors.New("factory failed")
 	for _, cfg := range []*khipu.StreamingConfig{
-		nil, {},
+		{},
+		{Resolver: helpers.DefaultStyleResolver{}, NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(0) }}, // missing font defaults
 		{Resolver: helpers.DefaultStyleResolver{}, NewShaper: func() (contracts.StreamingShaper, error) { return nil, nil }},
 		{Resolver: helpers.DefaultStyleResolver{}, NewShaper: func() (contracts.StreamingShaper, error) { return nil, failure }},
 	} {
 		owner := khipu.NewKhipukamayuq(khipu.Config{Streaming: cfg})
-		got, err := owner.EncodeParagraphStreaming(context.Background(), p)
+		got, err := owner.EncodeParagraph(context.Background(), p)
 		if got != nil || err == nil {
 			t.Fatal("accepted missing config")
 		}
@@ -90,8 +87,54 @@ func TestPublicStreamingConfigurationErrors(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if got, err := khipu.NewKhipukamayuq(khipu.Config{}).EncodeParagraphStreaming(ctx, p); got != nil || !errors.Is(err, context.Canceled) {
+	if got, err := khipu.NewKhipukamayuq(khipu.Config{}).EncodeParagraph(ctx, p); got != nil || !errors.Is(err, context.Canceled) {
 		t.Fatal(got, err)
+	}
+}
+
+func TestPublicDefaultStreamingEncoding(t *testing.T) {
+	owner := khipu.NewKhipukamayuq(khipu.Config{})
+	for range 2 {
+		k, err := owner.EncodeParagraph(t.Context(), streamingParagraph(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(k.Kind) != 4 || k.W[0] != 25*dimen.PT || k.W[1] != 5*dimen.PT || k.MinW[1] >= k.W[1] || k.MaxW[1] <= k.W[1] {
+			t.Fatal("unexpected synthetic default metrics", k)
+		}
+		if candidates, err := owner.DiscretionaryCandidates(k, 0); err != nil || len(candidates) != 0 {
+			t.Fatal("default discovery must remain disabled", candidates, err)
+		}
+	}
+	// Explicit zero parameters and fill widths must not acquire nonzero defaults.
+	owner = khipu.NewKhipukamayuq(khipu.Config{Params: &khipu.Params{}, ParFillSkip: &khipu.KnotCore{}})
+	k, err := owner.EncodeParagraph(t.Context(), streamingParagraph(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k.MinW[1] != k.W[1] || k.MaxW[1] != k.W[1] || k.MaxW[len(k.Kind)-1] != 0 {
+		t.Fatal("explicit zero values replaced", k)
+	}
+}
+
+func TestDefaultStreamingDiscretionaryReshaping(t *testing.T) {
+	policy := &streamingWordPolicy{}
+	owner := khipu.NewKhipukamayuq(khipu.Config{Hyphenator: policy})
+	text := styled.TextFromString("abcd")
+	para, err := styled.ParagraphFromText(&text, 0, text.Raw().Len(), bidi.LeftToRight, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, err := owner.EncodeParagraph(t.Context(), para)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(policy.requests) != 0 {
+		t.Fatal("eager discovery")
+	}
+	candidates, err := owner.DiscretionaryCandidates(k, 0)
+	if err != nil || len(candidates) != 1 || candidates[0].PreBreak.W != 15*dimen.PT || candidates[0].SourceSplit != (khipu.SourceSplit{ByteOffset: 2, Valid: true}) {
+		t.Fatal("default fragment shaping", candidates, err)
 	}
 }
 
@@ -100,7 +143,7 @@ func TestStreamingAutomaticPolicyCanDecline(t *testing.T) {
 		NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(1) },
 		Resolver:  helpers.DefaultStyleResolver{}, Defaults: contracts.ResolvedRunStyle{Font: helpers.NewSyntheticFont(), EmSize: 10 * dimen.PT},
 	}})
-	k, err := owner.EncodeParagraphStreaming(context.Background(), streamingParagraph(t))
+	k, err := owner.EncodeParagraph(context.Background(), streamingParagraph(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +170,7 @@ func TestPublicStreamingBoundaryRegressions(t *testing.T) {
 				Resolver: helpers.DefaultStyleResolver{}, Defaults: contracts.ResolvedRunStyle{Font: helpers.NewSyntheticFont(), EmSize: 10 * dimen.PT, Spacing: contracts.SpacingElastic},
 				NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(1) },
 			}})
-			k, err := owner.EncodeParagraphStreaming(t.Context(), p)
+			k, err := owner.EncodeParagraph(t.Context(), p)
 			if err != nil {
 				t.Fatal(err)
 			}

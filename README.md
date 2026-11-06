@@ -43,13 +43,14 @@ a single paragraph.
 
 ## Encode And Break A Paragraph
 
-This complete example uses the built-in fixed-width shaper. It is also exercised
+This complete example uses the built-in synthetic streaming shaper. It is also exercised
 by [the public examples](example_test.go).
 
 ```go
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/npillmayer/cords/styled"
@@ -68,7 +69,7 @@ func main() {
 		panic(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	khp, err := owner.EncodeParagraph(para, nil)
+	khp, err := owner.EncodeParagraph(context.Background(), para)
 	if err != nil {
 		panic(err)
 	}
@@ -97,10 +98,12 @@ replaces those selections.
 
 ## Configure Shaping And Hyphenation
 
-Supply `Config.Shaper` for font-backed metrics and `Config.Hyphenator` for lazy
-alternatives. The collaborators are retained, so a stateful shaper must not be
-used concurrently with its owner. Omitting `Params` selects defaults; a supplied
-`*Params` is copied in full, including zero fields.
+Supply `Config.Streaming` with a fresh-stream factory, style resolver and run
+defaults for font-backed shaping, and `Config.Hyphenator` for lazy alternatives.
+Omitting `Streaming` selects synthetic shaping for unstyled text; an explicitly
+supplied configuration is not filled with synthetic defaults. Owners must not be
+used concurrently. Omitting `Params` selects defaults; a supplied `*Params` is
+copied in full, including zero fields.
 
 To enable lazy discovery, pass the same owner as the breaker's provider:
 
@@ -111,38 +114,37 @@ breaks, err := knuthplass.BreakParagraph(khp, shape, params)
 ```
 
 Firstfit has its own `Parameters.DiscretionaryProvider` field. The
-[hyphenation example](example_test.go) demonstrates the complete roundtrip.
+[hyphenation example](example_test.go) demonstrates the streaming roundtrip.
+Automatic alternatives must supply an original
+request-relative `SourceSplit`; see [hyphenation](doc/HYPHENATION.md).
 Without a provider, a breaker can use candidates already cached on `khp`.
 
 `EncodeParagraph` appends a non-discardable fill knot carrying the final forced
 break, including for empty paragraphs. Configure its dimensions through
 `Config.ParFillSkip`; do not append another trailer. Text retains its original
-bytes; normalize before constructing styled ranges if needed. Custom shapers
-report run-relative byte offsets in logical order, including zero-width cluster
-starts. See [the encoding contract](doc/MIGRATION.md#soa-encoder-to-breaker-contract).
+bytes; normalize before constructing styled ranges if needed. Streaming shapers
+report logical-order glyphs with scalar cluster anchors. Use `BreakpointPositions`
+to map the chosen breaks back to original paragraph byte endpoints.
 
-The default shaper is a fixed-width metric provider, not a font shaping backend.
-Linebreaking does not assign final glyph positions. Freezing, durable glyph
-provenance, and script-sensitive spacing remain future work. The public
-`helpers.FixedWidthShaper` supports a configurable positive cell width through
-`helpers.NewFixedWidthShaper(width)`; its zero value uses the existing 5 pt default.
-See the [executable encoding example](helpers_example_test.go).
+The default backend uses `helpers.SyntheticFont` at 10 pt,
+`DefaultStyleResolver`, and a fresh `SyntheticStreamingShaper` per paragraph or
+fragment. Ordinary cells are 5 pt and spaces are elastic. It requires no installed
+fonts, rejects application-defined styles, and is not real font shaping.
+Glyph/source provenance is retained; final line materialization and freezing
+remain future work. See the [testing guide](doc/TESTING.md) for helper policies.
 
-The `helpers` package's `SyntheticFont`, `DefaultStyleResolver`, and
-`SyntheticStreamingShaper` provide
-standalone deterministic implementations for the draft font/style/streaming
-interfaces. They require no installed fonts. Streaming is not yet integrated
-into `Config` or paragraph encoding. See the [combined streaming example](helpers/synthetic_streaming_shaper_test.go)
-for concurrent production/draining and the [testing guide](doc/TESTING.md)
-for constructor choices, character policies, and lifecycle guarantees.
+The metric encoder, `Config.Shaper`, `FixedWidthShaper` and `KnotStyler` have
+been removed. The sole encoding entry point is `EncodeParagraph(ctx, para)`;
+there is no width-adaptation replacement hook. See
+[the retirement inventory](doc/RETIRE-METRICS.md).
 
 ## Package Structure
 
 | Package | Responsibility |
 | --- | --- |
-| `khipu` | Paragraph storage, encoding, discretionaries, configuration, and paragraph-specific `KnotStyler`/`Hyphenator` contracts |
-| [`contracts`](contracts/ReadMe.md) | Font, metric/streaming shaping, and style interfaces, their value types and constants, and the shared argument-error sentinel |
-| [`helpers`](helpers/ReadMe.md) | The four deterministic defaults, with their focused tests and standalone examples |
+| `khipu` | Paragraph storage, encoding, discretionaries, configuration, and the paragraph-specific `Hyphenator` contract |
+| [`contracts`](contracts/ReadMe.md) | Font, streaming shaping, and style interfaces, their value types and constants, and the shared argument-error sentinel |
+| [`helpers`](helpers/ReadMe.md) | The three deterministic defaults, with their focused tests and standalone examples |
 | `dimen` | Dimensions and units |
 | `linebreak` and its subpackages | Paragraph shapes, width summaries, and linebreaking algorithms |
 
@@ -153,8 +155,7 @@ paragraph storage or default implementations.
 
 The original root names remain as type aliases and forwarding constructors in
 [compat.go](compat.go), including the original error identities. Prefer
-`contracts` and `helpers` in new code. The split changes package ownership, not
-`Config{}` behavior or the implemented shaping policies.
+`contracts` and `helpers` in new code. Metric-specific aliases were removed.
 
 ## Development And Migration
 

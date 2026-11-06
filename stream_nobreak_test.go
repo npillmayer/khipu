@@ -22,11 +22,11 @@ func TestStreamingSoftHyphenNoBreak(t *testing.T) {
 				NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(0) },
 			}})
 			p := preparationParagraph(t, text)
-			k, err := owner.EncodeParagraphStreaming(context.Background(), p)
+			k, err := owner.EncodeParagraph(context.Background(), p)
 			if err != nil {
 				t.Fatal(err)
 			}
-			plain, err := owner.EncodeParagraphStreaming(context.Background(), preparationParagraph(t, strings.ReplaceAll(text, softHyphenMarker, "")))
+			plain, err := owner.EncodeParagraph(context.Background(), preparationParagraph(t, strings.ReplaceAll(text, softHyphenMarker, "")))
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -24,7 +24,7 @@ var (
 
 // SyntheticStreamingShaper implements contracts.StreamingShaper for SyntheticFont only.
 // It emits one glyph per scalar, with ID uint32(rune)+1 and advance 500 font
-// units except for the same zero-width controls as FixedWidthShaper. Other
+// units except for line separators and zero-width break controls. Other
 // advances and offsets are zero. Combining marks are independent cells. Both
 // LTR and RTL runs are emitted in logical order, without normalization.
 // Script and language do not affect output. Nonempty Features are rejected.
@@ -199,3 +199,12 @@ func (s *SyntheticStreamingShaper) Shape(ctx context.Context, params contracts.S
 }
 
 var _ contracts.StreamingShaper = (*SyntheticStreamingShaper)(nil)
+
+// syntheticZeroWidth models controls without advancing the synthetic pen.
+func syntheticZeroWidth(r rune) bool {
+	switch r {
+	case '\n', '\r', '\v', '\f', '\u0085', '\u2028', '\u2029', '\u200b', '\u2060':
+		return true
+	}
+	return false
+}

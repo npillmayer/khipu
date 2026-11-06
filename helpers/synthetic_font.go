@@ -16,7 +16,7 @@ const syntheticUnitsPerEm = 1000
 // It has no glyphs, outlines, character map, or backend font data. A matching
 // synthetic shaper must define its own advances; an advance of 500 font units
 // represents half an em. Real shaping adapters must reject this face unless
-// they explicitly support it. The current khipu.Config shaper does not use a face.
+// they explicitly support it. Config's synthetic default uses this face.
 // The face and all scales it returns are safe for concurrent reads.
 type SyntheticFont struct{}
 

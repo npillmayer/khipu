@@ -38,7 +38,7 @@ func TestStreamingLinebreakContractAtNarrowWidths(t *testing.T) {
 				Resolver: helpers.DefaultStyleResolver{}, Defaults: contracts.ResolvedRunStyle{Font: helpers.NewSyntheticFont(), EmSize: 10 * dimen.PT, Spacing: contracts.SpacingElastic},
 				NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(1) },
 			}})
-			k, err := owner.EncodeParagraphStreaming(t.Context(), para)
+			k, err := owner.EncodeParagraph(t.Context(), para)
 			if err != nil {
 				t.Fatal(err)
 			}

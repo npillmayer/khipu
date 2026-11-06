@@ -9,42 +9,34 @@ import (
 )
 
 func TestBreakpointPositionsOrdinary(t *testing.T) {
-	for _, streaming := range []bool{false, true} {
-		for _, text := range []string{"", "é beta", "a  b", "אב cd"} {
-			p := preparationParagraph(t, text)
-			p.Offset = 100 // Pos is absolute; the result must not be.
-			owner := automaticTestOwner(nil, nil)
-			var k *Khipu
-			var err error
-			if streaming {
-				k, err = owner.EncodeParagraphStreaming(t.Context(), p)
-			} else {
-				k, err = owner.EncodeParagraph(p, nil)
+	for _, text := range []string{"", "é beta", "a  b", "אב cd"} {
+		p := preparationParagraph(t, text)
+		p.Offset = 100 // Pos is absolute; the result must not be.
+		owner := automaticTestOwner(nil, nil)
+		k, err := owner.EncodeParagraph(t.Context(), p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		breaks := []int{}
+		want := []uint64{}
+		for i, penalty := range k.Penalty {
+			if penalty < MaxPenalty {
+				breaks = append(breaks, i)
+				want = append(want, k.Pos[i]-p.Offset+uint64(k.Len[i]))
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			breaks := []int{}
-			want := []uint64{}
-			for i, penalty := range k.Penalty {
-				if penalty < MaxPenalty {
-					breaks = append(breaks, i)
-					want = append(want, k.Pos[i]-p.Offset+uint64(k.Len[i]))
-				}
-			}
-			got, err := k.BreakpointPositions(breaks)
-			if err != nil || !reflect.DeepEqual(got, want) || got[len(got)-1] != uint64(len(text)) {
-				t.Fatalf("streaming=%v text=%q: got %v, want %v: %v", streaming, text, got, want, err)
-			}
-			if len(text) > 0 && len(got) > 1 && got[0] >= uint64(len(text)) {
-				t.Fatal("ordinary interior break lost")
-			}
-			if got, err := k.BreakpointPositions(nil); err != nil || len(got) != 0 {
-				t.Fatal(got, err)
-			}
-			if got, err := k.BreakpointPositions(breaks[:1]); err != nil || !reflect.DeepEqual(got, want[:1]) {
-				t.Fatal("partial list", got, err)
-			}
+		}
+		got, err := k.BreakpointPositions(breaks)
+		if err != nil || !reflect.DeepEqual(got, want) || got[len(got)-1] != uint64(len(text)) {
+			t.Fatalf("text=%q: got %v, want %v: %v", text, got, want, err)
+		}
+		if len(text) > 0 && len(got) > 1 && got[0] >= uint64(len(text)) {
+			t.Fatal("ordinary interior break lost")
+		}
+		if got, err := k.BreakpointPositions(nil); err != nil || len(got) != 0 {
+			t.Fatal(got, err)
+		}
+		if got, err := k.BreakpointPositions(breaks[:1]); err != nil || !reflect.DeepEqual(got, want[:1]) {
+			t.Fatal("partial list", got, err)
 		}
 	}
 }
@@ -66,7 +58,7 @@ func TestBreakpointPositionsGlyphlessGap(t *testing.T) {
 }
 
 func TestBreakpointPositionsBeforeSuppressedMarker(t *testing.T) {
-	k, err := automaticTestOwner(nil, nil).EncodeParagraphStreaming(t.Context(), preparationParagraph(t, "a \u00adb"))
+	k, err := automaticTestOwner(nil, nil).EncodeParagraph(t.Context(), preparationParagraph(t, "a \u00adb"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +81,7 @@ func TestBreakpointPositionsSelectedProvenance(t *testing.T) {
 	}}, nil)
 	p := preparationParagraph(t, "xx éclair")
 	p.Offset = 100
-	k, err := owner.EncodeParagraphStreaming(t.Context(), p)
+	k, err := owner.EncodeParagraph(t.Context(), p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,22 +151,22 @@ func TestBreakpointPositionsRejectInvalidInput(t *testing.T) {
 			}
 		})
 	}
-	for _, k := range []*Khipu{nil, {}} {
+	for _, k := range []*Khipu{nil, {}, {paragraph: preparationParagraph(t, "")}} {
 		if got, err := k.BreakpointPositions(nil); got != nil || !errors.Is(err, ErrIllegalArguments) {
 			t.Fatal(got, err)
 		}
 	}
 }
 
-func TestBreakpointPositionsMetricDiscretionary(t *testing.T) {
-	k, err := NewKhipukamayuq(Config{}).EncodeParagraph(preparationParagraph(t, "éclair"), nil)
+func TestBreakpointPositionsRequireDiscretionaryProvenance(t *testing.T) {
+	k, err := NewKhipukamayuq(Config{}).EncodeParagraph(t.Context(), preparationParagraph(t, "éclair"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	k.AddDiscretionaryCandidate(0, DiscretionaryCandidate{Variant: 1})
 	k.SelectDiscretionary(0, DiscretionarySelection{Source: 0, Variant: 1})
 	if got, err := k.BreakpointPositions([]int{0}); got != nil || !errors.Is(err, ErrIllegalArguments) {
-		t.Fatal("guessed legacy replacement position", got, err)
+		t.Fatal("guessed replacement position without SourceSplit", got, err)
 	}
 	k.DiscretionaryCandidates[0][0].SourceSplit = SourceSplit{1, true}
 	if _, err := k.BreakpointPositions([]int{0}); !errors.Is(err, ErrIllegalArguments) {
@@ -183,5 +175,19 @@ func TestBreakpointPositionsMetricDiscretionary(t *testing.T) {
 	k.DiscretionaryCandidates[0][0].SourceSplit = SourceSplit{2, true}
 	if got, err := k.BreakpointPositions([]int{0}); err != nil || !reflect.DeepEqual(got, []uint64{2}) {
 		t.Fatal(got, err)
+	}
+}
+
+func TestBreakpointPositionsRejectMissingProvenance(t *testing.T) {
+	k, err := NewKhipukamayuq(Config{}).EncodeParagraph(t.Context(), preparationParagraph(t, "a b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Plausible Pos/Len planes are not a substitute for boundary provenance.
+	k.shaping.sources = nil
+	for _, breaks := range [][]int{nil, {1}, {len(k.Kind) - 1}} {
+		if got, err := k.BreakpointPositions(breaks); got != nil || !errors.Is(err, ErrIllegalArguments) {
+			t.Fatalf("mapped knots without provenance: %v, %v", got, err)
+		}
 	}
 }

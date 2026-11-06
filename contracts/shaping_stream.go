@@ -7,8 +7,8 @@ import (
 	"golang.org/x/text/unicode/bidi"
 )
 
-// StreamingShaper is the draft replacement for Shaper. It is deliberately
-// separate: existing encoding and discretionary paths still use Shaper.
+// StreamingShaper supplies glyphs and positioning for paragraph encoding and
+// discretionary reshaping, in logical source order.
 // Package helpers supplies a deterministic streaming implementation for tests;
 // applications supply adapters for real font backends.
 //

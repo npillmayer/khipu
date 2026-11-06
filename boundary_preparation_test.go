@@ -11,19 +11,31 @@ import (
 	"github.com/npillmayer/khipu/contracts"
 )
 
-func TestReadParagraphBoundariesMatchesMetricPolicy(t *testing.T) {
-	for _, source := range []string{
-		"", "hello", "hello world ", "a\u00a0b", "a\r\nb", "a\nb", "a\u2028b",
-		"aéz", "e\u0301", "\ufffd", "a\x00b", "a\u200bb", "a\u2060b",
-		"a\u2067אב\u2069z", "\u2066\u2069", "中文测试", "(one) two!",
+func TestReadParagraphBoundaryPolicy(t *testing.T) {
+	// Explicit scalar-end expectations replace the retired metric encoder as
+	// oracle. Finite values pin our UAX translation policy, not a Unicode rule's
+	// mandated numeric penalty. Hard breaks retain the corrected precedence.
+	const P, F = MaxPenalty, MaxMerit
+	for _, tc := range []struct {
+		source    string
+		penalties []Penalty
+	}{
+		{"", nil}, {"hello", []Penalty{P, P, P, P, F}},
+		{"hello world ", []Penalty{P, P, P, P, P, -29, P, P, P, P, P, F}},
+		{"a\u00a0b", []Penalty{P, P, F}}, {"a\r\nb", []Penalty{P, P, F, F}},
+		{"a\nb", []Penalty{P, F, F}}, {"a\u2028b", []Penalty{P, F, F}},
+		{"aéz", []Penalty{P, P, F}}, {"e\u0301", []Penalty{P, F}}, {"\ufffd", []Penalty{F}},
+		{"a\x00b", []Penalty{P, P, F}}, {"a\u200bb", []Penalty{P, -417, F}}, {"a\u2060b", []Penalty{P, P, F}},
+		{"a\u2067אב\u2069z", []Penalty{P, P, P, P, P, F}}, {"\u2066\u2069", []Penalty{P, F}},
+		{"中文测试", []Penalty{1, 1, 1, F}}, {"(one) two!", []Penalty{P, P, P, P, P, -29, P, P, P, F}},
 	} {
+		source := tc.source
 		t.Run(source, func(t *testing.T) {
 			// One-byte reads exercise UTF-8 encodings split across reader calls.
 			got, err := readParagraphBoundaries(iotest.OneByteReader(strings.NewReader(source)))
 			if err != nil {
 				t.Fatal(err)
 			}
-			legacy := paragraphBoundaries(source)
 			var ends []uint64
 			for at := range source {
 				if at > 0 {
@@ -33,12 +45,12 @@ func TestReadParagraphBoundariesMatchesMetricPolicy(t *testing.T) {
 			if source != "" {
 				ends = append(ends, uint64(len(source)))
 			}
-			if len(got) != len(ends) {
+			if len(got) != len(ends) || len(got) != len(tc.penalties) {
 				t.Fatalf("got %v, want %d entries", got, len(ends))
 			}
 			for i, entry := range got {
-				if entry.byteEnd != ends[i] || entry.scalarEnd != uint64(i+1) || entry.penalty != legacy[ends[i]] {
-					t.Fatalf("entry %d: %+v, expected endpoint %d penalty %v", i, entry, ends[i], legacy[ends[i]])
+				if entry.byteEnd != ends[i] || entry.scalarEnd != uint64(i+1) || entry.penalty != tc.penalties[i] {
+					t.Fatalf("entry %d: %+v, expected endpoint %d penalty %v", i, entry, ends[i], tc.penalties[i])
 				}
 			}
 		})

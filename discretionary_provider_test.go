@@ -24,7 +24,7 @@ func TestExplicitProviderBatchAndRetry(t *testing.T) {
 			return helpers.NewSyntheticStreamingShaper(0)
 		},
 	}})
-	k, err := owner.EncodeParagraphStreaming(t.Context(), preparationParagraph(t, "ab\u00adcd\u00adef"))
+	k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, "ab\u00adcd\u00adef"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestExplicitProviderRejectsInteriorFeatures(t *testing.T) {
 		Resolver: helpers.DefaultStyleResolver{}, Defaults: preparationDefaults(),
 		NewShaper: func() (contracts.StreamingShaper, error) { calls++; return helpers.NewSyntheticStreamingShaper(0) },
 	}})
-	k, err := owner.EncodeParagraphStreaming(t.Context(), preparationParagraph(t, "ab\u00adcd"))
+	k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, "ab\u00adcd"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestExplicitProviderDeclinesMarkerEdges(t *testing.T) {
 		NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(0) },
 	}})
 	for _, text := range []string{"ab\u00ad", "\u00adcd"} {
-		k, err := owner.EncodeParagraphStreaming(t.Context(), preparationParagraph(t, text))
+		k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, text))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -108,7 +108,7 @@ func TestExplicitProviderNormalizesWholeBoxFeatures(t *testing.T) {
 		Resolver: helpers.DefaultStyleResolver{}, Defaults: preparationDefaults(),
 		NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(0) },
 	}})
-	k, err := owner.EncodeParagraphStreaming(t.Context(), preparationParagraph(t, "ab\u00adcd"))
+	k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, "ab\u00adcd"))
 	if err != nil {
 		t.Fatal(err)
 	}

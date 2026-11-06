@@ -78,7 +78,7 @@ func TestPublicKnottingMandatoryBreakPolicy(t *testing.T) {
 					return &boundaryTestShaper{out: make(chan contracts.ShapedGlyph), mode: tc.mode}, nil
 				},
 			}})
-			got, err := owner.EncodeParagraphStreaming(t.Context(), preparationParagraph(t, tc.text))
+			got, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, tc.text))
 			if tc.reject {
 				if got != nil || !errors.Is(err, ErrUnrepresentableMandatoryBreak) {
 					t.Fatalf("%v %v", got, err)
@@ -128,7 +128,7 @@ func TestPublicStyleBoundaryDoesNotCreateBreak(t *testing.T) {
 		Resolver: resolver, Defaults: preparationDefaults(),
 		NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(1) },
 	}})
-	k, err := owner.EncodeParagraphStreaming(t.Context(), p)
+	k, err := owner.EncodeParagraph(t.Context(), p)
 	if err != nil {
 		t.Fatal(err)
 	}

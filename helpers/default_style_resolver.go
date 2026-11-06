@@ -13,7 +13,7 @@ import (
 // zero value is ready to use and may be shared concurrently. It rejects all
 // non-nil styles because it does not interpret application-defined styles.
 // It does not infer properties, acquire a scale, or validate backend features.
-// This helper is independent of the encoder, which uses contracts.Shaper directly.
+// It is the synthetic streaming encoder's default resolver.
 type DefaultStyleResolver struct{}
 
 // NewDefaultStyleResolver returns a stateless resolver for unstyled runs.

@@ -29,10 +29,14 @@ func TestCandidateSourceClassification(t *testing.T) {
 		if emit != (got != candidateEmpty) {
 			t.Fatal("empty emission")
 		}
-		if emit && kind != kindFromText(tc.s) {
+		wantKind, wantFlags := KTGlue, KFDiscardable
+		if tc.want == candidateText {
+			wantKind, wantFlags = KTTextBox, 0
+		}
+		if emit && kind != wantKind {
 			t.Fatal("classification regression")
 		}
-		if emit && flags != defaultFlagsForKind(kind) {
+		if emit && flags != wantFlags {
 			t.Fatal("flag regression")
 		}
 	}

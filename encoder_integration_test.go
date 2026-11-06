@@ -1,7 +1,6 @@
 package khipu_test
 
 import (
-	"io"
 	"slices"
 	"strings"
 	"testing"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/npillmayer/cords/styled"
 	"github.com/npillmayer/khipu"
+	"github.com/npillmayer/khipu/contracts"
 	"github.com/npillmayer/khipu/dimen"
 	"github.com/npillmayer/khipu/linebreak"
 	"github.com/npillmayer/khipu/linebreak/firstfit"
@@ -32,7 +32,7 @@ func TestEncodedParagraphContract(t *testing.T) {
 		t.Run(source, func(t *testing.T) {
 			para := encodingParagraph(t, source)
 			para.Offset = 100
-			khp, err := owner.EncodeParagraph(para, nil)
+			khp, err := owner.EncodeParagraph(t.Context(), para)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -95,8 +95,8 @@ func TestEncodedParagraphStyleAndForcedBoundaries(t *testing.T) {
 			if _, err := para.Style(encodingStyle("bold"), 1, 3); err != nil {
 				t.Fatal(err)
 			}
-			owner := khipu.NewKhipukamayuq(khipu.Config{})
-			khp, err := owner.EncodeParagraph(para, nil)
+			owner := khipu.NewKhipukamayuq(khipu.Config{Streaming: encodingStreamingConfig()})
+			khp, err := owner.EncodeParagraph(t.Context(), para)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -144,20 +144,20 @@ func (h *encodingHyphenator) Discretionaries(word string, params *khipu.Params) 
 	if word != "breaking" {
 		return nil, nil
 	}
-	return []khipu.HyphenationFragment{{Variant: 7, PreBreak: "break-", PostBreak: "ing"}}, nil
+	return []khipu.HyphenationFragment{{Variant: 7, PreBreak: "break-", PostBreak: "ing", SourceSplit: khipu.SourceSplit{ByteOffset: 5, Valid: true}}}, nil
 }
 
 func TestEncodedParagraphLazyDiscretionaries(t *testing.T) {
 	for _, algorithm := range []string{"firstfit", "Knuth-Plass"} {
 		t.Run(algorithm, func(t *testing.T) {
 			hyph := &encodingHyphenator{}
-			owner := khipu.NewKhipukamayuq(khipu.Config{Hyphenator: hyph})
+			owner := khipu.NewKhipukamayuq(khipu.Config{Hyphenator: hyph, Streaming: encodingStreamingConfig()})
 			para := encodingParagraph(t, "xx breaking")
 			para.Offset = 70
 			if _, err := para.Style(encodingStyle("bold"), 3, 11); err != nil {
 				t.Fatal(err)
 			}
-			khp, err := owner.EncodeParagraph(para, nil)
+			khp, err := owner.EncodeParagraph(t.Context(), para)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -192,6 +192,9 @@ func TestEncodedParagraphLazyDiscretionaries(t *testing.T) {
 			if !slices.Equal(hyph.words, []string{"breaking"}) {
 				t.Fatalf("hyphenator source=%v", hyph.words)
 			}
+			if ends, err := khp.BreakpointPositions(breaks); err != nil || !slices.Equal(ends, []uint64{8, 11}) {
+				t.Fatal("selected source provenance", ends, err)
+			}
 		})
 	}
 }
@@ -200,7 +203,7 @@ func TestEncodedParagraphFillConfiguration(t *testing.T) {
 	fill := khipu.KnotCore{W: 2 * dimen.PT, MinW: 1 * dimen.PT, MaxW: 7 * dimen.PT, Kind: khipu.KTTextBox, Flags: khipu.KFDiscardable, Penalty: 10, Pos: 9, Len: 9}
 	owner := khipu.NewKhipukamayuq(khipu.Config{ParFillSkip: &fill})
 	fill.W = 100 * dimen.PT
-	khp, err := owner.EncodeParagraph(encodingParagraph(t, "a "), nil)
+	khp, err := owner.EncodeParagraph(t.Context(), encodingParagraph(t, "a "))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +218,7 @@ func TestEncodedParagraphFillConfiguration(t *testing.T) {
 	}
 	for _, fill := range []khipu.KnotCore{{}, {W: 2, MinW: 3, MaxW: 4}, {W: 3, MaxW: 2}} {
 		owner := khipu.NewKhipukamayuq(khipu.Config{ParFillSkip: &fill})
-		khp, err := owner.EncodeParagraph(encodingParagraph(t, ""), nil)
+		khp, err := owner.EncodeParagraph(t.Context(), encodingParagraph(t, ""))
 		if fill == (khipu.KnotCore{}) {
 			if err != nil || khp.MaxW[0] != 0 {
 				t.Fatalf("explicit zero fill: %v %v", khp, err)
@@ -226,41 +229,31 @@ func TestEncodedParagraphFillConfiguration(t *testing.T) {
 	}
 }
 
-// Sparse metrics model a ligature spanning a potential break, or a zero-width
-// space cluster. Both cases defeated the old width-as-cluster-marker approach.
-type encodingClusterShaper struct {
-	anchors []int
-	widths  []dimen.DU
-	next    int
-}
-
-func (s *encodingClusterShaper) SetSource(khipu.RuneReader)    { s.next = 0 }
-func (*encodingClusterShaper) SetStyle(styled.BidiStyleChange) {}
-func (s *encodingClusterShaper) ReadClusterMetrics() (int, dimen.DU, int, error) {
-	if s.next == len(s.anchors) {
-		return 999, 999, 0, io.EOF
-	}
-	i := s.next
-	s.next++
-	return s.anchors[i], s.widths[i], 0, nil
-}
-
+// Sparse scalar anchors model a ligature spanning a potential break, or a
+// zero-width space cluster. Width must not serve as the cluster-start marker.
 func TestEncodedParagraphClusterSpans(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
-		anchors []int
-		widths  []dimen.DU
+		anchors []uint32
+		widths  []int32
 		spans   []uint16
 	}{
-		{"crosses space", []int{0, 4}, []dimen.DU{10, 5}, []uint16{5, 0}},
-		{"zero width space", []int{0, 2, 3, 4}, []dimen.DU{10, 0, 5, 5}, []uint16{2, 1, 2, 0}},
+		{"crosses space", []uint32{0, 4}, []int32{1000, 500}, []uint16{5, 0}},
+		{"zero width space", []uint32{0, 2, 3, 4}, []int32{1000, 0, 500, 500}, []uint16{2, 1, 2, 0}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			shaper := &encodingClusterShaper{anchors: tc.anchors, widths: tc.widths}
-			owner := khipu.NewKhipukamayuq(khipu.Config{Shaper: shaper})
+			cfg := encodingStreamingConfig()
+			cfg.NewShaper = func() (contracts.StreamingShaper, error) {
+				var glyphs []contracts.ShapedGlyph
+				for i, at := range tc.anchors {
+					glyphs = append(glyphs, contracts.ShapedGlyph{Cluster: at, XAdvance: tc.widths[i]})
+				}
+				return newEncodingScriptStream(glyphs, nil), nil
+			}
+			owner := khipu.NewKhipukamayuq(khipu.Config{Streaming: cfg})
 			para := encodingParagraph(t, "ab cd")
 			for range 2 {
-				khp, err := owner.EncodeParagraph(para, nil)
+				khp, err := owner.EncodeParagraph(t.Context(), para)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -285,9 +278,9 @@ func TestEncodedParagraphSourceSection(t *testing.T) {
 	if _, err := para.Style(encodingStyle("bold"), 0, uint64(len("éclair"))); err != nil {
 		t.Fatal(err)
 	}
-	owner := khipu.NewKhipukamayuq(khipu.Config{})
+	owner := khipu.NewKhipukamayuq(khipu.Config{Streaming: encodingStreamingConfig()})
 	for range 2 {
-		khp, err := owner.EncodeParagraph(para, nil)
+		khp, err := owner.EncodeParagraph(t.Context(), para)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -299,23 +292,68 @@ func TestEncodedParagraphSourceSection(t *testing.T) {
 
 func TestEncodedParagraphErrorsReturnNoPartialOutput(t *testing.T) {
 	para := encodingParagraph(t, "ab cd")
-	shaper := &encodingClusterShaper{anchors: []int{0, -1}, widths: []dimen.DU{5, 5}}
-	owner := khipu.NewKhipukamayuq(khipu.Config{Shaper: shaper})
-	if khp, err := owner.EncodeParagraph(para, nil); err == nil || khp != nil {
+	anchors := []uint32{1, 0} // Decreasing logical scalar anchors are invalid.
+	cfg := encodingStreamingConfig()
+	cfg.NewShaper = func() (contracts.StreamingShaper, error) {
+		var glyphs []contracts.ShapedGlyph
+		for _, at := range anchors {
+			glyphs = append(glyphs, contracts.ShapedGlyph{Cluster: at, XAdvance: 500})
+		}
+		return newEncodingScriptStream(glyphs, nil), nil
+	}
+	owner := khipu.NewKhipukamayuq(khipu.Config{Streaming: cfg})
+	if khp, err := owner.EncodeParagraph(t.Context(), para); err == nil || khp != nil {
 		t.Fatalf("invalid shaper must return no output: %v %v", khp, err)
 	}
-	shaper.anchors = []int{0, 4}
-	if _, err := owner.EncodeParagraph(para, nil); err != nil {
+	anchors = []uint32{0, 4}
+	if _, err := owner.EncodeParagraph(t.Context(), para); err != nil {
 		t.Fatalf("owner cannot be reused after error: %v", err)
 	}
 	para.Offset = ^uint64(0)
-	if khp, err := owner.EncodeParagraph(para, nil); err == nil || khp != nil {
+	if khp, err := owner.EncodeParagraph(t.Context(), para); err == nil || khp != nil {
 		t.Fatalf("source offset overflow accepted: %v %v", khp, err)
 	}
 	// One unbreakable word cannot fit in the current uint16 source-length plane.
 	para = encodingParagraph(t, strings.Repeat("a", 1<<16))
 	owner = khipu.NewKhipukamayuq(khipu.Config{})
-	if khp, err := owner.EncodeParagraph(para, nil); err == nil || khp != nil {
+	if khp, err := owner.EncodeParagraph(t.Context(), para); err == nil || khp != nil {
 		t.Fatalf("oversized source span accepted: %v %v", khp, err)
+	}
+}
+
+// Preserve useful metric-collector regressions at the streaming boundary.
+// Anchors now count scalars, while accumulated advances are font units.
+func TestEncodedParagraphAccumulatedGlyphMetrics(t *testing.T) {
+	for _, tc := range []struct {
+		name, source string
+		glyphs       []contracts.ShapedGlyph
+		wantWidths   []dimen.DU // nil means malformed output must be rejected
+	}{
+		{"repeated and zero width", "é x", []contracts.ShapedGlyph{
+			{Cluster: 0, XAdvance: 200}, {Cluster: 0, XAdvance: 300},
+			{Cluster: 1}, {Cluster: 2, XAdvance: 700},
+		}, []dimen.DU{5 * dimen.PT, 0, 7 * dimen.PT, 0}},
+		{"out of range", "é x", []contracts.ShapedGlyph{{Cluster: 3}}, nil},
+		{"decreasing", "é x", []contracts.ShapedGlyph{{Cluster: 2}, {Cluster: 1}}, nil},
+		{"cluster overflow", "ab", []contracts.ShapedGlyph{{Cluster: 0, XAdvance: 2_000_000}, {Cluster: 0, XAdvance: 2_000_000}}, nil},
+		{"knot overflow", "ab", []contracts.ShapedGlyph{{Cluster: 0, XAdvance: 2_000_000}, {Cluster: 1, XAdvance: 2_000_000}}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := encodingStreamingConfig()
+			cfg.NewShaper = func() (contracts.StreamingShaper, error) { return newEncodingScriptStream(tc.glyphs, nil), nil }
+			k, err := khipu.NewKhipukamayuq(khipu.Config{Streaming: cfg}).EncodeParagraph(t.Context(), encodingParagraph(t, tc.source))
+			if tc.wantWidths == nil {
+				if err == nil || k != nil {
+					t.Fatal("accepted invalid metrics", k, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(k.W, tc.wantWidths) || !slices.Equal(k.Len, []uint16{2, 1, 1, 0}) || k.Penalty[1] >= khipu.MaxPenalty {
+				t.Fatal("lost multibyte cluster span, accumulated width or zero-width break", k)
+			}
+		})
 	}
 }

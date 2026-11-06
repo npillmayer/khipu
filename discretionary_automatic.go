@@ -16,7 +16,7 @@ import (
 // Validate the entire response before shaping. A split must be known, interior
 // to original input and on a UTF-8 scalar boundary, independently of replacement
 // lengths. Script-specific break safety remains the policy's responsibility.
-// Empty halves are skipped as in metric discovery; no rune-count minimum is
+// Empty halves are skipped; no rune-count minimum is
 // imposed. Recursive soft-hyphen material is rejected. Nonzero policy variant
 // IDs are retained; zero IDs receive the lowest free positive IDs in response
 // order. Duplicates/overflow fail rather than corrupting breakpoint identity.

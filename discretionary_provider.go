@@ -35,7 +35,7 @@ func (k *Khipu) HasExplicitDiscretionary(at int) bool {
 // requests have precedence and never fall back to automatic discovery.
 // All alternatives are shaped and staged before committing the complete batch;
 // errors leave arena/cache unchanged, so retry cannot see a partial batch.
-// The legacy provider interface has no context: each stream uses Background,
+// The provider interface has no context: each stream uses Background,
 // with internal cancellation/joining on failure. Caller cancellation requires a
 // future provider-interface extension.
 func (kq *Khipukamayuq) streamingDiscretionaryCandidates(k *Khipu, at int) ([]DiscretionaryCandidate, error) {

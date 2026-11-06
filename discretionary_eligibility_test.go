@@ -16,11 +16,27 @@ func eligibilityParagraph(t *testing.T, p *styled.Paragraph) *Khipu {
 		Defaults:  preparationDefaults(),
 		NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(0) },
 	}})
-	k, err := owner.EncodeParagraphStreaming(t.Context(), p)
+	k, err := owner.EncodeParagraph(t.Context(), p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return k
+}
+
+func TestDiscretionaryLookupWithoutShapingProvenance(t *testing.T) {
+	policy := &testhyphenator{}
+	owner := NewKhipukamayuq(Config{Hyphenator: policy})
+	k := &Khipu{paragraph: preparationParagraph(t, "alpha")}
+	k.appendKnot(KnotCore{Kind: KTTextBox, Len: 5})
+	if got, err := owner.DiscretionaryCandidates(k, 0); err != nil || len(got) != 0 || policy.calls != 0 {
+		t.Fatalf("manual knot triggered discovery: %v, %v, calls=%d", got, err, policy.calls)
+	}
+	// Manual candidates remain valid input to linebreaker algorithm fixtures.
+	candidate := DiscretionaryCandidate{Variant: 7, PreBreak: KnotCore{W: 2}, PostBreak: KnotCore{W: 3}}
+	k.AddDiscretionaryCandidate(0, candidate)
+	if got, err := owner.DiscretionaryCandidates(k, 0); err != nil || !reflect.DeepEqual(got, []DiscretionaryCandidate{candidate}) || policy.calls != 0 {
+		t.Fatalf("cached manual candidate lost: %v, %v, calls=%d", got, err, policy.calls)
+	}
 }
 
 func TestAutomaticEligibilityCompleteSegments(t *testing.T) {
@@ -86,7 +102,7 @@ func TestAutomaticEligibilityStyleBoundaryAtWordEnd(t *testing.T) {
 	}
 }
 
-func TestAutomaticEligibilityRejectsExplicitAndLegacy(t *testing.T) {
+func TestAutomaticEligibilityRejectsExplicitAndMissingMetadata(t *testing.T) {
 	for _, text := range []string{"ab\u00adcd", "ab\u00ad", "\u00adcd", "\u00ad", ""} {
 		k := eligibilityParagraph(t, preparationParagraph(t, text))
 		for i := range k.Kind {
@@ -95,11 +111,9 @@ func TestAutomaticEligibilityRejectsExplicitAndLegacy(t *testing.T) {
 			}
 		}
 	}
-	legacy, err := NewKhipukamayuq(Config{}).EncodeParagraph(preparationParagraph(t, "alphabet"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if legacy.automaticHyphenationEligible(0) || (*Khipu)(nil).automaticHyphenationEligible(0) {
+	manual := &Khipu{}
+	manual.appendKnot(KnotCore{Kind: KTTextBox, Len: 8})
+	if manual.automaticHyphenationEligible(0) || (*Khipu)(nil).automaticHyphenationEligible(0) {
 		t.Fatal("accepted missing streaming metadata")
 	}
 }

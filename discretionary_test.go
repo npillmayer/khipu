@@ -121,9 +121,10 @@ func TestKhipukamayuqShapesAndCachesHyphenatorDiscretionaries(t *testing.T) {
 		Params: newParameters(),
 		Hyphenator: &testhyphenator{
 			want: []HyphenationFragment{{
-				Variant:   1,
-				PreBreak:  "break",
-				PostBreak: "ing",
+				Variant:     1,
+				PreBreak:    "break",
+				PostBreak:   "ing",
+				SourceSplit: SourceSplit{ByteOffset: 5, Valid: true},
 			}},
 		},
 	}
@@ -133,14 +134,10 @@ func TestKhipukamayuqShapesAndCachesHyphenatorDiscretionaries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParagraphFromText failed: %v", err)
 	}
-	k := kq.allocKhipu(1)
-	kq.acquire(k)
-	k.paragraph = para
-	k.appendKnot(KnotCore{
-		Pos:  para.Offset,
-		Len:  uint16(len("breaking")),
-		Kind: KTTextBox,
-	})
+	k, err := kq.EncodeParagraph(t.Context(), para)
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := kq.DiscretionaryCandidates(k, 0)
 	if err != nil {
 		t.Fatalf("expected discretionary lookup to succeed: %v", err)
@@ -153,6 +150,9 @@ func TestKhipukamayuqShapesAndCachesHyphenatorDiscretionaries(t *testing.T) {
 	}
 	if got[0].PreBreak.Penalty != Penalty(config.Params.Hyphenpenalty) {
 		t.Fatalf("expected discretionary penalty %d, got %d", config.Params.Hyphenpenalty, got[0].PreBreak.Penalty)
+	}
+	if got[0].preBox == 0 || got[0].postBox == 0 || got[0].SourceSplit != (SourceSplit{ByteOffset: 5, Valid: true}) {
+		t.Fatal("fragment storage/provenance missing", got[0])
 	}
 	if len(k.DiscretionariesAt(0)) != 1 {
 		t.Fatalf("expected discretionary candidate to be cached on khipu")

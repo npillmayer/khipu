@@ -7,6 +7,7 @@ import (
 
 	"github.com/npillmayer/cords/styled"
 	"github.com/npillmayer/khipu"
+	"github.com/npillmayer/khipu/contracts"
 	"github.com/npillmayer/khipu/dimen"
 	"github.com/npillmayer/khipu/linebreak"
 	"github.com/npillmayer/khipu/linebreak/firstfit"
@@ -27,7 +28,7 @@ func TestEncodedParagraphTextRegressions(t *testing.T) {
 	} {
 		t.Run(tc.source, func(t *testing.T) {
 			owner := khipu.NewKhipukamayuq(khipu.Config{})
-			khp, err := owner.EncodeParagraph(encodingParagraph(t, tc.source), nil)
+			khp, err := owner.EncodeParagraph(t.Context(), encodingParagraph(t, tc.source))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -66,42 +67,41 @@ func TestEncodedParagraphTextRegressions(t *testing.T) {
 	}
 }
 
-type regressionStyler struct {
-	seen []styled.Style
-}
-
-func (s *regressionStyler) AdaptKnot(k khipu.KnotCore, style styled.Style) (dimen.DU, dimen.DU) {
-	s.seen = append(s.seen, style)
-	if style == encodingStyle("bold") {
-		return k.W - dimen.PT, k.W + 2*dimen.PT
-	}
-	return k.W, k.W
-}
-
-func TestEncodedParagraphStyleAdaptation(t *testing.T) {
+// Styles now resolve shaping parameters before knots exist, not arbitrary
+// post-shaping MinW/MaxW adjustments through the retired KnotStyler hook.
+func TestEncodedParagraphStyleResolution(t *testing.T) {
 	para := encodingParagraph(t, "The quick brown fox jumps over the lazy dog")
 	if _, err := para.Style(encodingStyle("bold"), 4, 15); err != nil {
 		t.Fatal(err)
 	}
-	styler := &regressionStyler{}
-	khp, err := khipu.NewKhipukamayuq(khipu.Config{}).EncodeParagraph(para, styler)
+	var seen []styled.Style
+	cfg := encodingStreamingConfig()
+	cfg.Resolver = encodingResolver(func(style styled.Style, defaults contracts.ResolvedRunStyle) (contracts.ResolvedRunStyle, error) {
+		seen = append(seen, style)
+		defaults.Spacing = contracts.SpacingFixed
+		if style == encodingStyle("bold") {
+			defaults.EmSize = 14 * dimen.PT
+		}
+		return defaults, nil
+	})
+	khp, err := khipu.NewKhipukamayuq(khipu.Config{Streaming: cfg}).EncodeParagraph(t.Context(), para)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(styler.seen) != len(khp.Kind)-1 {
-		t.Fatalf("adapted %d source knots out of %d", len(styler.seen), len(khp.Kind)-1)
+	if !slices.Equal(seen, []styled.Style{nil, encodingStyle("bold"), nil}) {
+		t.Fatalf("resolved styles: %v", seen)
 	}
 	var boldBytes uint64
-	for i, style := range styler.seen {
+	for i := 0; i < len(khp.Kind)-1; i++ {
 		k := khp.KnotByIndex(i)
 		end := k.Pos + uint64(k.Len)
 		if k.Pos >= 4 && end <= 15 {
 			boldBytes += uint64(k.Len)
-			if style != encodingStyle("bold") || k.MinW != k.W-dimen.PT || k.MaxW != k.W+2*dimen.PT {
-				t.Fatalf("bold style/widths lost at %d: %v %+v", i, style, k)
+			if k.W != dimen.DU(k.Len)*7*dimen.PT || k.MinW != k.W || k.MaxW != k.W {
+				t.Fatalf("bold metrics lost at %d: %+v", i, k)
 			}
-		} else if style != nil || (k.Pos < 15 && end > 4) || k.MinW != k.W || k.MaxW != k.W {
-			t.Fatalf("incorrect unstyled range at %d: %v %+v", i, style, k)
+		} else if (k.Pos < 15 && end > 4) || k.W != dimen.DU(k.Len)*5*dimen.PT || k.MinW != k.W || k.MaxW != k.W {
+			t.Fatalf("incorrect unstyled range at %d: %+v", i, k)
 		}
 	}
 	if boldBytes != 11 {
@@ -112,35 +112,36 @@ func TestEncodedParagraphStyleAdaptation(t *testing.T) {
 const kingParagraph = `In olden times when wishing still helped one, there lived a king`
 const princessParagraph = `In olden times when wishing still helped one, there lived a king whose daughters were all beautiful; and the youngest was so beautiful that the sun itself, which has seen so much, was astonished whenever it shone in her face. Close by the king's castle lay a great dark forest, and under an old lime-tree in the forest was a well, and when the day was very warm, the king's child went out into the forest and sat down by the side of the cool fountain; and when she was bored she took a golden ball, and threw it up on high and caught it; and this ball was her favorite plaything.`
 
-type regressionSpaceStretch dimen.DU
-
-func (extra regressionSpaceStretch) AdaptKnot(k khipu.KnotCore, _ styled.Style) (dimen.DU, dimen.DU) {
-	if k.Kind == khipu.KTGlue {
-		return k.W, k.W * (1 + dimen.DU(extra))
-	}
-	return k.W, k.W
-}
-
 // These paragraphs previously depended on FixedWidthCursor and AOS marks.
 // Both modern algorithms now consume encoded metrics and return knot indices.
 func TestModernBreakersParagraphRegressions(t *testing.T) {
 	for _, tc := range []struct {
 		name, source string
 		columns      int
-		stretch      regressionSpaceStretch
-		wantLines    int // zero: validate a multi-line result without prescribing optimization policy
+		stretch      float64 // percent of natural U+0020 width; no shrink in this corpus
+		wantLines    int     // zero: validate a multi-line result without prescribing optimization policy
 	}{
 		{"underfull", " ", 10, 0, 1},
 		{"exact fit", "The quick.", 10, 0, 1},
 		{"wrap", "The quick brown fox.", 10, 0, 2},
-		{"king", kingParagraph, 45, 3, 2},
-		{"princess", princessParagraph, 45, 2, 0},
+		{"king", kingParagraph, 45, 300, 2},
+		{"princess", princessParagraph, 45, 200, 0},
 	} {
 		for _, algorithm := range []string{"firstfit", "Knuth-Plass"} {
 			t.Run(tc.name+"/"+algorithm, func(t *testing.T) {
-				khp, err := khipu.NewKhipukamayuq(khipu.Config{}).EncodeParagraph(encodingParagraph(t, tc.source), tc.stretch)
+				params := &khipu.Params{SpaceStretchPercent: tc.stretch}
+				khp, err := khipu.NewKhipukamayuq(khipu.Config{Params: params}).EncodeParagraph(t.Context(), encodingParagraph(t, tc.source))
 				if err != nil {
 					t.Fatal(err)
+				}
+				// In particular, verify later cord chunks: an incorrect bounded
+				// read once turned their spaces into non-discardable textboxes.
+				for i := 0; i < len(khp.Kind)-1; i++ {
+					k := khp.KnotByIndex(i)
+					text := tc.source[k.Pos : k.Pos+uint64(k.Len)]
+					if text == " " && (k.Kind != khipu.KTGlue || !k.IsDiscardable() || k.MinW != k.W || k.MaxW != k.W*dimen.DU(1+tc.stretch/100)) {
+						t.Fatalf("space classification/elasticity at byte %d: %+v", k.Pos, k)
+					}
 				}
 				width := dimen.DU(tc.columns) * 5 * dimen.PT
 				shape := linebreak.RectangularParShape(width)

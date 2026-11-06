@@ -57,7 +57,7 @@ type shapingArena struct {
 }
 
 // publishCandidateParagraph copies successful internal candidates into a new
-// owned Khipu. It is not called by EncodeParagraph yet. The candidate result may
+// owned Khipu at the end of EncodeParagraph. The candidate result may
 // be discarded or its slices reused afterward; the original styled paragraph
 // must remain stable. Failure returns no partially published khipu.
 func (kq *Khipukamayuq) publishCandidateParagraph(p *candidateParagraph) (*Khipu, error) {

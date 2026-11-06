@@ -30,7 +30,7 @@ textboxes are declined, even when their fonts happen to agree; no neighbors are
 concatenated. A style boundary at an actual word boundary is acceptable.
 Glyphless source gaps must not truncate the source segment. Boxes containing
 U+00AD are reserved for explicit discovery, avoiding competing variant namespaces.
-Legacy metric-only nodes and generated replacement boxes are not eligible here.
+Manually constructed nodes without provenance and generated replacement boxes are not eligible here.
 
 True means one complete default word *segment*, not proven linguistic
 hyphenatability. Punctuation and numbers may also form complete segments, and
@@ -49,7 +49,7 @@ return complete replacement strings with known interior original-byte splits at
 UTF-8 scalar boundaries. Unknown, endpoint, out-of-range or malformed splits
 fail the batch; replacement lengths cannot supply a missing split. Invalid UTF-8
 and recursive soft-hyphen material also fail. Empty replacement halves are
-skipped after validation, matching the metric discovery policy. No new
+skipped after validation. No new
 Western character-count minimum is imposed; script-specific validity remains
 with the policy.
 
@@ -69,9 +69,7 @@ breakers, not merely a larger string passed to the hyphenator.
 `HyphenationFragment.SourceSplit` now carries an optional original split offset.
 Its `ByteOffset` uses UTF-8 bytes relative to the requested text; `Valid`
 distinguishes unknown from a known zero. `DiscretionaryCandidate.SourceSplit`
-uses original paragraph-relative UTF-8 bytes instead. Legacy metric callers may
-omit these fields; their existing shaping path does not yet propagate the split.
-PreBreak length cannot supply this offset when text is inserted, removed or changed.
+uses original paragraph-relative UTF-8 bytes instead. Automatic policies must supply a valid split; replacement lengths are never a fallback.
 
 The private `prepareDiscretionaryInput` foundation validates UTF-8, original
 byte/scalar ranges and the explicit split at a scalar boundary. It separates
@@ -151,7 +149,6 @@ access remains future work.
    preserving the metric PreBreak/PostBreak payload expected by the breakers.
    A selected `(Source, Variant)` must resolve both metrics and stored fragments.
 6. Explicit and automatic streaming lookup are enabled and covered end to end.
-   The legacy metric path is unchanged.
 
 Ordinary break results remain knot indices. Downstream line extraction and bidi
 splitting must consult retained exact break provenance, not `Pos + Len`;
@@ -193,7 +190,7 @@ but suppresses their ordinary penalties and knot-partition hints. Original byte
 and scalar endpoints remain unchanged. Ordinary spaces and mandatory breaks
 immediately preceding markers retain their own break positions. Marker-only
 input produces no text glyphs. This changes only streaming encoding, not the
-metric encoder or the standalone synthetic shaper's character policy.
+standalone synthetic shaper's character policy.
 
 Provider wiring is now active. K&P requests retained explicit opportunities when
 pass 2 reaches their textbox, before evaluating its cached variants. Firstfit
@@ -283,28 +280,18 @@ type DiscretionaryProvider interface {
 ```
 
 `(*Khipukamayuq).DiscretionaryCandidates` implements that method.
-The linebreaker need not know the `Hyphenator` or `Shaper`.
+The linebreaker need not know the `Hyphenator` or `StreamingShaper`.
 Without a provider, breakers can consult candidates already stored on `Khipu`.
 
 Widths travel directly in `KnotCore.W/MinW/MaxW`; no extra transport or adapter
-type was introduced. The shaper currently provides cluster metrics through
-`SetSource`, `SetStyle`, and `ReadClusterMetrics`. Cluster anchors are run-relative
-UTF-8 byte offsets in logical order, reset for each fragment. Repeated anchors
-accumulate width; zero-width anchors still mark boundaries; EOF has no metric.
+type was introduced. The streaming shaper supplies logical-order glyphs with
+scalar anchors and font-unit positioning; the owner scales advances to DU and
+stores original-source provenance separately from replacement text.
 
 ## Lazy Roundtrip
 
-For a metric-encoded textbox requested by a breaker, `Khipukamayuq`:
-
-1. Validates the paragraph/index and ownership, and reuses nonempty cached candidates.
-2. Recovers textbox source text and its style from the owning paragraph.
-3. Calls `Hyphenator.Discretionaries`.
-4. Skips alternatives with an empty pre-break or post-break string.
-5. Shapes each fragment under the original style and measures its width.
-6. Assigns a nonzero variant ID if the provider returned zero.
-7. Sets `PreBreak.Penalty` and caches the resulting pair.
-
-Streaming paragraphs instead use the shared pipeline described above:
+The owner validates paragraph/index/ownership, reuses cached candidates, and
+otherwise uses the shared pipeline described above:
 bounded source access, retained contexts, full-fragment streaming shaping and
 atomic batch publication. Explicit boxes request marker material; eligible
 unmarked boxes request complete-word alternatives. The existing breaker triggers
@@ -376,9 +363,9 @@ Source whitespace remains included, independently of line-edge trimming.
 The mapper accepts increasing knot indices, including partial or empty lists;
 it does not certify path feasibility. Missing/ambiguous candidates, unknown or
 invalid splits, or decreasing source endpoints return an error and no partial
-result. It neither discovers alternatives nor changes the paragraph. Ordinary
-metric knots can be mapped, but selected metric alternatives need an explicitly
-known `SourceSplit`; the legacy provider does not currently supply one.
+result. It neither discovers alternatives nor changes the paragraph. Manually
+constructed knots without retained provenance cannot be mapped, even if their
+Pos/Len fields appear to describe source spans.
 
 The next consumer is planned line-local bidi ordering and freezing, followed by
 box creation and later rendering. No bidi splitting, line materialization, or
@@ -387,23 +374,19 @@ renderer-specific helpers are included in this mapper. See [FREEZE.md](FREEZE.md
 ## Ownership And Deferred Work
 
 Fragment validity and length filtering belong to `Khipukamayuq`, with
-script/shaping knowledge supplied by its collaborators. The metric path skips
-empty fragments and bounds replacement lengths by its `uint16` field. Streaming
-storage allows empty/silent fragments and separates replacement text from
-original source spans; the original spans must fit the KnotCore length field.
-Both validate UTF-8. Explicit discovery requires nonempty surrounding text, but
+script/shaping knowledge supplied by its collaborators. Storage allows empty/silent
+fragments and separates replacement text from original source spans; original
+spans must fit the KnotCore length field. Preparation validates UTF-8. Explicit discovery requires nonempty surrounding text, but
 permits empty break material. A complete script-sensitive validity policy is
 still missing. Breakers should not impose Western character-count rules.
 
 The cache assumes stable base knots, shaping context, and variant identities
 within a paragraph instance. Nonempty results are reused; empty results are not
 currently negative-cached. Cache invalidation remains future work. Streaming
-explicit and automatic population is transactional across the full request batch; the metric
-path still publishes alternatives incrementally.
+explicit and automatic population is transactional across the full request batch.
 
-Metric candidates retain metrics and source-like positions only; their post-break
-position still uses the pre-break replacement length and is not a general source
-mapping. Streaming candidates retain owned glyphs, replacement strings, contexts
+Manually supplied metric-only candidates remain usable by breaker fixtures but
+have no implicit source mapping. Owner-produced candidates retain owned glyphs, replacement strings, contexts
 and original-source provenance through private arena references. Their explicit
 `SourceSplit` is independent of replacement spelling and is exposed for selected
 breaks through `BreakpointPositions`. Applying those positions to bidi resolution

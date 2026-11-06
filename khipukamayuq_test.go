@@ -1,23 +1,20 @@
 package khipu
 
 import (
-	"io"
-	"strings"
 	"testing"
 
 	"github.com/npillmayer/khipu/dimen"
 )
 
 func TestNewKhipukamayuqDefaultShaper(t *testing.T) {
-	first := NewKhipukamayuq(Config{})
-	second := NewKhipukamayuq(Config{})
-	first.env.shaper.SetSource(strings.NewReader("x"))
-	cluster, width, size, err := first.env.shaper.ReadClusterMetrics()
-	if err != nil || cluster != 0 || width != 5*dimen.PT || size != 1 {
-		t.Fatalf("unexpected default shaper metrics: %d, %v, %d, %v", cluster, width, size, err)
-	}
-	// The default shaper is stateful and must be private to each owner.
-	if _, _, _, err := second.env.shaper.ReadClusterMetrics(); err != io.EOF {
-		t.Fatalf("second owner's shaper should have no source, got %v", err)
+	first, second := NewKhipukamayuq(Config{}), NewKhipukamayuq(Config{})
+	for _, owner := range []*Khipukamayuq{first, second, first} {
+		k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, "x"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if k.W[0] != 5*dimen.PT || len(k.shaping.glyphs) != 1 {
+			t.Fatal("default stream must be fresh with retained glyphs", k)
+		}
 	}
 }

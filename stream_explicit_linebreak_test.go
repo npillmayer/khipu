@@ -48,7 +48,7 @@ func TestStreamingExplicitBreaksEndToEnd(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				k, err := owner.EncodeParagraphStreaming(t.Context(), para)
+				k, err := owner.EncodeParagraph(t.Context(), para)
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -1,15 +1,12 @@
 package khipu
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"slices"
 	"strings"
 
 	"github.com/npillmayer/cords/styled"
 	"github.com/npillmayer/khipu/dimen"
-	"github.com/npillmayer/khipu/helpers"
 )
 
 const DefaultInitialKhipuCapa = 20
@@ -28,10 +25,6 @@ type KnotCore struct {
 	Penalty       Penalty
 	Kind          KnotType
 	Flags         KnotFlags
-}
-
-type KnotStyler interface {
-	AdaptKnot(k KnotCore, style styled.Style) (minW dimen.DU, maxW dimen.DU)
 }
 
 func (k KnotCore) String() string {
@@ -64,7 +57,7 @@ type Khipu struct {
 	Kind      []KnotType
 	Flags     []KnotFlags
 	// boxRefs is aligned with knots created through appendKnot. Zero means no
-	// retained shaping output (including all legacy metric-encoded knots).
+	// retained shaping output (including manually constructed knots).
 	boxRefs []shapedBoxID
 	shaping shapingArena
 
@@ -223,7 +216,6 @@ type Khipukamayuq struct {
 // A Khipukamayuq must not be used concurrently.
 func NewKhipukamayuq(config Config) *Khipukamayuq {
 	env := typEnv{
-		shaper:      config.Shaper,
 		hyphenator:  config.Hyphenator,
 		parFillSkip: KnotCore{MaxW: dimen.Fill},
 	}
@@ -231,12 +223,11 @@ func NewKhipukamayuq(config Config) *Khipukamayuq {
 		streaming := *config.Streaming
 		streaming.Defaults.Features = slices.Clone(streaming.Defaults.Features)
 		env.streaming = &streaming
+	} else {
+		env.streaming = defaultStreamingConfig()
 	}
 	if config.ParFillSkip != nil {
 		env.parFillSkip = *config.ParFillSkip
-	}
-	if env.shaper == nil {
-		env.shaper = &helpers.FixedWidthShaper{}
 	}
 	if config.Params == nil {
 		env.params = newParameters()
@@ -247,33 +238,4 @@ func NewKhipukamayuq(config Config) *Khipukamayuq {
 	return &Khipukamayuq{
 		env: env,
 	}
-}
-
-func sanitizeKnot(k KnotCore, minW, maxW dimen.DU) KnotCore {
-	k.MinW = minW
-	if k.MinW > k.W {
-		k.MinW = k.W
-	}
-	k.MaxW = maxW
-	if k.MaxW < k.W {
-		k.MaxW = k.W
-	}
-	return k
-}
-
-func kindFromText(s string) KnotType {
-	// TODO identify different space characters and treat them appropriately
-	// e.g., thin space (“Dr. Doolittle”) is a small kern (less breakable).
-	if strings.TrimSpace(s) == "" {
-		return KTGlue
-	}
-	return KTTextBox
-}
-
-func wrapAsRuneReader(br *bufio.Reader, buf []byte) *bufio.Reader {
-	if br == nil {
-		return bufio.NewReader(bytes.NewReader(buf))
-	}
-	br.Reset(bytes.NewReader(buf))
-	return br
 }

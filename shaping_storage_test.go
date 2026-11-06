@@ -108,13 +108,11 @@ func TestShapingStorageEmptyAndLifecycle(t *testing.T) {
 	if k.boxRefs != nil || k.shaping.glyphs != nil || k.shaping.contexts != nil {
 		t.Fatal("arena retained on unwire")
 	}
-	legacy, err := owner.EncodeParagraph(preparationParagraph(t, "abc"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, id := range legacy.boxRefs {
+	manual := owner.allocKhipu(1)
+	manual.appendKnot(KnotCore{Kind: KTTextBox, Len: 3})
+	for _, id := range manual.boxRefs {
 		if id != 0 {
-			t.Fatal("legacy glyph association")
+			t.Fatal("fabricated glyph association on manual knot")
 		}
 	}
 }

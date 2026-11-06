@@ -49,17 +49,15 @@ func TestCompatibilityAcrossServicePackages(t *testing.T) {
 	if khipu.ErrShaperBusy != helpers.ErrShaperBusy || khipu.ErrShaperClosed != helpers.ErrShaperClosed || khipu.ErrIllegalArguments != contracts.ErrIllegalArguments {
 		t.Fatal("error identities changed across packages")
 	}
-	if _, err := helpers.NewFixedWidthShaper(0); !errors.Is(err, khipu.ErrIllegalArguments) {
+	if _, err := helpers.NewSyntheticStreamingShaper(-1); !errors.Is(err, khipu.ErrIllegalArguments) {
 		t.Fatalf("helper errors no longer match the root sentinel: %v", err)
 	}
-	metric, err := khipu.NewFixedWidthShaper(7 * dimen.PT)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var canonical *helpers.FixedWidthShaper = metric
-	owner := khipu.NewKhipukamayuq(khipu.Config{Shaper: canonical})
-	paragraph, err := owner.EncodeParagraph(encodingParagraph(t, "abc"), nil)
+	owner := khipu.NewKhipukamayuq(khipu.Config{Streaming: &khipu.StreamingConfig{
+		NewShaper: func() (khipu.StreamingShaper, error) { return khipu.NewSyntheticStreamingShaper(0) },
+		Resolver:  resolver, Defaults: khipu.ResolvedRunStyle{Font: face, EmSize: 14 * dimen.PT},
+	}})
+	paragraph, err := owner.EncodeParagraph(t.Context(), encodingParagraph(t, "abc"))
 	if err != nil || paragraph.KnotByIndex(0).W != 21*dimen.PT {
-		t.Fatalf("metric helper compatibility failed: %v, %v", paragraph, err)
+		t.Fatalf("streaming helper compatibility failed: %v, %v", paragraph, err)
 	}
 }

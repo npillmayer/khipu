@@ -10,40 +10,44 @@ for the interfaces they implement.
 
 ## Available Helpers
 
+`EncodeParagraph(ctx, para)` is the sole encoder; `Config{}` supplies synthetic
+font, style and streaming defaults. Metric-only helpers have been removed.
+See [the retirement inventory](../doc/RETIRE-METRICS.md).
+
 | Helper | Constructor | Zero value |
 | --- | --- | --- |
 | `SyntheticFont` | `NewSyntheticFont()` | Ready to use |
-| `FixedWidthShaper` | `NewFixedWidthShaper(cellWidth)`; positive DU width required | Ready to use with 5 pt cells |
 | `DefaultStyleResolver` | `NewDefaultStyleResolver()` | Ready to use |
 | `SyntheticStreamingShaper` | `NewSyntheticStreamingShaper(outputCapacity)`; nonnegative capacity required | Ready to use with unbuffered output |
 
-The width and capacity constructors return a pointer and an error. Zero cell
-width is invalid; use the zero-value metric shaper for its default. Zero output
+The streaming constructor returns a pointer and an error. Zero output
 capacity explicitly selects an unbuffered channel. Constructors start no
 goroutines.
 
-## Fixed-Width Metrics for Paragraph Encoding
+## Synthetic Cells for Paragraph Encoding
 
-`FixedWidthShaper` implements `contracts.Shaper` and can be supplied directly to
-`khipu.Config.Shaper`. `Config{}` already selects a fresh default instance.
-To select a different cell width:
+`Config{}` supplies 5 pt synthetic cells. To select 7 pt cells, configure a
+synthetic font at 14 pt, since each ordinary synthetic glyph advances half an em:
 
 ```go
-shaper, err := helpers.NewFixedWidthShaper(7 * dimen.PT)
-if err != nil {
-    return err
-}
-owner := khipu.NewKhipukamayuq(khipu.Config{Shaper: shaper})
+owner := khipu.NewKhipukamayuq(khipu.Config{Streaming: &khipu.StreamingConfig{
+    NewShaper: func() (contracts.StreamingShaper, error) {
+        return helpers.NewSyntheticStreamingShaper(0)
+    },
+    Resolver: helpers.DefaultStyleResolver{},
+    Defaults: contracts.ResolvedRunStyle{
+        Font: helpers.NewSyntheticFont(), EmSize: 14 * dimen.PT,
+    },
+}})
 ```
 
-This fragment assumes imports of `khipu`, `khipu/dimen`, and `khipu/helpers` using
+This fragment assumes imports of `khipu`, `khipu/contracts`, `khipu/dimen`, and `khipu/helpers` using
 their full module paths. The [executable encoding example](../helpers_example_test.go)
 shows complete setup and measures `aéz` as 21 pt with this configuration.
 
-`SetSource` accepts a rune reader; `SetReaderSource` wraps an `io.Reader`.
-Both reset run-relative byte offsets, and nil clears the source. `SetStyle`
-has no effect. The helper delegates rune reading to its source; the encoder
-validates UTF-8 before using it. Reader errors and EOF carry no metric.
+The encoder drives each fresh stream while draining its glyph output. This
+example leaves spacing fixed; choose `SpacingElastic` in run defaults to enable
+the owner's U+0020 stretch/shrink percentages.
 
 ## Synthetic Font and Style Defaults
 
@@ -63,8 +67,7 @@ rounding and range checks; conversion does not clamp results to the DU range.
 At 10 pt em size, 500 font units convert to 5 pt.
 
 The face has no glyphs, outlines, character map, or font file. Glyph generation
-and advances belong to the matching synthetic streaming shaper. The metric
-`FixedWidthShaper` does not use a font face.
+and advances belong to the matching synthetic streaming shaper.
 
 [`DefaultStyleResolver`](default_style_resolver.go) implements
 `contracts.StyleResolver` for nil styles. It validates a non-nil font, positive
@@ -79,7 +82,7 @@ Pass independently inherited defaults for each run.
 
 ## Standalone Streaming Example
 
-For paragraph encoding, configure the opt-in path with these helpers:
+For paragraph encoding, configure the streaming path with these helpers:
 
 ```go
 owner := khipu.NewKhipukamayuq(khipu.Config{
@@ -94,16 +97,16 @@ owner := khipu.NewKhipukamayuq(khipu.Config{
         },
     },
 })
-khp, err := owner.EncodeParagraphStreaming(ctx, para)
+khp, err := owner.EncodeParagraph(ctx, para)
 ```
 
 The owner copies configuration and default feature storage. The factory must
-return a fresh stream each time. Both breakers can consume `khp`; leave lazy
-hyphenation disabled until streaming discretionary reshaping is implemented.
-The existing `EncodeParagraph` and `Config.Shaper` path is unchanged.
+return a fresh stream each time. Both breakers can consume `khp`; wire the owner
+as their discretionary provider to enable configured lazy hyphenation.
+`Config{}` supplies the same font/size/spacing defaults with unbuffered output.
 
-`SyntheticStreamingShaper` implements `contracts.StreamingShaper`. It remains
-separate from the current paragraph encoder and cannot be used as `Config.Shaper`.
+`SyntheticStreamingShaper` implements `contracts.StreamingShaper`. It is used by
+the paragraph encoder and discretionary reshaping.
 This complete program resolves defaults, creates a scale, and shapes a run while
 draining output concurrently:
 
@@ -177,7 +180,7 @@ This is the pattern exercised by the
 
 ## Character and Feature Policy
 
-Both shapers use one cell per input rune/scalar. The following characters have
+The shaper uses one cell per input rune/scalar. The following characters have
 zero advance: U+000A, U+000D, U+000B, U+000C, U+0085, U+2028, U+2029, U+200B,
 and U+2060. They still produce records and cluster anchors.
 
@@ -207,8 +210,8 @@ boundaries alone do not authorize a break.
 
 ## Ownership, Completion, and Errors
 
-Faces, scales, and the default resolver may be shared concurrently. Metric
-shapers are mutable and require exclusive use. Do not copy a streaming shaper
+Faces, scales, and the default resolver may be shared concurrently.
+Do not copy a streaming shaper
 after first use. Keep borrowed source and parameter data stable during `Shape`.
 
 Drain streaming output concurrently even when the channel is buffered: any run

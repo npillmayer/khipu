@@ -28,7 +28,7 @@ func (k *Khipu) automaticHyphenationEligible(at int) bool {
 	}
 	id := k.boxRefs[at]
 	if id <= 0 || int(id) > len(k.shaping.boxes) {
-		return false // Includes legacy metric-only paragraphs.
+		return false // Includes manually constructed knots without provenance.
 	}
 	box := k.shaping.boxes[id-1]
 	if box.replacement != nil || box.context < 0 || box.context >= len(k.shaping.contexts) {

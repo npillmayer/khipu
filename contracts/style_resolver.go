@@ -27,7 +27,7 @@ import (
 // fallback. Script and language are resolved from defaults and explicit style
 // information. Bidi analysis remains separate. Khipukamayuq obtains FontScale
 // from the resolved Font and EmSize after this operation succeeds.
-// The interface is a draft seam; the current encoder does not call it yet.
+// EncodeParagraph uses this interface during run preparation.
 type StyleResolver interface {
 	ResolveStyle(style styled.Style, defaults ResolvedRunStyle) (ResolvedRunStyle, error)
 }

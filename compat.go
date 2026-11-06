@@ -2,7 +2,6 @@ package khipu
 
 import (
 	"github.com/npillmayer/khipu/contracts"
-	"github.com/npillmayer/khipu/dimen"
 	"github.com/npillmayer/khipu/helpers"
 )
 
@@ -24,9 +23,6 @@ type FontScale = contracts.FontScale
 
 // RuneReader is the compatibility name for contracts.RuneReader.
 type RuneReader = contracts.RuneReader
-
-// Shaper is the compatibility name for contracts.Shaper.
-type Shaper = contracts.Shaper
 
 // StreamingShaper is the compatibility name for contracts.StreamingShaper.
 type StreamingShaper = contracts.StreamingShaper
@@ -66,9 +62,6 @@ const (
 // SyntheticFont is the compatibility name for helpers.SyntheticFont.
 type SyntheticFont = helpers.SyntheticFont
 
-// FixedWidthShaper is the compatibility name for helpers.FixedWidthShaper.
-type FixedWidthShaper = helpers.FixedWidthShaper
-
 // DefaultStyleResolver is the compatibility name for helpers.DefaultStyleResolver.
 type DefaultStyleResolver = helpers.DefaultStyleResolver
 
@@ -83,11 +76,6 @@ var (
 
 // NewSyntheticFont forwards to helpers.NewSyntheticFont.
 func NewSyntheticFont() *SyntheticFont { return helpers.NewSyntheticFont() }
-
-// NewFixedWidthShaper forwards to helpers.NewFixedWidthShaper.
-func NewFixedWidthShaper(cellWidth dimen.DU) (*FixedWidthShaper, error) {
-	return helpers.NewFixedWidthShaper(cellWidth)
-}
 
 // NewDefaultStyleResolver forwards to helpers.NewDefaultStyleResolver.
 func NewDefaultStyleResolver() *DefaultStyleResolver { return helpers.NewDefaultStyleResolver() }

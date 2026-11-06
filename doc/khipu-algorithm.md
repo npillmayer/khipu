@@ -1,22 +1,17 @@
 # Overall Algorithm to Shape Text into Type
 
-**Streaming integration:** `EncodeParagraphStreaming(ctx, para)` now connects
-the preparation, producer, cluster assembly, candidate and publication stages
-described below. It requires explicit `Config.Streaming` configuration with a
-resolver, font/style defaults and a fresh-shaper factory. `EncodeParagraph` still
-uses the metric path. Both linebreakers can consume streaming paragraphs without
-hyphenation. Lazy discretionary reshaping is not migrated; an attempted owner
-lookup with a configured hyphenator returns
-`ErrStreamingDiscretionariesUnsupported`. Freezing and rendering remain future
-work. Knotting is implemented for the supported contract described below;
-unrepresentable mandatory breaks return an explicit error, not partial output.
+**Implemented knotting:** `EncodeParagraph(ctx, para)` connects preparation,
+producer, cluster assembly, candidate formation and publication. `Config{}`
+provides a synthetic backend; applications can supply a complete `Config.Streaming`.
+Both breakers consume these paragraphs and can request lazy explicit/automatic
+discretionaries from the owner. There is no metric-only encoding path.
+Freezing and rendering remain future work. Unrepresentable mandatory breaks
+return an explicit error, not partial output.
 
-The knotting sections below describe the implemented streaming architecture.
-The separate legacy SOA encoder uses the synchronous `Shaper` interface; see
-[MIGRATION.md](MIGRATION.md) for its byte-offset and cluster contract. It preserves
-original source bytes. Any normalization must precede construction of styled
-source ranges. UAX#14 is evaluated across the whole paragraph before intersecting
-its boundaries with shaped runs.
+The knotting sections describe the implemented streaming architecture.
+Original source bytes are preserved; normalization must precede construction
+of styled ranges. UAX#14 is evaluated across the whole paragraph before
+intersecting its boundaries with shaped runs. See [MIGRATION.md](MIGRATION.md).
 
 We are dealing with sequences of runes as input, forming a styled paragraph of text. Styles are nested, i.e. form a hierarchy. Examples of styles may be "*boldface*", a font- or color-change, etc. Styles are projected onto the runes out-of-band. In previous stages an HTML-parser will have converted HTML and CSS into a styled paragraph, where the style hierarchy is held in a tree-like structure. For every rune in the input sequence, the style hierarchy is able to tell the exact style valid at this rune.
 
@@ -138,8 +133,7 @@ each contributing style span once through `contracts.StyleResolver`, acquires
 its font scale, and creates prepared runs with owned feature storage. Feature
 ranges refer to original style-span scalar positions, including omitted controls;
 they are clipped and rebased for each shaping run. Empty overlaps are omitted.
-No numeric bidi level is stored. These stages are used by the opt-in streaming
-encoder; the metric encoder remains independent.
+No numeric bidi level is stored. These stages are used by EncodeParagraph.
 
 The internal `producePreparedRuns` function implements the prepared input end.
 Its caller starts it in a goroutine after publishing the immutable run table;
@@ -240,15 +234,14 @@ Only complete success returns a `candidateParagraph`, retaining candidate knots,
 prepared runs and source boundaries together so their indices remain meaningful.
 The original paragraph remains borrowed. Every error returns nil, including
 terminal shaper errors and width/fill finalization failures. This internal
-operation feeds `publishCandidateParagraph` inside `EncodeParagraphStreaming`.
-It does not replace the legacy `EncodeParagraph`.
+operation feeds `publishCandidateParagraph` inside `EncodeParagraph`.
 
 ### Textbox Shaping Storage
 
 The separate internal `publishCandidateParagraph` operation now transfers a
 successful candidate paragraph into a new owner-associated `Khipu`. Its existing
 metric planes are unchanged. A private per-knot box-reference plane uses zero
-for absent shaping data; glue, paragraph fill and legacy metric-encoded knots
+for absent shaping data; glue, paragraph fill and manually constructed knots
 have no retained glyphs.
 
 Ordinary textboxes reference a khipu-owned arena containing flat glyph records,
@@ -261,8 +254,9 @@ run and must be clipped/rebased for later reshaping of a box.
 Publication copies glyph and feature slices and source-boundary metadata; the
 original styled paragraph and immutable font/scale services remain shared. Knot
 source spans and exact break provenance are retained even for glue. Ordinary
-box input is currently its original source range. Replacement input for
-discretionaries, arena compaction and renderer access APIs remain separate work.
+box input is its original source range, with U+00AD suppressed before shaping.
+Discretionary boxes retain owned replacement input and original-source provenance.
+Arena compaction and renderer access APIs remain separate work.
 
 ```
 [ Initialize cluster assembler and candidate accumulator ]
