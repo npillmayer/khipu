@@ -17,6 +17,13 @@ and a shared testing package remain proposals.
 
 ## Existing Guarantees and Evidence
 
+- `logical_lines_test.go` covers complete-path validation, source coverage,
+  retained-neutral trimming, selected-fragment carry, silent replacements,
+  arena lifetime and atomic errors. `logical_lines_integration_test.go` consumes
+  ordinary and explicit/automatic discretionary results from both breakers.
+  The materializer stays internal; `export_test.go` provides a test-only bridge
+  so integration coverage does not require a premature public freeze API.
+
 - `encoding_stream_test.go` and `encoding_stream_internal_test.go` cover defaults,
   configuration snapshots, repeated calls, fresh factories, retained glyphs,
   cancellation, errors and explicit-zero parameters/fill.

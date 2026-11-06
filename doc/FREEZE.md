@@ -1,14 +1,76 @@
 # Freezing A Khipu
 
-This note records first design findings for the post-linebreaking step which
+This note records the design and implementation plan for the post-linebreaking step which
 assigns final widths to the knots of each line.
 
 For now, the working term will be **freezing the khipu**.
 
-Status checked November 4, 2026: this is a design and implementation plan.
-No `FrozenKhipu` type or freeze entry point is implemented. Both modern
+Status updated November 6, 2026: internal logical-line materialization is
+implemented; visual ordering and final width assignment remain a design and
+implementation plan. No `FrozenKhipu` type or public freeze entry point exists. Both modern
 linebreakers already return breakpoints and retain chosen discretionary
 variants, providing the inputs for this next stage.
+
+The upstream rewrite is complete for the supported knotting and linebreaking
+contracts. `EncodeParagraph(ctx, para)` is the sole encoder. Textboxes retain
+glyphs, positioning, source provenance and shaping contexts. Lazy explicit and
+automatic discretionaries retain shaped replacement fragments and their original
+source split. `BreakpointPositions` maps chosen breaks to paragraph-relative
+UTF-8 byte endpoints. The metric-only shaping path has been removed.
+
+The next work is line-local bidi ordering and final width assignment, not
+another encoder migration. See
+[the overall algorithm](khipu-algorithm.md#line-local-bidi-ordering) and
+[discretionary ownership](HYPHENATION.md).
+
+## Implemented Logical-Line Stage
+
+`Khipukamayuq.materializeLogicalLines` in [logical_lines.go](../logical_lines.go)
+is internal. It accepts an owned encoded paragraph and a complete breakpoint
+list from either breaker, ending at the final trailer. It validates aligned
+planes, legal break endpoints, mandatory-break coverage and selected candidates.
+Off-path choices, ambiguous/missing variants, inconsistent source spans and
+missing shaping associations fail with no partial result or input mutation.
+It does not check whether the path fits a target or is optimal.
+
+Each `logicalLine` retains its ending knot index, original paragraph-relative
+byte interval, materialized knots and natural width. Width excludes external
+left/right skips. Knot cores retain their elasticity; this is not frozen output.
+Each knot records its original index, source span, arena box reference and,
+for replacements, the selected variant and pre-/post-break role.
+
+Selected pre-break material ends one line and post-break material seeds the
+next. No hyphenator or shaper is called. Empty/silent stored replacements remain
+represented. Untrimmed source intervals come from `BreakpointPositions`, not
+visible knot lengths, so whitespace, omitted controls and changed spellings do
+not corrupt later bidi coordinates.
+
+Trimming matches both breakers: flagged knots before the first or after the
+last non-discardable textbox are removed. Retained neutral glue/kern survive
+but do not stop trimming. A line without content keeps neutrals and removes all
+discardables. The final fill survives. An empty line selected by a breaker is
+preserved; in particular, current K&P may select a leading-space breakpoint.
+This stage does not change the deferred first-line whitespace policy.
+
+The result owns line slices and core snapshots and retains arena slice headers
+for immutable published records. Appending candidates, replacing selections or
+unwiring the original Khipu does not invalidate those records. Original source,
+styles, font services and published arena contents must remain immutable.
+The entire arena remains retained, including unused candidates; compaction is
+deferred. No bidi resolution is split or mutated.
+
+Call before rerunning the breaker: there is no generation token to detect a
+stale but structurally compatible breakpoint/selection combination. Result
+construction is single-owner, not concurrency-safe. A future public API must
+settle how a complete decision is handed off; the internal implementation does
+not introduce a public freeze or renderer API prematurely.
+
+Tests in [logical_lines_test.go](../logical_lines_test.go) and
+[logical_lines_integration_test.go](../logical_lines_integration_test.go) cover
+ordinary/empty paragraphs, forced breaks, flag-based trimming, logical RTL
+content, glyphless gaps, changed-spelling and consecutive replacements, silent
+fragments, lifetime retention, invalid input and width overflow. Integration
+tests exercise ordinary, explicit and automatic results from both breakers.
 
 The intention is:
 
@@ -38,10 +100,11 @@ After linebreaking, that is still only a *potential* paragraph.
 To typeset lines, we still need to:
 
 1. determine the actual knot sequence of each line
-2. determine the target line width
-3. compute the line delta between natural width and target width
-4. distribute that delta across the adjustable knots of the line
-5. write final knot widths
+2. arrange each materialized line in visual segment order
+3. determine the target line width
+4. compute the line delta between natural width and target width
+5. distribute that delta across the adjustable knots of the line
+6. write final knot widths
 
 The freeze step therefore sits between:
 
@@ -53,13 +116,18 @@ The freeze step therefore sits between:
 Freezing will need at least these inputs:
 
 - an elastic `Khipu`
-- a breakpoint sequence (`[]kinx`)
+- the breaker's sequence of line-ending knot indices
 - selected discretionaries (`SelectedDiscretionaries`)
 - paragraph shape (`ParShape`) or explicit target line lengths
 - the same left/right skip dimensions used during linebreaking
+- retained glyph/context/source records and paragraph bidi resolution
 
 The public entry point belongs to `Khipukamayuq`; its internal collaboration
-with `Shaper` remains to be designed.
+with `contracts.StreamingShaper` for width-directed reshaping remains to be designed.
+
+Breakpoints and selections must come from the same breaker run; a later run
+replaces `SelectedDiscretionaries`. A freeze request must validate or snapshot
+this combination rather than read mutable selections throughout construction.
 
 The important point is that linebreak results are not enough by themselves.
 The freeze step must also know:
@@ -98,9 +166,8 @@ Examples:
 
 - leading and trailing discardable material, trimmed during linebreaking,
   should not become visible line content
-- a selected discretionary splits one textbox into:
-  - one pre-break fragment on the current line
-  - one post-break fragment on the next line
+- a selected discretionary replaces one textbox with its pre-break fragment on
+  the current line and its post-break fragment on the next line
 
 Therefore the frozen result may differ from the original elastic `Khipu` in:
 
@@ -139,7 +206,6 @@ type FrozenKhipu struct {
     Len   []uint16
     Kind  []KnotType
     Flags []KnotFlags
-
     Lines []FrozenLine
 }
 ```
@@ -148,9 +214,18 @@ where `FrozenLine` maps line boundaries into the frozen knot stream.
 
 This sketch is not a settled API. In particular, source `Pos/Len` alone
 cannot necessarily identify altered discretionary fragments or reshaped
-content. The current discretionary cache stores metrics, not persistent glyph
-sequences or fragment strings. Fragment provenance and ownership must be
-settled alongside the frozen representation.
+content. Ordinary textboxes already reference an owner-local shaping arena;
+owner-produced discretionary candidates also reference retained glyphs,
+replacement input and shaping contexts. `SourceSplit` describes original input,
+not replacement-string length. The sketch above omits the glyph/context and
+provenance associations that a usable frozen representation must preserve.
+
+Decide whether frozen data owns copies or retains immutable arena storage with
+an explicit lifetime guarantee. Bare owner-local IDs without their arena are
+not sufficient. Freezing must not rediscover alternatives or reshape an already
+selected fragment merely to recover its stored glyphs. Manual metric-only
+fixtures remain useful for arithmetic tests, but cannot supply missing glyph
+or source provenance for general line materialization.
 
 The exact shape is open, but the main point is stable:
 
@@ -163,15 +238,45 @@ For each output line, freeze will first need to build the exact knot sequence.
 
 That line-construction phase must:
 
-1. start at the previous breakpoint
-2. end at the next breakpoint
-3. remove trimmed discardables at both line edges
-4. replace selected discretionary textboxes with:
-   - `PreBreak` on the broken line
-   - `PostBreak` on the following line
+1. validate the complete breakpoint path, including the final paragraph trailer
+2. resolve selected candidates by source knot and variant, retaining their stored fragments
+3. build each logical line, carrying a selected post-break fragment onto the next line
+4. remove line-edge discardables using the same flag-based semantics as the breakers
+5. retain exact original-source line coverage independently of trimmed content
+
+Do not treat every line as a simple slice between knot indices: a selected
+discretionary contributes material on both sides of one source knot. The final
+ParFillSkip remains non-discardable. Preserve the current first-line trimming
+semantics rather than introducing a new whitespace policy here.
 
 Only after this materialization step does it make sense to compute the final
 width adjustment of the line.
+
+## Line-Local Bidi Ordering
+
+Linebreaking and initial materialization use logical order. Before final width
+assignment, use `BreakpointPositions` from the chosen path to partition the
+paragraph's bidi resolution at the original source endpoints. Split
+`ResolvedLevels`, then compute an `Ordering` for each line; do not split an
+already computed paragraph ordering or store numeric levels on knots.
+
+Traverse the ordering's source segments to arrange compatible knot/box groups.
+Do not reverse glyph arrays inside boxes. Preserve their direction metadata for
+later placement. Replacement fragments attach through their original-source
+provenance, not their replacement lengths. Generated skips attach to physical
+line edges; source-less material cannot be placed by byte intervals alone.
+
+Source coverage must be partitioned before trimming: discarded spaces still
+matter for line-boundary bidi rules. UAX#9 L1 handling is separate from width
+trimming. Verify that directional segment boundaries can be represented without
+splitting inseparable shaped boxes, and reject unsupported cases explicitly.
+
+This integration is not implemented. The algorithm document records outstanding
+questions about bidi split behavior, nested isolates and paragraph direction;
+recheck the sibling `uax/bidi` API and tests before implementing this stage.
+Split/Reorder may mutate backing storage, so shallow copies are not independent
+snapshots. Define ownership/retry behavior without consuming the elastic
+paragraph's retained resolution on a failed freeze attempt.
 
 ## Width Distribution Model
 
@@ -227,8 +332,10 @@ For example:
 - Arabic textboxes may take substantial adjustment
 - some knots may be adjustable only as a last resort
 
-Therefore freeze will likely need, in addition to width ranges, a notion of
-adjustment policy or class per knot.
+Additional adjustment policy or classes may become necessary, but are not a
+prerequisite for the first implementation. Start with capacity-proportional
+allocation and explicit fill precedence; add metadata only when a concrete
+script-sensitive use case requires it.
 
 Possible future examples:
 
@@ -251,7 +358,7 @@ priority.
 
 ## Suggested Decomposition Of The Freeze Step
 
-The freeze step can be decomposed into two subproblems:
+The freeze pipeline can be decomposed into three independently testable stages:
 
 ### 1. Resolve line content
 
@@ -269,9 +376,15 @@ Responsibilities:
 
 - remove trimmed material
 - split discretionaries
-- preserve line order
+- preserve logical line order and original-source coverage
 
-### 2. Set final widths
+### 2. Arrange Visual Segments
+
+Use line-local bidi ordering to arrange the materialized groups, preserving
+intra-box glyph sequences, direction and fragment associations. Attach generated
+edge material explicitly. This changes order, not width capacity.
+
+### 3. Set final widths
 
 Input:
 
@@ -289,8 +402,8 @@ Responsibilities:
 - distribute delta across adjustable knots
 - ensure the sum of final widths equals the chosen target
 
-This split looks important because the first half is about structure, while the
-second half is about numeric width assignment.
+Keep structural materialization, directional ordering and numeric allocation
+separate. Intermediate natural-width lines are not yet frozen output.
 
 ## Final-Line Treatment
 
@@ -313,24 +426,26 @@ allocator. Ordinary finite stretch alone does not guarantee that only the
 paragraph fill stretches. Define and test fill precedence before claiming
 ragged final-line behavior. The terminal fill must remain non-discardable.
 
-## Suggested First Implementation Slice
+## First Implementation Slice
 
-A reasonable first slice would be deliberately conservative:
+The implemented first slice establishes logical line materialization only:
 
 1. derive line-local knot lists from breakpoints
 2. materialize selected discretionaries
 3. trim line-edge discardables
-4. freeze only Western-style glue adjustment
-5. keep textboxes fixed in that first slice
+4. retain glyph/context/source references without mutating the elastic paragraph
+5. test natural line contents and widths without claiming a frozen result
 
-That would already establish:
+This establishes:
 
 - the freeze boundary in the pipeline
-- the frozen result type
+- the ownership requirements for the eventual frozen result type
 - the line materialization rules
 
-Only after that foundation is stable should textbox-based adjustment policies
-such as Arabic kashida be added.
+Follow with bidi ordering and fixed-textbox/glue-only allocation. An initial
+end-to-end subset may be explicitly limited to simple LTR input; it must not
+silently emit logical-order lines as a fully ordered result for mixed-direction
+text. Textbox adjustment such as Arabic kashida comes later.
 
 ## Responsibility Split
 
@@ -342,7 +457,7 @@ Internally, freeze will likely be a collaboration:
 - `Khipukamayuq` owns the paragraph, breakpoints, selected discretionaries, and
   line construction
 - `Khipukamayuq` can directly freeze simple Western interword spacing
-- `Khipukamayuq` may need to re-consult the `Shaper` for script-sensitive
+- `Khipukamayuq` may need to re-consult a streaming shaping service for script-sensitive
   adjustment mechanisms such as Arabic kashida
 
 So the first implementation may be simple and mostly self-contained, but the
@@ -353,7 +468,11 @@ roundtrip through shaping.
 
 The most realistic path looks incremental.
 
-### Stage 1: Define A Frozen Representation
+### Stage 1: Define Representation And Ownership
+
+Intermediate `logicalParagraph`, `logicalLine` and `logicalKnot` types now
+establish snapshot and arena-lifetime rules. The final frozen representation
+remains open; these internal types deliberately retain elastic KnotCore values.
 
 Introduce a new data structure for frozen khipus.
 
@@ -363,11 +482,16 @@ Goals:
 - store only final widths
 - preserve final line-local knot order
 - be explicit about line boundaries
+- preserve glyph/context references and original/replacement source provenance
+- distinguish intermediate logical lines from successfully frozen output
 
 This stage is about data shape only. No real width distribution logic needs to
 exist yet.
 
-### Stage 2: Materialize Frozen Lines
+### Stage 2: Materialize Logical Lines
+
+Implemented internally as described above. No width allocation or bidi ordering
+is included in this stage.
 
 Build line-local knot streams from:
 
@@ -379,12 +503,26 @@ Responsibilities:
 
 - trim line-edge discardables
 - emit `PreBreak` and `PostBreak` fragments for selected discretionaries
-- preserve knot order within each line
+- preserve logical knot order within each line and exact untrimmed source coverage
 
 At the end of this stage, each line should have a natural width but not yet a
 final adjusted width.
 
-### Stage 3: Western Glue-Only Freezing
+Tests should cover ordinary and empty paragraphs, forced breaks, both-edge
+trimming, first-line semantics, terminal fill, changed-spelling discretionaries,
+post-break carry, stale/missing selections, missing glyph provenance and unchanged
+input. Exercise results from both breakers. Keep this PR independent of bidi
+mutation and width allocation.
+
+### Stage 3: Integrate Line-Local Bidi Ordering
+
+Implement the ordering stage described above using original source endpoints.
+Test LTR, RTL, mixed runs, isolates, trimmed spaces, discretionary replacements
+and generated edge material. Establish L1 handling and dependency readiness;
+do not assume the earlier algorithm sketch proves upstream split correctness.
+Do not reverse glyph arrays within boxes.
+
+### Stage 4: Fixed-Textbox, Glue-Only Freezing
 
 Implement the first actual width distribution pass for the simplest case:
 
@@ -411,7 +549,13 @@ stretch, shrink, exhaustion, skips, discretionary boundaries, and conservation
 of total assigned width. An impossible target must be reported rather than
 hidden by widths outside the advertised bounds.
 
-### Stage 4: Adjustment Classes
+Treat fill sentinels as ordered capacities, not ordinary numeric dimensions.
+Count left/right skips exactly once and define whether the target includes them.
+Distribute integer rounding residue deterministically without exceeding bounds.
+Publish frozen output only after every line succeeds; errors must leave the
+elastic input and its selected decisions intact.
+
+### Stage 5: Evaluate Adjustment Classes
 
 Evaluate whether the upstream paragraph model needs additional metadata for
 how a knot participates in width distribution. Capacity-proportional allocation
@@ -425,17 +569,19 @@ Examples:
 - last-resort shrinkable content
 
 This stage should still keep `Khipukamayuq` as the public owner, but may
-internally require a `Shaper` roundtrip.
+internally require a streaming shaping roundtrip.
 
-The current `Shaper` only supplies cluster metrics. Requesting an adjusted
-run, reporting the achievable width, and retaining the resulting shaped data
-require an explicit contract before script-sensitive freezing is implemented.
+The current `StreamingShaper` supplies glyphs and positioning, and the arena
+already retains shaped output. What is missing is a contract for requesting a
+target width or adjustment mechanism and reporting the width actually achieved.
+Simply changing a textbox's W does not realize kashida or other glyph changes.
+Design this extension before enabling script-sensitive adjustment.
 
-### Stage 5: Script-Sensitive Freezing
+### Stage 6: Script-Sensitive Freezing
 
-Once adjustment classes exist, freezing can support script-sensitive width
+Once the required adjustment contract exists, freezing can support script-sensitive width
 distribution by delegating the appropriate parts to `Khipukamayuq` and
-`Shaper`.
+its shaping service.
 
 Arabic kashida is the clearest example, but the same architecture should allow
 other non-Western justification mechanisms later.
@@ -468,9 +614,7 @@ The most coherent direction currently looks like this:
 
 - keep the current elastic `Khipu` unchanged after linebreaking
 - introduce a separate frozen representation
-- split freezing into:
-  - line materialization
-  - width distribution
+- separate logical line materialization, visual segment ordering and width distribution
 - start with glue-only width distribution
 - later add richer per-knot adjustment policies from `Khipukamayuq`
 
