@@ -2,7 +2,7 @@
 
 ## Purpose and Status
 
-Reviewed November 6, 2026. The sole encoder is `EncodeParagraph(ctx, para)`.
+Reviewed November 8, 2026. The sole encoder is `EncodeParagraph(ctx, para)`.
 `Config{}` enables synthetic streaming shaping. Metric-only shaping,
 `KnotStyler`, and their isolated tests have been retired; see
 [RETIRE-METRICS.md](RETIRE-METRICS.md) for the coverage migration and required
@@ -23,6 +23,13 @@ and a shared testing package remain proposals.
   ordinary and explicit/automatic discretionary results from both breakers.
   The materializer stays internal; `export_test.go` provides a test-only bridge
   so integration coverage does not require a premature public freeze API.
+- `line_ordering_test.go` checks the trailing-source-glue L1 approximation before
+  trimming, actual LTR/RTL resets, successive line splits inside an isolate,
+  nonzero paragraph offsets, style-split and multibyte glue, empty/final lines,
+  discretionary barriers, source gaps, invalid input and repeatable ordering
+  without consuming the original resolution. NBSP, internal tabs and omitted
+  controls explicitly record accepted approximation limits. These tests do not
+  claim full UAX#9 L1 conformance or visual knot permutation.
 
 - `encoding_stream_test.go` and `encoding_stream_internal_test.go` cover defaults,
   configuration snapshots, repeated calls, fresh factories, retained glyphs,

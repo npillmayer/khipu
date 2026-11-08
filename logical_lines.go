@@ -21,9 +21,14 @@ type logicalParagraph struct {
 type logicalLine struct {
 	knots              []logicalKnot
 	breakpoint         int
-	byteStart, byteEnd uint64   // untrimmed original paragraph coverage
-	naturalWidth       dimen.DU // excludes external left/right skips
+	byteStart, byteEnd uint64             // untrimmed original paragraph coverage
+	naturalWidth       dimen.DU           // excludes external left/right skips
+	l1Glue             sourceByteInterval // trailing source glue, recorded BEFORE trimming
 }
+
+// sourceByteInterval is half-open and paragraph-relative. Its zero value means
+// no interval. It describes original UTF-8 input, never generated glyph bytes.
+type sourceByteInterval struct{ from, to uint64 }
 
 type logicalFragment uint8
 
@@ -139,6 +144,7 @@ func (kq *Khipukamayuq) materializeLogicalLines(k *Khipu, breakpoints []int) (*l
 			}
 			line.knots = append(line.knots, item)
 		}
+		line.l1Glue = line.trailingGlueL1(n - 1)
 		if err := line.trimAndMeasure(); err != nil {
 			return nil, err
 		}

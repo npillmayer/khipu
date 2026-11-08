@@ -365,17 +365,19 @@ then compute an `Ordering` separately for each line.
 
 ```
 [ `lineEnds = khp.BreakpointPositions(chosenBreakpoints)`; stop on error ]
-[ Let `remaining` be the retained paragraph `ResolvedLevels` ]
+[ Materialize logical lines, recording each trailing source-glue interval before trimming ]
+[ Let `remaining` be a deep `Clone()` of the retained paragraph `ResolvedLevels` ]
 [ For every `lineEndByte` in `lineEnds`, in logical paragraph order ] :
     [ If this is not the final line ] :
         [ `lineLevels, remaining = remaining.Split(lineEndByte, false)` ]
     [ Else ] :
         [ `lineLevels = remaining` ]
-    [ Account for line-boundary whitespace direction rules (UAX#9 L1) ]
+    [ If this line has a saved trailing source-glue interval `[from, to)` ] :
+        [ `lineLevels.ApplyL1(from, to)`; stop on error ]
     [ Store `lineLevels.Reorder()` as this line's `Ordering` ]
 ```
 
-The following operation is applied to each materialized line immediately before
+The following operation is planned for each materialized line immediately before
 freezing. We choose left-to-right physical traversal, independently of the
 paragraph's base direction.
 
@@ -390,14 +392,15 @@ paragraph's base direction.
 ```
 
 **Implementation remarks**:
-- `BreakpointPositions` is implemented for encoded paragraphs. It reads the selections from the same linebreaking run, maps ordinary breaks through retained source boundaries and selected alternatives through `SourceSplit`, and performs no bidi mutation. The remaining ordering operations in this section are still planned. Metric-only selected candidates without a known source split are rejected rather than guessed.
+- `BreakpointPositions` is implemented for encoded paragraphs. It reads the selections from the same linebreaking run, maps ordinary breaks through retained source boundaries and selected alternatives through `SourceSplit`, and performs no bidi mutation. Internal `logicalParagraph.lineOrderings` now creates line-local orderings; applying them to knot/box groups is still planned. Metric-only selected candidates without a known source split are rejected rather than guessed.
 - All bidi positions are half-open UTF-8 byte offsets into the original paragraph, not knot indices or cluster IDs. `Split(..., false)` preserves those coordinates across lines. A run can contain noncontiguous source intervals; use `Segments`, not `run.Length`, to locate them.
 - A selected discretionary needs its original source split position and fragment provenance. The length of the shaped PreBreak text is not a substitute: substitutions or inserted glyphs may change it. The terminal parfillskip maps to paragraph end, not an additional source character.
-- Source coverage is partitioned before trimming. Discarded source spaces still participate in the bidi line boundary calculation, even though their knots will not be emitted. L1 handling remains a client responsibility and needs refinement independently of width trimming.
+- Source coverage and the L1 glue suffix are recorded before trimming. Discarded source spaces still participate in the bidi line boundary calculation, even though their knots will not be emitted. The approximation combines adjacent original-source glue, clips it to the line, ignores only the validated source-less final fill and stops at source gaps or non-glue material. It does not inspect characters again.
+- The glue heuristic is not full UAX#9 L1: non-WS glue (for example NBSP) or suppressed soft hyphens in glue provenance can be over-reset; omitted controls, whitespace embedded in text clusters and internal separators can be missed. These trade-offs are accepted for now; see [FREEZE.md](FREEZE.md#accepted-l1-approximation). Future exactness should use upstream eligibility metadata.
 - Boxes must be compatible with directional segment boundaries. A segment may cover multiple boxes, which need directional ordering, but glyph arrays inside boxes are not reversed here. Later placement must still honor their direction because the streaming shaper emits logical shaping order.
 - Generated fragments and zero-source glue need explicit attachment rules. Left/right skips are attached to physical line edges after ordering; source-less material cannot be located by byte intervals alone.
-- `Split` and `Reorder` mutate backing state. Do not consume the retained resolution during candidate-path exploration; copying the structs does not create independent snapshots.
-- The current `uax/bidi` implementation does not preserve the paragraph embedding-direction field when splitting. This and its unfinished nested-isolate splitting paths need attention before enabling general multiline bidi layout. The sketch describes the intended pipeline, not a claim that these upstream paths are ready.
+- `Split`, `ApplyL1` and `Reorder` mutate backing state. `Clone()` makes a private deep copy once per ordering attempt, preserving the retained paragraph resolution for retries. No partial ordering list is returned on error.
+- The sibling `uax/bidi` split fixes now preserve paragraph embedding direction and partition isolates. Khipu tests exercise successive splits inside an isolate, but ordering preparation alone does not establish complete visual layout or full L1 conformance.
 
 
 ## Freezing the Khipu

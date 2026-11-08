@@ -5,9 +5,10 @@ assigns final widths to the knots of each line.
 
 For now, the working term will be **freezing the khipu**.
 
-Status updated November 6, 2026: internal logical-line materialization is
-implemented; visual ordering and final width assignment remain a design and
-implementation plan. No `FrozenKhipu` type or public freeze entry point exists. Both modern
+Status updated November 8, 2026: internal logical-line materialization and
+line-local bidi ordering creation are implemented. Visual knot permutation and
+final width assignment remain a design and implementation plan. No `FrozenKhipu`
+type or public freeze entry point exists. Both modern
 linebreakers already return breakpoints and retain chosen discretionary
 variants, providing the inputs for this next stage.
 
@@ -18,7 +19,7 @@ automatic discretionaries retain shaped replacement fragments and their original
 source split. `BreakpointPositions` maps chosen breaks to paragraph-relative
 UTF-8 byte endpoints. The metric-only shaping path has been removed.
 
-The next work is line-local bidi ordering and final width assignment, not
+The next work is applying line-local orderings to knots and assigning final widths, not
 another encoder migration. See
 [the overall algorithm](khipu-algorithm.md#line-local-bidi-ordering) and
 [discretionary ownership](HYPHENATION.md).
@@ -34,7 +35,7 @@ missing shaping associations fail with no partial result or input mutation.
 It does not check whether the path fits a target or is optimal.
 
 Each `logicalLine` retains its ending knot index, original paragraph-relative
-byte interval, materialized knots and natural width. Width excludes external
+byte interval, a trailing-glue L1 interval, materialized knots and natural width. Width excludes external
 left/right skips. Knot cores retain their elasticity; this is not frozen output.
 Each knot records its original index, source span, arena box reference and,
 for replacements, the selected variant and pre-/post-break role.
@@ -57,7 +58,7 @@ for immutable published records. Appending candidates, replacing selections or
 unwiring the original Khipu does not invalidate those records. Original source,
 styles, font services and published arena contents must remain immutable.
 The entire arena remains retained, including unused candidates; compaction is
-deferred. No bidi resolution is split or mutated.
+deferred. Materialization itself does not split or mutate bidi resolution.
 
 Call before rerunning the breaker: there is no generation token to detect a
 stale but structurally compatible breakpoint/selection combination. Result
@@ -257,7 +258,8 @@ width adjustment of the line.
 Linebreaking and initial materialization use logical order. Before final width
 assignment, use `BreakpointPositions` from the chosen path to partition the
 paragraph's bidi resolution at the original source endpoints. Split
-`ResolvedLevels`, then compute an `Ordering` for each line; do not split an
+`ResolvedLevels`, apply the trailing-glue L1 approximation, then compute an
+`Ordering` for each line; do not split an
 already computed paragraph ordering or store numeric levels on knots.
 
 Traverse the ordering's source segments to arrange compatible knot/box groups.
@@ -271,12 +273,59 @@ matter for line-boundary bidi rules. UAX#9 L1 handling is separate from width
 trimming. Verify that directional segment boundaries can be represented without
 splitting inseparable shaped boxes, and reject unsupported cases explicitly.
 
-This integration is not implemented. The algorithm document records outstanding
-questions about bidi split behavior, nested isolates and paragraph direction;
-recheck the sibling `uax/bidi` API and tests before implementing this stage.
-Split/Reorder may mutate backing storage, so shallow copies are not independent
-snapshots. Define ownership/retry behavior without consuming the elastic
-paragraph's retained resolution on a failed freeze attempt.
+### Implemented Ordering Preparation
+
+`logicalParagraph.lineOrderings` in [line_ordering.go](../line_ordering.go)
+returns one `bidi.Ordering` per materialized line. It validates complete source
+coverage, clones the paragraph's `ResolvedLevels` once, and performs
+`Split(lineEnd, false) -> ApplyL1(from, to) -> Reorder()` for each line. The final
+line consumes the remainder without another split. Coordinates stay relative
+to the original paragraph, never absolute `KnotCore.Pos` or replacement text.
+
+The sibling bidi package now supplies `Clone` and `ApplyL1`; its split fixes
+preserve paragraph direction and partition isolates. All mutating operations
+run on the private clone. Errors publish no partial ordering list and leave
+the original resolution and materialized knots unchanged; retrying is safe
+under the existing immutable-source ownership contract.
+
+This internal stage creates orderings only. Mapping their segments to knots,
+handling generated edge material and checking inseparable box boundaries are
+still outstanding. No public freeze entry point calls it yet.
+
+### Accepted L1 Approximation
+
+We deliberately do not re-read characters or reclassify Unicode bidi classes
+at this stage. Before trimming, `trailingGlueL1` walks backwards over a
+contiguous suffix of original-source `KTGlue` knots. Adjacent glue split by
+styles is combined. Spans are clipped to the line's original source interval;
+unexplained gaps are never bridged. Only the validated source-less final
+ParFillSkip is ignored. Textboxes, replacement fragments (even silent ones),
+kerns and other zero-source items stop the scan.
+
+The saved interval survives removal of discardable glue. It is passed to
+`ApplyL1` after splitting and before reordering, including on final and
+all-glue lines. No qualifying suffix means no call. Glue kind, not elasticity,
+width or the discardable flag, determines eligibility.
+
+This policy is **not full UAX#9 L1 conformance**:
+
+- Glue classification is broader than bidi WS. NBSP and other non-WS glue may
+  be reset unnecessarily; a suppressed soft hyphen can also lie in a glue's
+  retained source span.
+- Omitted isolate controls or other source gaps can prevent detecting a
+  qualifying trailing whitespace sequence. Whitespace inside a mixed text
+  cluster is not recognized as glue either.
+- Internal segment separators, including tabs, are not treated by this
+  trailing-suffix scan. It is not a substitute for all parts of rule L1.
+
+These limitations are accepted for now. If exact treatment becomes necessary,
+retain L1 eligibility metadata during upstream character processing rather
+than introducing character rescanning here.
+
+[line_ordering_test.go](../line_ordering_test.go) checks real LTR/RTL resets,
+successive splits inside an isolate, paragraph-relative offsets, trimmed and
+all-glue lines, style-split glue, multibyte spans, suppressed-marker clipping,
+discretionary barriers, accepted heuristic limits, validation and retry safety.
 
 ## Width Distribution Model
 
@@ -516,11 +565,11 @@ mutation and width allocation.
 
 ### Stage 3: Integrate Line-Local Bidi Ordering
 
-Implement the ordering stage described above using original source endpoints.
-Test LTR, RTL, mixed runs, isolates, trimmed spaces, discretionary replacements
-and generated edge material. Establish L1 handling and dependency readiness;
-do not assume the earlier algorithm sketch proves upstream split correctness.
-Do not reverse glyph arrays within boxes.
+Ordering creation, clone ownership and the documented trailing-glue L1 policy
+are implemented internally. Next, map the orderings to materialized knot/box
+groups. Test visual sequences for LTR, RTL, mixed runs, isolates, trimmed spaces,
+discretionary replacements and generated edge material. Reject unsupported
+boundaries inside inseparable boxes. Do not reverse glyph arrays within boxes.
 
 ### Stage 4: Fixed-Textbox, Glue-Only Freezing
 
