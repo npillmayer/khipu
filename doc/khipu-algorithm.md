@@ -776,10 +776,14 @@ Known deviations from this design in `linebreak/knuthplass`:
   deferred. The effective hyphen penalty comes from a nonzero penalty on the
   hyphenator's fragment or from `khipu.Params.Hyphenpenalty` (default 10), with no
   competing breaker default.
-- **Performance.** `evaluateCandidates` scans all recorded paths for every
-  active breakpoint, paths are never pruned, and `evalNewSegmentSeed` formats
-  the complete path table for a debug message on every new segment, even when
-  debug tracing is off. A 500-word paragraph takes about a minute.
+- **Performance.** Working states are indexed by breakpoint and line number;
+  width updates and ordinary/discretionary scoring visit only the requested
+  breakpoint's bucket. Retired working states are still retained, and active-set
+  growth and candidate allocation remain optimization targets.
+  Expensive debug arguments and final info dumps are now guarded
+  before formatting; full debug tracing remains intentionally expensive.
+  Separate encoding/breaking/first-pass benchmarks and initial measurements
+  are documented in [TESTING.md](TESTING.md#knuth-plass-performance-baseline).
 - Complete paths tied on total demerits prefer fewer lines. Equal-cost
   predecessors for the same state prefer the lower knot index, then variant;
   these tie decisions no longer depend on map iteration or arrival order.

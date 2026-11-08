@@ -126,8 +126,13 @@ func TestCollectOptimalBreakRefsCostThenLineCount(t *testing.T) {
 		kp.pathTable.SetPred(kp.root, end, 10, 10, 1)
 		kp.pathTable.SetPred(kp.root, mid, 5, 5, 1)
 		kp.pathTable.SetPred(mid, end, longCost-5, longCost, 2)
-		kp.paths[origin{end, 1}] = bookkeeping{totalcost: 10, worstbadness: 30}
-		kp.paths[origin{end, 2}] = bookkeeping{totalcost: longCost, worstbadness: 20}
+		kp.paths[end] = map[lineNo]bookkeeping{
+			1: {totalcost: 10, worstbadness: 30},
+			2: {totalcost: longCost, worstbadness: 20},
+		}
+		// Neither another knot nor a variant at the same knot is the terminus.
+		kp.paths[PlainBreak(8)] = map[lineNo]bookkeeping{1: {totalcost: -1000}}
+		kp.paths[BreakRef{At: end.At, Variant: 1}] = map[lineNo]bookkeeping{1: {totalcost: -1000}}
 		want, worst := []BreakRef{end}, merits(30)
 		if longCost < 10 {
 			want, worst = []BreakRef{mid, end}, 20
@@ -144,13 +149,13 @@ func TestCollectOptimalBreakRefsCostThenLineCount(t *testing.T) {
 func TestCanonicalTieReplacesLivePathAndSeed(t *testing.T) {
 	kp := newLinebreaker(DefaultLayout(nil), NewKPDefaultParameters())
 	low, high, end := PlainBreak(1), PlainBreak(3), PlainBreak(5)
-	kp.paths[origin{low, 1}] = bookkeeping{totalcost: 10, worstbadness: 20}
-	kp.paths[origin{high, 1}] = bookkeeping{totalcost: 10, worstbadness: 40}
+	kp.paths[low] = map[lineNo]bookkeeping{1: {totalcost: 10, worstbadness: 20}}
+	kp.paths[high] = map[lineNo]bookkeeping{1: {totalcost: 10, worstbadness: 40}}
 	seed := bookkeeping{segment: WSS{W: 7}, seenContent: true}
 	kp.evalNewSegmentSeed(high, end, 2, cost{demerits: 5, badness: 10}, bookkeeping{})
 	kp.evalNewSegmentSeed(low, end, 2, cost{demerits: 5, badness: 10}, seed)
 	pred, ok := kp.pathTable.Pred(end, 2)
-	path := kp.paths[origin{end, 2}]
+	path := kp.paths[end][2]
 	if !ok || pred.from != low || path.totalcost != 15 || path.worstbadness != 20 ||
 		path.segment != seed.segment || kp.seeds[origin{end, 2}] != seed {
 		t.Fatalf("canonical tie left inconsistent state: pred %+v, path %+v, seed %+v", pred, path, kp.seeds[origin{end, 2}])

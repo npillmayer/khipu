@@ -237,11 +237,8 @@ func (kp *linebreaker) evaluateDiscretionaryCandidates(khp *khipu.Khipu, from Br
 		return BreakRef{At: candidate, Variant: v}
 	}
 	results := make([]breakCandidate, 0, len(cands))
-	for st, path := range kp.paths {
-		if st.from != from {
-			continue
-		}
-		linelen := kp.layout.LineShape.LineLength(int32(st.line + 1))
+	for line, path := range kp.paths[from] {
+		linelen := kp.layout.LineShape.LineLength(int32(line + 1))
 		for _, cand := range cands {
 			lineBook := bookkeeping{}
 			nextSeed := bookkeeping{}
@@ -252,7 +249,7 @@ func (kp *linebreaker) evaluateDiscretionaryCandidates(khp *khipu.Khipu, from Br
 				appendKnotToBook(&lineBook, cand.PreBreak)
 				nextSeed = seedBookkeepingFromKnot(cand.PostBreak)
 			default:
-				seed, ok := kp.seeds[origin{from, st.line}]
+				seed, ok := kp.seeds[origin{from, line}]
 				if !ok {
 					continue
 				}
@@ -274,7 +271,7 @@ func (kp *linebreaker) evaluateDiscretionaryCandidates(khp *khipu.Khipu, from Br
 			results = append(results, breakCandidate{
 				eval: lineEvaluation{
 					bp:          from,
-					line:        st.line,
+					line:        line,
 					ratio:       ratio,
 					stretch:     absD(linelen - segwss.W),
 					disposition: lineAccepted,

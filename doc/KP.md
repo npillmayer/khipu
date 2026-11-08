@@ -62,11 +62,16 @@ A strictly cheaper transition replaces the existing predecessor; equal costs
 prefer the lower predecessor knot index, then variant, regardless of arrival
 order. Distinct variants at the same knot remain distinct.
 
-`kp.paths` holds accumulated costs, worst line badness, and segment bookkeeping.
+`kp.paths` groups working states as `map[BreakRef]map[lineNo]bookkeeping`.
+Each state holds accumulated costs, worst line badness, and segment bookkeeping.
+Width updates and ordinary/discretionary scoring visit only the requested
+breakpoint's bucket. Full BreakRef keys keep variants at the same knot separate.
+The rescan `seeds` map remains keyed by `(BreakRef, line)`; predecessor storage
+is unchanged. Retired working states are still retained, not pruned.
 The horizon contains active `BreakRef` values. Despite its historical name,
 `constructBreakpointGraph` now builds predecessor states, not a general graph.
 
-`collectOptimalBreakRefs` chooses the cheapest terminal state over line counts
+`collectOptimalBreakRefs` chooses the cheapest state in the terminal bucket over line counts
 (preferring fewer lines on equal cost),
 follows direct `Pred` lookups back to the root, and reverses the sequence.
 The public result projects references to knot indices; selected variants are
@@ -147,8 +152,10 @@ See [HYPHENATION.md](HYPHENATION.md) for the implemented interfaces and limits.
 The storage decision considered three alternatives: external discretionary
 caches, a dedicated linebreaking view, and sparse tables inside `Khipu`.
 The third won because chosen decisions must survive into later paragraph
-processing. Flags remain separate from penalty bits. No layout-performance
-claim has been established by benchmarks.
+processing. Flags remain separate from penalty bits. Synthetic performance
+benchmarks and the logging-guard/breakpoint-indexing measurements are described in
+[TESTING.md](TESTING.md#knuth-plass-performance-baseline); they do not establish
+font-backed or international-script performance.
 
 ## Remaining Work
 
@@ -158,9 +165,12 @@ claim has been established by benchmarks.
 - Optional fitness classes and consecutive-discretionary demerits.
 - Broader international-script integration coverage.
 
-Path bookkeeping still scans maps by origin in parts of the algorithm.
-Performance changes should follow measurement rather than a new representation
-chosen only on theoretical grounds.
+Path bookkeeping is now indexed by breakpoint rather than repeatedly scanning
+the entire state table. Candidate allocation and retained-state growth remain.
+Expensive debug arguments and final info dumps are now guarded before formatting;
+enabled tracing retains the existing detail. No retirement, candidate eligibility,
+tie-breaking or pruning policy changed. Further performance changes should follow the measured
+baseline rather than a representation chosen only on theoretical grounds.
 
 ## Verification
 

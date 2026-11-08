@@ -29,6 +29,14 @@ discretionary variants at one textbox occupy distinct states.
 variant, rather than arrival order. Live path and seed replacement use the same
 rule. Complete terminal paths with equal costs prefer fewer lines.
 
+Mutable working states are separately indexed as
+`map[BreakRef]map[lineNo]bookkeeping`. Width updates and ordinary/discretionary
+scoring iterate only the origin breakpoint's bucket, and terminal selection
+examines only the final bucket. Seeds retain their flat `(BreakRef, line)` keys.
+This is an access-pattern optimization, not a change to the predecessor table
+or active-set policy: retired working states and reconstruction history remain
+stored. See [TESTING.md](TESTING.md#knuth-plass-performance-baseline) for measurements.
+
 `collectOptimalBreakRefs` uses direct `Pred(to, line)` lookups. Logical
 replacement is an overwrite; a separate edge-delete operation is unnecessary.
 The modern package's `graph.go` and graph tests have been removed. The legacy

@@ -139,11 +139,11 @@ func TestEvaluateCandidatesSeparatesScreeningFromRanking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareLineBreaker failed: %v", err)
 	}
-	kp.paths[origin{kp.root, 0}] = bookkeeping{
+	kp.paths[kp.root][0] = bookkeeping{
 		segment:     WSS{W: 100, Min: 100, Max: 100},
 		seenContent: true,
 	}
-	kp.paths[origin{kp.root, 1}] = bookkeeping{
+	kp.paths[kp.root][1] = bookkeeping{
 		segment:     WSS{W: 90, Min: 90, Max: 95},
 		seenContent: true,
 	}

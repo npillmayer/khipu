@@ -17,6 +17,16 @@ and a shared testing package remain proposals.
 
 ## Existing Guarantees and Evidence
 
+- `linebreak/knuthplass/index_test.go` checks breakpoint-bucket isolation,
+  multiple line counts, distinct discretionary variants, line-specific rescan
+  seeds, missing buckets, and replacement without altering sibling states.
+  Rectangular and varying-shape corpus results were captured before indexing;
+  exact breakpoints, quality and predecessor counts remain unchanged. Final
+  working-state/seed counts verify that no retirement policy changed.
+- `linebreak/knuthplass/logging_test.go` checks that disabled hot-loop debug
+  calls and final info dumps never reach the tracer. Enabled dumps remain
+  available, and ordinary/discretionary paths, costs and predecessor tables
+  remain identical across error, info and debug levels.
 - `stream_shaper_test.go` checks the shared paragraph/replacement lifecycle:
   buffered output draining, producer and terminal errors, cancellation, joining
   on consumer failure, and rejection before producer launch. The existing
@@ -405,6 +415,99 @@ When those stages exist, add proofs using pinned fonts and renderer settings.
 Keep numerical and structural assertions authoritative; images explain failures
 and reveal visual issues but should not be the only correctness oracle.
 
+
+## Knuth-Plass Performance Baseline
+
+`linebreak/knuthplass/benchmark_test.go` provides three independent benchmarks:
+
+- `BenchmarkEncodeLorem` measures streaming encoding without linebreaking.
+- `BenchmarkBreakLorem` measures the public breaker, with encoding outside the
+  timed region. Each call creates fresh breaker state.
+- `BenchmarkFirstPassLorem` measures one first pass through collection and
+  reports knots, retained working states, historical predecessors, line count,
+  demerits and worst badness. State counts are final totals, not peak active
+  counts; the terminal forced break has already cleared earlier horizon entries.
+
+The fixed 19-word ASCII corpus repeats to 250, 500 or 1,000 words, with a trailing
+space. Synthetic `Config{}` shaping uses 5 pt cells and default space elasticity;
+there are `2*words+1` knots. Breaking uses `DefaultLayout` at 150 pt and
+`NewKPDefaultParameters`, without a discretionary provider. This isolates the
+ordinary path-building cost, not font shaping or hyphenation performance.
+Benchmarks require info/debug logging disabled and do not change global logging
+configuration. The default no-op tracer meets that requirement.
+
+Run small cases first; active-state growth and candidate allocations still make
+larger cases more expensive even after breakpoint indexing:
+
+```sh
+go test ./linebreak/knuthplass -run '^$' -bench '^BenchmarkEncodeLorem$' -benchmem
+go test ./linebreak/knuthplass -run '^$' -bench '^BenchmarkBreakLorem/(250|500)$' -benchtime=1x -count=3 -benchmem -timeout=5m
+go test ./linebreak/knuthplass -run '^$' -bench '^BenchmarkFirstPassLorem/1000$' -benchtime=1x -benchmem -timeout=10m
+```
+
+For profiles, retain the matching test executable outside the checkout:
+
+```sh
+go test ./linebreak/knuthplass -run '^$' -bench '^BenchmarkFirstPassLorem/500$' -benchtime=1x -timeout=5m -cpuprofile=/tmp/khipu-kp.cpu -memprofile=/tmp/khipu-kp.mem -o /tmp/khipu-kp.test
+go tool pprof -top -cum /tmp/khipu-kp.test /tmp/khipu-kp.cpu
+go tool pprof -top -alloc_space /tmp/khipu-kp.test /tmp/khipu-kp.mem
+```
+
+If the Go installation omits the `pprof` executable but includes its sources,
+build it with `go build -o /tmp/khipu-pprof cmd/pprof` and substitute
+`/tmp/khipu-pprof` for `go tool pprof`.
+
+Initial before/after measurements on Apple M1, Go 1.25.6, use a single first-pass
+iteration per size, with CPU/memory profiling enabled. They establish the impact
+of logging guards, not a statistically stable performance guarantee:
+
+| Words | Before | Guarded | Before B/op | Guarded B/op | Retained states |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 250 | 3.72 s | 0.84 s | 2.00 GB | 26.8 MB | 1,881 |
+| 500 | 55.67 s | 12.18 s | 29.11 GB | 194.7 MB | 7,058 |
+| 1,000 | not run | 188.87 s | not run | 1.535 GB | 27,282 |
+
+Bytes are cumulative allocations in decimal units, not peak resident memory.
+Line counts (60/119), demerits (-22,992/-47,493), worst badness (43), and
+predecessor counts (1,880/7,057) were unchanged. The unguarded 1,000-word baseline
+was deliberately not run. These logging-only measurements precede breakpoint
+indexing (below); they do not claim linear scaling.
+
+In the combined 250/500-word baseline CPU profile, `pathsAsString` accounted
+for about 46.5% of samples cumulatively; its allocation subtree accounted for
+about 95.8% of sampled allocated bytes. After guarding, the combined
+250/500/1,000-word CPU profile is dominated by `updatePath` (59.9% cumulative)
+and `evaluateCandidates` (31.9% cumulative), chiefly map iteration. The profiles
+cover different size sets and include untimed fixture setup, so compare the
+per-size benchmark numbers above for speedup, not the profiles' total times.
+The 1,000-word result confirms that logging guards alone do not fix scaling.
+
+### Breakpoint Indexing
+
+Working states now use `map[BreakRef]map[lineNo]bookkeeping`. All three hot scan
+sites visit only the requested breakpoint's line states. The benchmark sums
+bucket sizes for `retained-states`; counting outer map entries would incorrectly
+report breakpoints instead. No seeds, predecessor history or retired working
+states were removed, and candidate eligibility is unchanged.
+
+The same single-iteration profiled first-pass benchmark on the same machine:
+
+| Words | Guarded flat map | Indexed map | Indexed B/op | Retained states |
+| --- | ---: | ---: | ---: | ---: |
+| 250 | 0.84 s | 0.028 s | 26.4 MB | 1,881 |
+| 500 | 12.18 s | 0.213 s | 193.9 MB | 7,058 |
+| 1,000 | 188.87 s | 1.033 s | 1.534 GB | 27,282 |
+
+Line counts, costs, worst badness and predecessor counts match the flat-map
+baseline for all three sizes. The improvement is in traversal, not allocation:
+candidate slices and a growing active set still generate substantial cumulative
+allocations. The short indexed CPU profile is no longer dominated by full-map
+scanning; measure allocation reduction or retirement separately before changing
+either. These remain synthetic, single-run measurements rather than latency
+guarantees for real font-backed paragraphs.
+
+Three unprofiled public-breaker runs (`BenchmarkBreakLorem`, `-benchtime=1x`)
+measured 25-36 ms, 156-158 ms and 1.013-1.026 s for the three sizes respectively.
 
 ## Validation and Next Work
 

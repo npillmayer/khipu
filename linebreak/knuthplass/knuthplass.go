@@ -9,24 +9,34 @@ import (
 
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/dimen"
+	"github.com/npillmayer/schuko/tracing"
 )
 
 // linebreaker is an internal entity for K&P-linebreaking.
+// Working-state buckets let width updates and scoring visit only the requested
+// breakpoint's line counts. They still retain retired states; horizon membership
+// controls activity, while the separate predecessor table owns reconstruction.
+// A full BreakRef is the key so discretionary variants never share a bucket.
 type linebreaker struct {
 	*pathTable
-	horizon     map[BreakRef]struct{}  // horizon of possible linebreaks
-	paths       map[origin]bookkeeping // path(-partials) up to horizon
-	seeds       map[origin]bookkeeping // immutable seed state for rescanning a segment
-	params      *Parameters            // typesetting parameters relevant for line-breaking
-	layout      khipu.Params           // resolved geometry, shared with freezing
-	hyphenating bool                   // second pass may relax limits and use discretionaries
-	root        BreakRef               // "break" at start of paragraph
-	end         BreakRef               // "break" at end of paragraph
+	horizon     map[BreakRef]struct{}               // horizon of possible linebreaks
+	paths       map[BreakRef]map[lineNo]bookkeeping // working states grouped by breakpoint
+	seeds       map[origin]bookkeeping              // immutable seed state for rescanning a segment
+	params      *Parameters                         // typesetting parameters relevant for line-breaking
+	layout      khipu.Params                        // resolved geometry, shared with freezing
+	hyphenating bool                                // second pass may relax limits and use discretionaries
+	root        BreakRef                            // "break" at start of paragraph
+	end         BreakRef                            // "break" at end of paragraph
 }
 
-func pathsAsString(paths map[origin]bookkeeping) string {
+func pathsAsString(paths map[BreakRef]map[lineNo]bookkeeping) string {
 	var sb strings.Builder
-	os := slices.Collect(maps.Keys(paths))
+	var os []origin
+	for bp, lines := range paths {
+		for line := range lines {
+			os = append(os, origin{bp, line})
+		}
+	}
 	slices.SortFunc(os, func(a, b origin) int {
 		d := compareBreakRef(a.from, b.from)
 		if d != 0 {
@@ -35,7 +45,7 @@ func pathsAsString(paths map[origin]bookkeeping) string {
 		return cmp.Compare(a.line, b.line)
 	})
 	for _, o := range os {
-		b := paths[o]
+		b := paths[o.from][o.line]
 		sb.WriteString(fmt.Sprintf("BP[%s L:%2d] %v\n", o.from.String(), o.line, b))
 	}
 	return sb.String()
@@ -45,7 +55,7 @@ func newLinebreaker(layout khipu.Params, params *Parameters) *linebreaker {
 	kp := &linebreaker{}
 	kp.pathTable = newPathTable()
 	kp.horizon = make(map[BreakRef]struct{})
-	kp.paths = make(map[origin]bookkeeping)
+	kp.paths = make(map[BreakRef]map[lineNo]bookkeeping)
 	kp.seeds = make(map[origin]bookkeeping)
 	kp.layout = layout
 	if params == nil {
@@ -90,9 +100,9 @@ func prepareLineBreaker(layout khipu.Params,
 		return nil, err
 	}
 	kp := newLinebreaker(layout, params)
-	kp.root = PlainBreak(noinx)                  // virtual starting knot
-	kp.horizon[kp.root] = struct{}{}             // root is now officially a breakpoint
-	kp.paths[origin{kp.root, 0}] = bookkeeping{} // start of every path
+	kp.root = PlainBreak(noinx)                       // virtual starting knot
+	kp.horizon[kp.root] = struct{}{}                  // root is now officially a breakpoint
+	kp.paths[kp.root] = map[lineNo]bookkeeping{0: {}} // start of every path
 	kp.seeds[origin{kp.root, 0}] = bookkeeping{}
 	return kp, nil
 }
@@ -177,15 +187,20 @@ func (kp *linebreaker) updatePath(bp BreakRef, idx kinx, k khipu.KnotCore) {
 	if bp.IsDiscretionary() && idx <= bp.At {
 		return
 	}
-	wss := WSS{}.SetFromKnot(k)      // get dimensions of knot
-	cls := classifyLineItem(k)       // classify for line-edge trimming
-	for st, path := range kp.paths { // TODO find a more efficient data-structure
-		if st.from == bp { // found a path ending in `to`
-			tracer().Debugf("   --- path of %s/%v = %v", bp.String(), st, path)
-			path.appendItem(cls, wss)
-			tracer().Debugf("K&R: extending segment from %s to %v", bp.String(), path.segment)
-			kp.paths[st] = path
+	wss := WSS{}.SetFromKnot(k) // get dimensions of knot
+	cls := classifyLineItem(k)  // classify for line-edge trimming
+	trace := tracer()
+	debug := trace.GetTraceLevel() >= tracing.LevelDebug
+	lines := kp.paths[bp]
+	for line, path := range lines {
+		if debug {
+			trace.Debugf("   --- path of %s/%v = %v", bp.String(), origin{bp, line}, path)
 		}
+		path.appendItem(cls, wss)
+		if debug {
+			trace.Debugf("K&R: extending segment from %s to %v", bp.String(), path.segment)
+		}
+		lines[line] = path
 	}
 }
 
@@ -220,16 +235,21 @@ func (kp *linebreaker) evalNewSegment(from, to BreakRef, line lineNo, c cost) {
 }
 
 func (kp *linebreaker) evalNewSegmentSeed(from, to BreakRef, line lineNo, c cost, seed bookkeeping) {
+	trace := tracer()
+	debug := trace.GetTraceLevel() >= tracing.LevelDebug
 	if bp := kp.pathTable.Breakpoint(to); bp == NoBreakRef {
 		kp.pathTable.AddBP(to)
 	}
 	// now sure that `to` is a breakpoint
-	preSeg, ok := kp.paths[origin{from, line - 1}]
-	tracer().Debugf("K&P prev seg = %v", preSeg)
+	preSeg, ok := kp.paths[from][line-1]
+	if debug {
+		trace.Debugf("K&P prev seg = %v", preSeg)
+	}
 	assert(ok, "K&P internal error: cannot append segment to non-existent sub-path")
 	evalCost := preSeg.totalcost + c.demerits
 	pred, hasPred := kp.pathTable.Pred(to, line)
-	_, ok = kp.paths[origin{to, line}]
+	lines := kp.paths[to]
+	_, ok = lines[line]
 	path := seed.segmentState() // `path` will be the new path, if cheaper than `seg`
 	if !hasPred {
 		assert(!ok, "K&P internal error: path with non-existent predecessor state exists")
@@ -237,18 +257,28 @@ func (kp *linebreaker) evalNewSegmentSeed(from, to BreakRef, line lineNo, c cost
 		assert(ok, "K&P internal error: path for predecessor state does not exist")
 		return // existing path is cheaper or wins the canonical tie
 	} else {
-		tracer().Debugf("K&P remove sub-optimal seg %v", origin{to, line})
-		delete(kp.paths, origin{to, line}) // remove `seg` from paths
+		if debug {
+			trace.Debugf("K&P remove sub-optimal seg %v", origin{to, line})
+		}
+		delete(lines, line) // remove the superseded working state
 		delete(kp.seeds, origin{to, line})
 	}
 	kp.pathTable.SetPred(from, to, c.demerits, evalCost, line)
 	path.totalcost = evalCost
 	path.worstbadness = max(preSeg.worstbadness, c.badness)
-	kp.paths[origin{to, line}] = path
+	if lines == nil {
+		lines = make(map[lineNo]bookkeeping)
+		kp.paths[to] = lines
+	}
+	lines[line] = path
 	kp.seeds[origin{to, line}] = seed.segmentState()
-	tracer().Debugf(" paths:\n%s", pathsAsString(kp.paths))
-	tracer().Debugf("new segment %s ---(C:%d|L:%d)---> %s", from.String(), c.demerits,
-		line, to.String())
+	// Debugf cannot defer argument evaluation. In particular, sorting and
+	// formatting the entire state table must never happen with debug disabled.
+	if debug {
+		trace.Debugf(" paths:\n%s", pathsAsString(kp.paths))
+		trace.Debugf("new segment %s ---(C:%d|L:%d)---> %s", from.String(), c.demerits,
+			line, to.String())
+	}
 }
 
 // === Algorithms ============================================================
@@ -351,34 +381,36 @@ func (bc breakCandidate) lineCost() lineCost {
 // but still geometrically meaningful candidates.
 func (kp *linebreaker) evaluateCandidates(bp BreakRef, penalty khipu.Penalty) ([]lineEvaluation, bool) {
 	canReach := false
+	trace := tracer()
+	debug := trace.GetTraceLevel() >= tracing.LevelDebug
 	// find all paths ending at `bp`
 	var result []lineEvaluation
-	for st, path := range kp.paths { // TODO find a more efficient data-structure
-		if st.from == bp { // found a path ending in `to`
-			linelen := kp.layout.LineShape.LineLength(int32(st.line + 1))
-			segwss := path.effectiveWidth(kp.layout)
-			stsh := absD(linelen - segwss.W) // stretch or shrink of glue in line
-			tracer().Debugf("    +---%.2f--->    | %.2f", segwss.W.Points(), linelen.Points())
-			ev := lineEvaluation{
-				bp:          bp,
-				line:        st.line,
-				stretch:     stsh,
-				disposition: lineInfeasible,
-			}
-			if ratio, ok := calcAdjustmentRatio(segwss, linelen); ok {
-				canReach = true
-				ev.ratio = ratio
-				b, _ := calcBadness(segwss, linelen)
-				ev.badness = b
-				if b <= kp.badnessLimit() {
-					ev.disposition = lineAccepted
-					ev.demerits = calcDemerits(b, penalty, kp.params)
-				} else {
-					ev.disposition = lineScreenedOut
-				}
-			}
-			result = append(result, ev)
+	for line, path := range kp.paths[bp] {
+		linelen := kp.layout.LineShape.LineLength(int32(line + 1))
+		segwss := path.effectiveWidth(kp.layout)
+		stsh := absD(linelen - segwss.W) // stretch or shrink of glue in line
+		if debug {
+			trace.Debugf("    +---%.2f--->    | %.2f", segwss.W.Points(), linelen.Points())
 		}
+		ev := lineEvaluation{
+			bp:          bp,
+			line:        line,
+			stretch:     stsh,
+			disposition: lineInfeasible,
+		}
+		if ratio, ok := calcAdjustmentRatio(segwss, linelen); ok {
+			canReach = true
+			ev.ratio = ratio
+			b, _ := calcBadness(segwss, linelen)
+			ev.badness = b
+			if b <= kp.badnessLimit() {
+				ev.disposition = lineAccepted
+				ev.demerits = calcDemerits(b, penalty, kp.params)
+			} else {
+				ev.disposition = lineScreenedOut
+			}
+		}
+		result = append(result, ev)
 	}
 	return result, canReach
 }
@@ -452,7 +484,9 @@ func calcDemerits(badness merits, penalty khipu.Penalty, params *Parameters) mer
 	} else if p < 0 {
 		d -= p2
 	}
-	tracer().Debugf("    calculating demerits for p=%d, b=%d: d=%d", p, badness, d)
+	if trace := tracer(); trace.GetTraceLevel() >= tracing.LevelDebug {
+		trace.Debugf("    calculating demerits for p=%d, b=%d: d=%d", p, badness, d)
+	}
 	return d
 }
 
@@ -543,7 +577,9 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu) error {
 		return ErrNoBreakpoints
 	}
 	kp.end = PlainBreak(len(khipu.W) - 1)
+	trace := tracer()
 	for last := range len(khipu.W) {
+		debug := trace.GetTraceLevel() >= tracing.LevelDebug
 		k := khipu.KnotByIndex(last)
 		// Explicit markers can be inside an otherwise unbreakable textbox.
 		// Request them once when pass 2 reaches it, before evaluating variants.
@@ -554,15 +590,23 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu) error {
 			}
 			cacheDiscretionaryCandidates(khipu, last, cands)
 		}
-		tracer().Debugf("_______________ %d/%v ___________________", last, khipu.KnotByIndex(last))
+		if debug {
+			trace.Debugf("_______________ %d/%v ___________________", last, k)
+		}
 		assert(len(kp.horizon) > 0, "K&P: no more active breakpoints, but input available")
-		tracer().Debugf("horizon: %v", elements(kp.horizon))
+		if debug {
+			trace.Debugf("horizon: %v", elements(kp.horizon))
+		}
 		// --- main loop over active breakpoints in horizon ------------
 		horizon := slices.Collect(maps.Keys(kp.horizon))
 		slices.SortFunc(horizon, compareBreakRef)
-		tracer().Debugf("horizon: %v", horizon)
+		if debug {
+			trace.Debugf("horizon: %v", horizon)
+		}
 		for _, horiz_bp := range horizon { // loop over active feasible breakpoints of horizon
-			tracer().Debugf("   --- %s (in horizon) --> candidate %v", horiz_bp.String(), knotString(last, khipu))
+			if debug {
+				trace.Debugf("   --- %s (in horizon) --> candidate %v", horiz_bp.String(), knotString(last, khipu))
+			}
 			if horiz_bp.IsDiscretionary() && last <= horiz_bp.At {
 				// Discretionary breakpoints become active only after the scan has
 				// advanced past their source textbox. Until then they represent a
@@ -578,13 +622,17 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu) error {
 				discretionaryBreaks := kp.evaluateDiscretionaryCandidates(khipu, horiz_bp, last, last)
 				for _, cand := range discretionaryBreaks {
 					c := cand.lineCost()
-					tracer().Debugf("   check discretionary segm line-costs %s", c.String())
+					if debug {
+						trace.Debugf("   check discretionary segm line-costs %s", c.String())
+					}
 					kp.evalNewSegmentSeed(horiz_bp, cand.target, c.line+1, c.cost, cand.seed)
 					kp.horizon[cand.target] = struct{}{}
 				}
 			}
 			if k.Penalty >= InfinityDemerits { // merits prohibit break
-				tracer().Debugf("   --- break prohibited (p=%d)", k.Penalty)
+				if debug {
+					trace.Debugf("   --- break prohibited (p=%d)", k.Penalty)
+				}
 				continue
 			}
 			costPenalty := k.Penalty
@@ -609,14 +657,18 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu) error {
 				}
 				continue
 			}
-			tracer().Debugf("   %s reachable with evals=%v", knotInxStr(last), evals)
+			if debug {
+				trace.Debugf("   %s reachable with evals=%v", knotInxStr(last), evals)
+			}
 			if stillreachable { // yes, position may have been reached in this iteration
 				for _, ev := range evals {
 					if ev.disposition == lineInfeasible {
 						continue
 					}
 					c := ev.lineCost()
-					tracer().Debugf("   check reachable segm line-costs %s", c.String())
+					if debug {
+						trace.Debugf("   check reachable segm line-costs %s", c.String())
+					}
 					if kp.hyphenating && kp.wantsHyphenation(ev) {
 						if err := kp.requestPass2Discretionaries(khipu, last, ev); err != nil {
 							return err
@@ -628,7 +680,9 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu) error {
 							discretionaryBreaks := kp.evaluateDiscretionaryCandidates(khipu, horiz_bp, last, candidate)
 							for _, cand := range discretionaryBreaks {
 								c := cand.lineCost()
-								tracer().Debugf("   check requested discretionary segm line-costs %s", c.String())
+								if debug {
+									trace.Debugf("   check requested discretionary segm line-costs %s", c.String())
+								}
 								kp.evalNewSegmentSeed(horiz_bp, cand.target, c.line+1, c.cost, cand.seed)
 								kp.horizon[cand.target] = struct{}{}
 							}
@@ -650,7 +704,9 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu) error {
 							continue
 						}
 						c := ev.lineCost()
-						tracer().Infof("Overfull box at line %d, cost=%d", c.line+1, AwfulDemerits)
+						if trace.GetTraceLevel() >= tracing.LevelInfo {
+							trace.Infof("Overfull box at line %d, cost=%d", c.line+1, AwfulDemerits)
+						}
 						c.cost.demerits = AwfulDemerits
 						kp.evalNewSegment(horiz_bp, currentBreak, c.line+1, c.cost)
 						kp.horizon[currentBreak] = struct{}{}
@@ -670,10 +726,12 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu) error {
 			kp.horizon[forced] = struct{}{}
 		}
 	} // end of outer loop over input knots
-	tracer().Infof("Collected %d potential breakpoints for paragraph", len(kp.feasBP))
-	tracer().Infof("          %v", kp.feasBP)
-	tracer().Infof("          predecessors:\n%v", kp.String())
-	tracer().Infof("          paths:\n%s", pathsAsString(kp.paths))
+	if trace.GetTraceLevel() >= tracing.LevelInfo {
+		trace.Infof("Collected %d potential breakpoints for paragraph", len(kp.feasBP))
+		trace.Infof("          %v", kp.feasBP)
+		trace.Infof("          predecessors:\n%v", kp.String())
+		trace.Infof("          paths:\n%s", pathsAsString(kp.paths))
+	}
 	return nil
 }
 
@@ -684,13 +742,10 @@ func (kp *linebreaker) collectOptimalBreakRefs(end BreakRef) ([]BreakRef, pathQu
 	bestLine := lineNo(0)
 	bestQuality := pathQuality{}
 	found := false
-	for st, path := range kp.paths {
-		if st.from != end {
-			continue
-		}
+	for line, path := range kp.paths[end] {
 		if !found || path.totalcost < bestQuality.totalCost ||
-			(path.totalcost == bestQuality.totalCost && st.line < bestLine) {
-			bestLine = st.line
+			(path.totalcost == bestQuality.totalCost && line < bestLine) {
+			bestLine = line
 			bestQuality = pathQuality{
 				totalCost:    path.totalcost,
 				worstBadness: path.worstbadness,
