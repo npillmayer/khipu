@@ -27,6 +27,7 @@ func reportWorkMetrics(b *testing.B, kp *linebreaker) {
 	m := kp.metrics
 	b.ReportMetric(float64(m.peak), "peak-active-states")
 	b.ReportMetric(float64(m.ordinary), "ordinary-evals/op")
+	b.ReportMetric(float64(m.ordinaryReused), "ordinary-reused/op")
 	b.ReportMetric(float64(m.discretionary), "discretionary-evals/op")
 	b.ReportMetric(float64(m.ordinary+m.discretionary), "state-evals/op")
 }

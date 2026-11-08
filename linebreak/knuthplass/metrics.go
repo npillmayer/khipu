@@ -12,7 +12,10 @@ package knuthplass
 // Repeated boundary scoring counts again; each discretionary variant counts
 // once per evaluated origin. Provider requests, rejected preconditions, seed
 // replay knots, and fallback ranking are not additional classifications.
+// ordinaryReused counts classifications avoided by boundary-local cache hits;
+// it is not included in actual evaluation totals.
 type workMetrics struct {
 	live, peak              int
 	ordinary, discretionary uint64
+	ordinaryReused          uint64
 }

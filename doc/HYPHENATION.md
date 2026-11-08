@@ -205,7 +205,8 @@ font/scale/direction/script/language, and normalizes features covering the whole
 box to whole-fragment settings. Interior feature boundaries are rejected rather
 than guessed. Provider methods still lack a context parameter; internal shaping
 uses Background with cancellation/joining on failure, not caller cancellation.
-Successful nonempty results are cached. Empty/declined requests may be retried.
+Successful nonempty and empty/declined results are cached for owned encoded
+paragraphs. Errors remain retryable; see the ownership contract below.
 Cross-style/multi-box replacements and repeated breaks within one original box
 are not supported. Multiple markers currently supply alternative single splits.
 
@@ -396,10 +397,27 @@ spans must fit the KnotCore length field. Preparation validates UTF-8. Explicit 
 permits empty break material. A complete script-sensitive validity policy is
 still missing. Breakers should not impose Western character-count rules.
 
-The cache assumes stable base knots, shaping context, and variant identities
-within a paragraph instance. Nonempty results are reused; empty results are not
-currently negative-cached. Cache invalidation remains future work. Streaming
-explicit and automatic population is transactional across the full request batch.
+The cache assumes stable base knots, shaping context, variant identities, and
+collaborator policy within a paragraph instance. Parameters are snapshotted by
+the owner; retained service implementations must keep their policy stable.
+Use a new owner and encode again for a changed policy. Mutable-input invalidation
+remains future work. Streaming explicit and automatic population is transactional
+across the full request batch.
+
+Successful empty discovery is recorded in a private per-paragraph set keyed by
+knot index, separate from `DiscretionaryCandidates`. This distinguishes unqueried
+from successfully declined without adding empty entries to the public map. It
+also covers structural declines and alternatives filtered out during preparation.
+The marker is checked before source extraction, policy calls, or shaping, and
+survives breaker passes/reruns. Equal words at different knots and different
+paragraphs do not share results. Owner validation still precedes cache lookup.
+
+Errors at any stage are never cached. Disabled discovery, non-textbox requests,
+and ownerless/manual Khipus do not acquire negative-cache entries. A manually
+added candidate takes precedence and `AddDiscretionaryCandidate` removes an old
+empty marker. Releasing a Khipu clears the set. This is owner-provider caching,
+not a new obligation on arbitrary implementations of the breaker provider
+interfaces; the linebreakers' request/scoring loops remain unchanged.
 
 Manually supplied metric-only candidates remain usable by breaker fixtures but
 have no implicit source mapping. Owner-produced candidates retain owned glyphs, replacement strings, contexts

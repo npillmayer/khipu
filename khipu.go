@@ -62,6 +62,12 @@ type Khipu struct {
 
 	DiscretionaryCandidates map[int][]DiscretionaryCandidate
 	SelectedDiscretionaries map[int]DiscretionarySelection
+	// discretionaryEmpty records successful empty discovery by this paragraph's
+	// owner. It is separate from the public candidate map: absence there still
+	// means no alternatives, not necessarily that discovery has been attempted.
+	// Source, shaping context and collaborator policy must stay stable; re-encode
+	// with a new owner to use a changed policy. Errors never populate this set.
+	discretionaryEmpty map[int]struct{}
 }
 
 // allocKhipu assigns ownership at construction and reserves the known knot
@@ -104,6 +110,7 @@ func unwireKhipu(khipu *Khipu) *Khipu {
 	khipu.shaping = shapingArena{}
 	khipu.DiscretionaryCandidates = nil
 	khipu.SelectedDiscretionaries = nil
+	khipu.discretionaryEmpty = nil
 	return nil
 }
 

@@ -82,6 +82,16 @@ is followed by a fresh boundary snapshot, so newly discovered post-break lines
 can reach a forced boundary immediately. Retirement IDs use another scratch
 slice. No global pool or cross-paragraph sharing is used.
 
+At permitted pass-2 boundaries, `boundaryEvaluations` copies ordinary discovery
+results into separate reusable storage, indexed by full breakpoint and penalty.
+Commit reuses unchanged buckets rather than classifying them twice. A successful
+working-state insertion/replacement, width update, or retirement invalidates the
+entire affected bucket, including sibling line counts. Losing proposals do not.
+Thus new and replaced discretionary successors still receive current scoring.
+Accumulated predecessor costs are read live, not cached. Entries are scoped to
+one boundary, including error exits; pass 1 and forbidden boundaries allocate no
+cache. The existing stable-layout/parameter contract applies during a pass.
+
 `collectOptimalBreakRefs` chooses the cheapest state in the terminal bucket over line counts
 (preferring fewer lines on equal cost),
 follows direct `Pred` lookups back to the root, and reverses the sequence.

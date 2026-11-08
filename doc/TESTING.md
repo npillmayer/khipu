@@ -17,6 +17,19 @@ and a shared testing package remain proposals.
 
 ## Existing Guarantees and Evidence
 
+- `linebreak/knuthplass/evaluation_cache_test.go` checks boundary/penalty scoping,
+  scratch independence, zero warm allocations, invalidation on successful writes
+  (but not losing proposals), changed seeds/new line counts, forced-boundary
+  successors and error cleanup. Cached and uncached runs agree after every knot
+  on working tables, seeds, horizon, retirement and predecessor history, as well
+  as final paths/quality, across provider modes, variable shapes and forced or
+  overlong lines. Pass 1 allocates no evaluation cache.
+- `discretionary_cache_test.go` checks successful empty automatic/explicit and
+  filtered responses, paragraph/knot isolation, owner validation, manual
+  overrides, release, disabled/manual requests, and retry after policy,
+  validation or shaping failure. `TestEmptyDiscoveryCachePreservesPassWork`
+  checks cold-pass scoring/history counts against pre-cache baselines and warm
+  paragraph reuse without further policy calls or changes to the best path.
 - `linebreak/knuthplass/geometry_test.go` checks shared ordinary/discretionary
   classification at exact fit, shrink and tolerance boundaries, zero capacities
   and badness saturation, including overfull lines hidden by cubic rounding.
@@ -581,8 +594,8 @@ This is not the combined latency of the public first/second-pass pipeline.
 
 Additional metrics separate provider requests from actual hyphenator calls,
 and report historical discretionary predecessors alongside retained states, line
-count, cost and worst badness. Successful lookups are cached, but declined
-lookups currently are not: short words can cause repeated policy calls. Neither
+count, cost and worst badness. At this measurement stage, only nonempty lookups
+were cached: short words could cause repeated policy calls. Neither
 counter measures rescanned knots; use CPU profiling to attribute that work.
 Retained-state counts are final totals, distinct from the subsequently added
 `peak-active-states` metric. Custom metrics describe the last iteration rather
@@ -651,8 +664,8 @@ These are initial measurements, not an isolated speedup estimate: they combine
 retirement, geometric/pass-policy corrections, state-local rescue evaluation,
 and rescan-seed bookkeeping fixes. Earlier profile-enabled timings and current
 unprofiled timings also have different instrumentation. The bounded workload
-investigation below adds peak/evaluation counters. Empty hyphenator responses
-are still not cached.
+investigation below adds peak/evaluation counters. These measurements precede
+the successful-empty caching change recorded later in this document.
 
 ### Work Counters and Workload Matrix
 
@@ -665,8 +678,10 @@ before processing and include the initialized root in the live count.
   including newly inserted successors before retirement. Replacing a predecessor
   does not add a state. Historical predecessors and tombstones do not count.
 - `ordinary-evals/op`: ordinary local classifications, accepted or rejected.
-  Discovery screening and subsequent boundary scoring can evaluate a state twice;
-  both count because both incur work.
+  Discovery screening and subsequent boundary scoring used to evaluate unchanged
+  states twice; now only cache misses count as actual classifications.
+- `ordinary-reused/op`: classifications avoided through boundary-local reuse.
+  Added with the subsequent reuse change, not included in `state-evals/op`.
 - `discretionary-evals/op`: local classifications of individual variants for an
   origin. Invalid candidates, filtered origins and missing replay seeds do not
   reach classification and do not count. Rejected geometric fits do count.
@@ -757,9 +772,82 @@ includes much untimed encoding; within breaking, state insertion/history maps
 remain allocation sources. Process-wide percentages are attribution clues, not
 isolated speedup estimates or sums to add together.
 
-The bounded synthetic investigation is complete. Negative-result caching,
-evaluation reuse, real fonts/dictionaries and wider script coverage are separate
-follow-ups, not changes made by this instrumentation PR.
+The bounded synthetic investigation is complete. The next subsections record
+negative-result caching and evaluation reuse; real fonts/dictionaries and wider
+script coverage remain separate follow-ups.
+
+### Successful Empty Discovery Caching
+
+`Khipukamayuq` now remembers successful empty discovery on each owned encoded
+paragraph, without changing the public candidate map or breaker loops. Both
+explicit and automatic declines are cached, including filtered alternatives.
+Errors remain retryable; disabled discovery and ownerless/manual Khipus are not
+negative-cached. See [HYPHENATION.md](HYPHENATION.md#ownership-and-deferred-work)
+for the stable-policy lifetime contract and manual candidate precedence.
+
+Before/after measurements used the same 1,000-word/150 pt matrix cases, three
+single-iteration runs per case on Apple M1 / Go 1.25.6. Encoding and fixture
+setup remain untimed; each run starts with a cold paragraph. Times are medians
+with observed ranges, not latency guarantees. MB/op is cumulative allocation.
+
+| Provider | Before ms (range) | After ms (range) | Before/after MB/op | Before/after policy calls |
+| --- | ---: | ---: | ---: | ---: |
+| Empty | 573.0 (555.9-639.6) | 117.3 (101.5-246.7) | 275.3 / 27.8 | 183,440 / 999 |
+| Productive | 1,135.1 (1,118.5-1,203.7) | 869.7 (868.5-875.7) | 241.2 / 98.4 | 106,594 / 999 |
+
+One empty-provider timing was notably higher than the other two; the table
+retains that observation. Allocation and policy-call reductions are clearer
+evidence than a speedup ratio based on this small sample. Allocations fell from
+about 4.26 million to 32,550 per empty-provider run and from 2.51 million to
+77,710 per productive run.
+
+Provider requests remain 183,440/503,783, and classifications remain
+569,930/2,450,514 (empty/productive). Peak active states, predecessor counts,
+line counts, cost and worst badness also remain unchanged. The missing thousandth
+policy call simply means that one textbox is never requested by these workloads;
+there is no eager pass over all words. This PR removes repeated source/policy
+preparation, not repeated scoring. The separate second optimization is recorded
+below.
+
+```sh
+go test ./linebreak/knuthplass -run '^$' -bench '^BenchmarkRetirementWorkloads$/^1000$/^standard$/^(empty|productive)$' -benchtime=1x -count=3 -benchmem -timeout=60s
+```
+
+### Boundary-Local Ordinary Evaluation Reuse
+
+`boundaryEvaluations` shares local ordinary results between pass-2 discovery and
+commit at a single permitted boundary. A separate reusable value buffer avoids
+aliasing ordinary/discretionary scratch. Successful state insertion/replacement,
+width updates, and retirement invalidate the entire affected breakpoint bucket.
+Losing proposals do not. New line counts and changed discretionary seeds are
+therefore rescored; predecessor totals and terminal extras are still read/applied
+at commit. Normal and error exits end the scope. Pass 1 and forbidden boundaries
+do not allocate cache storage. Conservative invalidation can still cause repeat
+scoring; this is not a promise of one evaluation per state under all workloads.
+
+The same command above measured three before/after runs at 1,000 words/150 pt,
+with successful-empty caching enabled on both sides. Medians and ranges:
+
+| Provider | Before ms (range) | After ms (range) | Ordinary classifications before/after | Reused/op |
+| --- | ---: | ---: | ---: | ---: |
+| Empty | 94.8 (93.9-95.5) | 88.1 (85.4-88.9) | 569,930 / 284,965 | 284,965 |
+| Productive | 872.2 (871.1-877.4) | 844.1 (843.6-849.5) | 1,520,388 / 760,194 | 760,194 |
+
+Ordinary classifications halve in these workloads, but median runtime improves
+only about 7%/3%. Discovery, seed replay, updates, insertion/history and map
+traversal still cost time. Allocation remains approximately 27.9 MB/op for the
+empty case and grows from 98.4 to 98.8 MB/op for productive discovery because of
+the boundary cache's reusable storage. These are small-sample synthetic timings,
+not a general speedup guarantee.
+
+Discretionary classifications, provider/policy requests, peak working states,
+historical predecessors, selected line counts, costs and worst badness remain
+unchanged. `state-evals/op` reports actual work only; adding `ordinary-reused/op`
+recovers the former evaluation demand in the equivalence fixtures. The private
+disable switch exists only for diagnostic uncached comparisons, not as a public
+configuration option. Focused tests also check that warm cache storage incurs
+no allocations and that newly discovered or replaced successors can still reach
+the current forced boundary without stale classification or fallback.
 
 ## Validation and Next Work
 

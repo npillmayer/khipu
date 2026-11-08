@@ -29,6 +29,9 @@ type SourceSplit struct {
 // remain the responsibility of Khipukamayuq.
 // The params argument belongs to Khipukamayuq and must not be modified.
 // Implementations needing to retain parameters should copy the value.
+// Successful responses, including no alternatives, may be cached for the life
+// of an encoded paragraph. Keep policy behavior stable during that lifetime;
+// return an error for transient failures so later requests can retry.
 // Automatic streaming requests receive a local copy with Language, Script and
 // BidiDir taken from the textbox's retained shaping context. Returned fragments
 // must have valid interior SourceSplit positions; replacement lengths are never

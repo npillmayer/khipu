@@ -65,6 +65,7 @@ func (khipu *Khipu) AddDiscretionaryCandidate(index int, cand DiscretionaryCandi
 		khipu.DiscretionaryCandidates = make(map[int][]DiscretionaryCandidate)
 	}
 	khipu.DiscretionaryCandidates[index] = append(khipu.DiscretionaryCandidates[index], cand)
+	delete(khipu.discretionaryEmpty, index)
 	return true
 }
 
@@ -98,6 +99,12 @@ func (khipu *Khipu) SelectedDiscretionaryAt(breakpoint int) (DiscretionarySelect
 // for one textbox knot. If no candidates are cached yet, Khipukamayuq will
 // consult its Hyphenator, shape the returned fragments, and cache the resulting
 // discretionary candidates on the Khipu.
+// For owned, encoded paragraphs, successful empty results are also remembered,
+// including alternatives filtered out during preparation. Errors remain
+// retryable. Both caches live with the paragraph and are reused across breaker
+// passes/reruns, not shared across paragraphs or owners. Keep the source and
+// collaborator policy stable; changed policy requires a new owner/encoding.
+// Manually supplied candidates take precedence over an earlier empty result.
 // Streaming paragraphs support explicit U+00AD and automatic requests for one
 // complete eligible source segment, never metric-shaped substitutes.
 // Configure the owner as the linebreaker's provider to enable lazy discovery.
@@ -114,13 +121,25 @@ func (kq *Khipukamayuq) DiscretionaryCandidates(khp *Khipu, at int) ([]Discretio
 	if cands := khp.DiscretionariesAt(at); len(cands) > 0 {
 		return cands, nil
 	}
+	if _, empty := khp.discretionaryEmpty[at]; empty {
+		return nil, nil
+	}
 	if kq.env.hyphenator == nil {
 		return nil, nil
 	}
 	if khp.Kind[at] != KTTextBox {
 		return nil, nil
 	}
-	return kq.streamingDiscretionaryCandidates(khp, at)
+	cands, err := kq.streamingDiscretionaryCandidates(khp, at)
+	// Ownerless/manual Khipus may be queried through different providers. Do
+	// not let one provider's refusal suppress a future provider's discovery.
+	if err == nil && len(cands) == 0 && khp.owner == kq && khp.paragraph != nil {
+		if khp.discretionaryEmpty == nil {
+			khp.discretionaryEmpty = make(map[int]struct{})
+		}
+		khp.discretionaryEmpty[at] = struct{}{}
+	}
+	return cands, err
 }
 
 // discretionaryPenalty resolves the effective penalty of a discretionary

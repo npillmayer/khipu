@@ -41,6 +41,7 @@ type linebreaker struct {
 	discretionaryScratch []breakCandidate
 	horizonScratch       []BreakRef
 	retirementScratch    []origin
+	boundaryEvals        boundaryEvaluations
 }
 
 func pathsAsString(paths map[BreakRef]map[lineNo]bookkeeping) string {
@@ -202,6 +203,7 @@ func (kp *linebreaker) updatePath(bp BreakRef, idx kinx, k khipu.KnotCore) {
 	if bp.IsDiscretionary() && idx <= bp.At {
 		return
 	}
+	kp.boundaryEvals.invalidate(bp)
 	wss := WSS{}.SetFromKnot(k) // get dimensions of knot
 	cls := classifyLineItem(k)  // classify for line-edge trimming
 	trace := tracer()
@@ -292,6 +294,7 @@ func (kp *linebreaker) evalNewSegmentSeed(from, to BreakRef, line lineNo, c cost
 		kp.paths[to] = lines
 	}
 	lines[line] = path
+	kp.boundaryEvals.invalidate(to)
 	if kp.metrics != nil && !ok {
 		kp.metrics.live++
 		kp.metrics.peak = max(kp.metrics.peak, kp.metrics.live)
@@ -410,7 +413,15 @@ func (bc breakCandidate) lineCost() lineCost {
 // The returned slice borrows breaker-owned storage until the next call to
 // evaluateCandidates. Scoring completes before callers mutate path state;
 // discretionary evaluation uses separate storage and does not invalidate it.
+// During a boundary transaction, unchanged buckets reuse their local results.
+// Both normal scratch and cached results are read-only to callers.
 func (kp *linebreaker) evaluateCandidates(bp BreakRef, penalty khipu.Penalty) []lineEvaluation {
+	if cached, ok := kp.boundaryEvals.get(bp, penalty); ok {
+		if kp.metrics != nil {
+			kp.metrics.ordinaryReused += uint64(len(cached))
+		}
+		return cached
+	}
 	trace := tracer()
 	debug := trace.GetTraceLevel() >= tracing.LevelDebug
 	// find all paths ending at `bp`
@@ -432,6 +443,7 @@ func (kp *linebreaker) evaluateCandidates(bp BreakRef, penalty khipu.Penalty) []
 		result = append(result, ev)
 	}
 	kp.evaluationScratch = result
+	kp.boundaryEvals.put(bp, penalty, result)
 	return result
 }
 

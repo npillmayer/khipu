@@ -23,6 +23,9 @@ type Config struct {
 	// Hyphenator supplies lazy discretionary alternatives. Nil disables discovery;
 	// candidates already cached on a Khipu remain available.
 	// The supplied instance is retained, not copied.
+	// Keep its policy stable while encoded paragraphs are in use: both positive
+	// and successful empty discovery results are cached for each paragraph.
+	// To change policy, create a new owner and encode again.
 	Hyphenator Hyphenator
 
 	// Params is copied at construction. Later changes to the caller's value do

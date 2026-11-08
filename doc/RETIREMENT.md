@@ -430,9 +430,16 @@ The 45-case workload matrix covers three paragraph sizes, narrow/standard/wide
 and alternating shapes, internal forced breaks, and disabled/empty/productive
 hyphenation. Three repeats per case and representative CPU/allocation profiles
 are recorded in [TESTING.md](TESTING.md#work-counters-and-workload-matrix).
-The evidence identifies repeated empty discovery and duplicate ordinary scoring
-as follow-ups. Neither is changed here. Font-backed/script-specific profiling
-remains future work; terminal retained-state counts are not peak activity.
+The evidence identified repeated empty discovery and duplicate ordinary scoring
+as follow-ups. Successful empty discovery is now cached by the paragraph owner;
+see [TESTING.md](TESTING.md#successful-empty-discovery-caching) for isolated
+before/after measurements. Boundary-local ordinary evaluation reuse is also
+implemented: discovery results are reused only for unchanged breakpoint buckets.
+Successful working-state writes invalidate the target bucket; new/replaced
+successors are rescored before retirement or fallback. Tests compare cached and
+uncached working tables/history after every knot and the final selected path.
+Font-backed/script-specific profiling remains future work; terminal
+retained-state counts are not peak activity.
 
 ## Out of Scope
 

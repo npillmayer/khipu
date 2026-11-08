@@ -2,6 +2,7 @@ package knuthplass
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/npillmayer/khipu"
@@ -15,6 +16,67 @@ type decliningHyphenator struct{ calls int }
 func (h *decliningHyphenator) Discretionaries(string, *khipu.Params) ([]khipu.HyphenationFragment, error) {
 	h.calls++
 	return nil, nil
+}
+
+// Baselines were captured before empty-result caching. Policy calls may fall,
+// but discovery requests, scoring demands, history and final decisions must not.
+// Boundary reuse may now satisfy an ordinary demand without a classification.
+func TestEmptyDiscoveryCachePreservesPassWork(t *testing.T) {
+	for _, tc := range []struct {
+		mode                         string
+		ordinary, discretionary      uint64
+		peak, predecessors, requests int
+		quality                      pathQuality
+	}{
+		{"empty", 1230, 0, 33, 129, 390, pathQuality{-2770, 43}},
+		{"productive", 2828, 1695, 74, 284, 929, pathQuality{-5451, 21}},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			empty, productive := &decliningHyphenator{}, &loremHyphenator{}
+			config := khipu.Config{Hyphenator: empty}
+			if tc.mode == "productive" {
+				config.Hyphenator = productive
+			}
+			owner := khipu.NewKhipukamayuq(config)
+			khp, err := owner.EncodeParagraph(t.Context(), loremParagraph(t, 50))
+			if err != nil {
+				t.Fatal(err)
+			}
+			provider := &countingLoremProvider{owner: owner}
+			params := NewKPDefaultParameters()
+			params.DiscretionaryProvider = provider
+			var first []BreakRef
+			var preds map[pathState]predecessor
+			calls := 0
+			for run := range 2 {
+				kp, err := prepareLineBreaker(DefaultLayout(linebreak.RectangularParShape(150*dimen.PT)), params)
+				if err != nil {
+					t.Fatal(err)
+				}
+				kp.final, kp.hyphenating = true, true
+				enableWorkMetrics(kp)
+				if err := kp.constructBreakpointGraph(khp); err != nil {
+					t.Fatal(err)
+				}
+				breaks, quality, ok := kp.collectOptimalBreakRefs(kp.end)
+				if !ok || len(breaks) != 12 || quality != tc.quality {
+					t.Fatalf("changed best path: %v %+v", breaks, quality)
+				}
+				if run == 0 {
+					if kp.metrics.ordinary+kp.metrics.ordinaryReused != tc.ordinary || kp.metrics.discretionary != tc.discretionary || kp.metrics.peak != tc.peak || len(kp.preds) != tc.predecessors || provider.requests != tc.requests {
+						t.Fatalf("cold-pass work changed: %+v preds=%d requests=%d", kp.metrics, len(kp.preds), provider.requests)
+					}
+					first, preds = breaks, kp.preds
+					calls = empty.calls + productive.calls
+					if calls == 0 || calls > 50 {
+						t.Fatalf("expected at most one policy call per textbox, got %d", calls)
+					}
+				} else if empty.calls+productive.calls != calls || !reflect.DeepEqual(first, breaks) || !reflect.DeepEqual(preds, kp.preds) {
+					t.Fatal("warm paragraph queried policy again or changed paths/history")
+				}
+			}
+		})
+	}
 }
 
 // BenchmarkRetirementWorkloads compares one final pass for every case, not the

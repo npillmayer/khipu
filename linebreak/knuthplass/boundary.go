@@ -34,6 +34,12 @@ func (kp *linebreaker) processKnot(khp *khipu.Khipu, last kinx) (bool, error) {
 	for _, from := range horizon {
 		kp.updatePath(from, last, k)
 	}
+	// Scope reuse to this boundary, including error exits. Pass 1 and forbidden
+	// boundaries have no duplicate ordinary scoring and need no cache storage.
+	if kp.hyphenating && k.Penalty < InfinityDemerits {
+		kp.boundaryEvals.begin()
+		defer kp.boundaryEvals.end()
+	}
 	for _, from := range horizon {
 		if from.IsDiscretionary() && last <= from.At {
 			continue
@@ -125,6 +131,7 @@ func (kp *linebreaker) activateDiscretionary(from BreakRef, cand breakCandidate)
 // by descendants and the collector. Tombstones also cover root/forced-barrier
 // retirement, preventing a later retroactive discovery from reviving the state.
 func (kp *linebreaker) retireState(o origin) {
+	kp.boundaryEvals.invalidate(o.from)
 	if kp.metrics != nil {
 		if _, live := kp.paths[o.from][o.line]; live {
 			kp.metrics.live--
