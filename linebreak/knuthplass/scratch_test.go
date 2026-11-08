@@ -37,33 +37,33 @@ func scratchFixture() (*linebreaker, *khipu.Khipu, BreakRef) {
 
 func TestEvaluationScratchReuseAndGrowth(t *testing.T) {
 	kp, _, from := scratchFixture()
-	first, _ := kp.evaluateCandidates(from, 50)
+	first := kp.evaluateCandidates(from, 50)
 	base := &first[0]
 	delete(kp.paths[from], 2)
-	got, _ := kp.evaluateCandidates(from, 0)
+	got := kp.evaluateCandidates(from, 0)
 	if len(got) != 1 || &got[0] != base || got[0].demerits != calcDemerits(got[0].badness, 0, kp.params) {
 		t.Fatalf("buffer not reused or stale results returned: %v", got)
 	}
 	capacity := cap(got)
-	if empty, reachable := kp.evaluateCandidates(PlainBreak(99), 0); len(empty) != 0 || reachable || cap(kp.evaluationScratch) != capacity {
+	if empty := kp.evaluateCandidates(PlainBreak(99), 0); len(empty) != 0 || cap(kp.evaluationScratch) != capacity {
 		t.Fatal("empty evaluation lost capacity or returned stale results")
 	}
 	for line := 1; line <= capacity+1; line++ {
 		kp.paths[from][lineNo(line)] = kp.paths[from][1]
 	}
-	large, _ := kp.evaluateCandidates(from, 0)
+	large := kp.evaluateCandidates(from, 0)
 	if len(large) != capacity+1 || cap(large) <= capacity {
 		t.Fatal("buffer did not grow for a larger bucket")
 	}
 	base = &large[0]
 	clear(kp.paths[from])
 	kp.paths[from][1] = bookkeeping{}
-	small, _ := kp.evaluateCandidates(from, 0)
+	small := kp.evaluateCandidates(from, 0)
 	if len(small) != 1 || &small[0] != base {
 		t.Fatal("grown buffer was not reused")
 	}
 	other, _, otherFrom := scratchFixture()
-	independent, _ := other.evaluateCandidates(otherFrom, 0)
+	independent := other.evaluateCandidates(otherFrom, 0)
 	if &independent[0] == base {
 		t.Fatal("breakers share scratch storage")
 	}
@@ -73,7 +73,7 @@ func TestPass2ScratchBuffersStayIndependent(t *testing.T) {
 	kp, khp, from := scratchFixture()
 	horizon := kp.snapshotHorizon()
 	wantHorizon := slices.Clone(horizon)
-	evals, _ := kp.evaluateCandidates(from, 0)
+	evals := kp.evaluateCandidates(from, 0)
 	wantEvals := slices.Clone(evals)
 	var first *breakCandidate
 	for _, ev := range evals {

@@ -757,20 +757,23 @@ defaults. There is no metric-only encoding path. See
 
 Known deviations from this design in `linebreak/knuthplass`:
 
-- **Infeasible lines are not deactivated.** `calcAdjustmentRatio` accepts
-  ratios below −1; the badness is capped at 10000 and the active breakpoint is
-  kept. With a tolerance of 10000 or more, overfull lines are accepted as merely
-  bad.
-- **Lines without stretch are infeasible** rather than having badness
-  `inf_bad`.
-- **The second pass is only triggered** when the first pass's best path is an
-  overfull fallback.
+- **Geometric screening and retirement are implemented.** Ordinary and
+  discretionary candidates with `MinW > target` are rejected independently of
+  tolerance. Overfull working states are retired after discretionary rescue;
+  short zero-stretch lines have badness `inf_bad` and stay active. Negative
+  original/cached minimum widths or unsafe sums disable early pruning. Lazy
+  provider fragments must obey nonnegative and safe-accumulation bounds; see
+  [RETIREMENT.md](RETIREMENT.md).
+- **Pass failure is normal control flow.** No acceptable first-pass path starts
+  a fresh second pass. Forced boundaries also enforce the active tolerance.
 - **No emergency pass.** `EmergencyStretch` is retained for the final pass
   designed above, but is still unused. Its
   defaults also differ: 20 bp in `NewKPDefaultParameters`, 50 bp in
   `DefaultParameters` (plain TeX uses 0, i.e. off).
-- **Fallbacks are not restricted to the final pass.** Every pass may produce
-  overfull fallback lines.
+- **Fallbacks are final-pass-only.** Pass 2 is currently final, regardless of
+  `EmergencyStretch`, until an emergency pass exists. Fallbacks are selected
+  deterministically before their source is deleted. Newly discovered post-break
+  remainders are evaluated through the same forced boundary before retirement.
 - The unused `DoubleHyphenDemerits` and `HyphenPenalty` fields and their defaults
   have been removed from `Parameters`. Consecutive-discretionary demerits remain
   deferred. The effective hyphen penalty comes from a nonzero penalty on the
@@ -780,7 +783,9 @@ Known deviations from this design in `linebreak/knuthplass`:
   width updates and ordinary/discretionary scoring visit only the requested
   breakpoint's bucket. Ordinary/discretionary evaluation results and sorted
   horizon snapshots reuse separate per-breaker scratch buffers. Retired working
-  states are still retained, and active-set growth remains an optimization target.
+  states and seeds are deleted; predecessor history and retirement tombstones
+  remain. Rescue scoring is state-local. Widening line-count bands and historical
+  storage remain optimization targets.
   Expensive debug arguments and final info dumps are now guarded
   before formatting; full debug tracing remains intentionally expensive.
   Separate encoding/breaking/first-pass benchmarks and initial measurements

@@ -20,15 +20,15 @@ func (alternatingIndexShape) LineLength(line int32) dimen.DU {
 }
 
 func TestIndexedCorpusBaseline(t *testing.T) {
-	// Captured with the original flat map, before changing the representation.
+	// Breaks and quality were captured with the original flat map. Retirement
+	// and forced-boundary screening now remove dead work, not reconstruction.
 	for _, tc := range []struct {
 		shape   khipu.LineShape
 		breaks  []kinx
 		quality pathQuality
-		preds   int
 	}{
-		{linebreak.RectangularParShape(150 * dimen.PT), []kinx{9, 13, 23, 33, 41, 49, 57, 65, 75, 85, 91, 100}, pathQuality{-2770, 43}, 106},
-		{alternatingIndexShape{}, []kinx{7, 11, 21, 25, 35, 41, 49, 55, 63, 71, 81, 87, 97, 100}, pathQuality{-5930, 47}, 130},
+		{linebreak.RectangularParShape(150 * dimen.PT), []kinx{9, 13, 23, 33, 41, 49, 57, 65, 75, 85, 91, 100}, pathQuality{-2770, 43}},
+		{alternatingIndexShape{}, []kinx{7, 11, 21, 25, 35, 41, 49, 55, 63, 71, 81, 87, 97, 100}, pathQuality{-5930, 47}},
 	} {
 		khp, err := khipu.NewKhipukamayuq(khipu.Config{}).EncodeParagraph(t.Context(), loremParagraph(t, 50))
 		if err != nil {
@@ -42,15 +42,15 @@ func TestIndexedCorpusBaseline(t *testing.T) {
 			t.Fatal(err)
 		}
 		breaks, quality, ok := kp.collectOptimalBreakRefs(kp.end)
-		if !ok || !slices.Equal(projectBreakRefs(breaks), tc.breaks) || quality != tc.quality || len(kp.preds) != tc.preds {
+		if !ok || !slices.Equal(projectBreakRefs(breaks), tc.breaks) || quality != tc.quality {
 			t.Fatalf("shape %T: breaks=%v quality=%+v ok=%v preds=%d", tc.shape, breaks, quality, ok, len(kp.preds))
 		}
 		retained := 0
 		for _, lines := range kp.paths {
 			retained += len(lines)
 		}
-		if len(kp.horizon) != 1 || retained != tc.preds+1 || len(kp.seeds) != retained {
-			t.Fatal("forced-boundary retirement changed retained working states or seeds")
+		if len(kp.horizon) != 1 || len(kp.paths) != 1 || retained != len(kp.paths[kp.end]) || len(kp.seeds) != retained || len(kp.retired) == 0 || len(kp.preds) <= retained {
+			t.Fatal("forced boundary must retain only terminal work, but preserve predecessor history")
 		}
 	}
 }
@@ -83,8 +83,8 @@ func TestIndexedUpdatesAndScoringStayWithinBreakpoint(t *testing.T) {
 			}
 		}
 	}
-	evals, reachable := kp.evaluateCandidates(target, 0)
-	if !reachable || len(evals) != 2 {
+	evals := kp.evaluateCandidates(target, 0)
+	if len(evals) != 2 {
 		t.Fatalf("unexpected evaluations %v", evals)
 	}
 	seen := make(map[lineNo]bool)
@@ -98,7 +98,7 @@ func TestIndexedUpdatesAndScoringStayWithinBreakpoint(t *testing.T) {
 	}
 	missing := PlainBreak(99)
 	kp.updatePath(missing, 100, knot)
-	if evals, reachable := kp.evaluateCandidates(missing, 0); reachable || len(evals) != 0 {
+	if evals := kp.evaluateCandidates(missing, 0); len(evals) != 0 {
 		t.Fatalf("missing bucket produced evaluations: %v", evals)
 	}
 	if _, exists := kp.paths[missing]; exists {

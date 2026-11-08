@@ -1,6 +1,8 @@
 # Retiring Active States in Knuth-Plass
 
-Diagnosis and plan, November 8, 2026, based on commit `a958c83`. This concerns
+Original diagnosis, November 8, 2026, based on commit `a958c83`; implementation
+sequence revised after review. The diagnosis below records the pre-change
+behavior, not a promise to preserve it. This concerns
 `linebreak/knuthplass`. The design it implements is described in
 [khipu-algorithm.md](khipu-algorithm.md#knuth-plass); see also [KP.md](KP.md).
 
@@ -95,6 +97,12 @@ breakpoint. Each time, `evaluateDiscretionaryCandidates` rescans knots from the
 state's seed (`appendActualKnots`). Discretionary candidates are cached, but the
 rescans are not.
 
+The subsequently added `BenchmarkSecondPassHyphenatingLorem` confirms this
+workload: the 250-word case took about 17 seconds, and the combined profile
+attributed about 85.5% of sampled CPU time cumulatively to `appendActualKnots`.
+See [TESTING.md](TESTING.md#hyphenating-second-pass) for the measured baseline,
+including repeated policy calls for uncached empty hyphenator responses.
+
 ### Problem 2: Short Lines Without Stretch Are Retired
 
 A line ending at a breakpoint has its trailing space trimmed, so a line holding
@@ -164,8 +172,8 @@ Consider a retired state `(S, l)`, overfull at `E`. For any later breakpoint
   - Content and neutral knots add their `MinW`.
   - A discardable knot is first held in the trailing trim, which is subtracted
     again. When content follows, it is counted with its `MinW`.
-  - The leading trim is fixed once content has been seen. Before that, the
-    line contains no content and cannot be overfull unless the skips alone are.
+  - The leading trim is fixed once content has been seen. Before that,
+    retained neutral material and side skips can still contribute width.
   - Side skips are the same for every line.
 
   So `w.Min` at `E'` is at least `w.Min` at `E`, as long as every knot has
@@ -174,16 +182,29 @@ Consider a retired state `(S, l)`, overfull at `E`. For any later breakpoint
 Hence the line from `S` to any `E' > E` is overfull too, and so is every
 discretionary line from `S` that contains all material up to `E` (see below).
 
-**Precondition: `MinW ≥ 0`.** Encoded paragraphs satisfy it: textbox widths are
-nonnegative and fixed, glue shrink is at most 100%. Manually constructed or
-user-defined knots, or a configured `ParFillSkip`, could violate it. The final
-trailer is irrelevant, since it is a forced break and ends the scan. The
-breaker checks the precondition once per pass and disables early retirement for
-paragraphs that violate it, keeping today's behavior for them.
+**Precondition: `MinW ≥ 0`.** Ordinary encoded textboxes have nonnegative fixed
+widths and glue shrink is at most 100%. Check the complete original sequence,
+including the final trailer: a negative trailer could rescue a line retired
+earlier. Negative-width input disables early retirement, not the new scoring
+rules; identical historical break choices are not guaranteed.
+
+The proof also needs nonnegative discretionary fragments. Cached negative
+PreBreak/PostBreak minima disable pruning before scanning. Lazy providers must
+return nonnegative minima; a violation returns `ErrIllegalArguments`, not a
+fallback. Discovering a negative fragment after deleting states is too late to
+disable retirement safely.
+
+The original minimum sum is accumulated in int64. A sum exceeding int32 range
+disables pruning. In a pruning pass each fragment minimum must fit half of the
+remaining int32 headroom, leaving room for both a post-break seed and pre-break
+prefix. Cached fragments outside this conservative bound disable pruning;
+lazy violations return `ErrIllegalArguments`. Natural/max-width fill saturation
+is unchanged; these guards concern the minimum-width monotonicity proof.
 
 ### Discretionary Lookup
 
-- **Pass 1** has no discretionaries. Retirement is unconditionally safe.
+- **Pass 1** has no discretionaries. Retirement is safe under the width
+  precondition above.
 - **Explicit soft hyphens** are evaluated when the scan reaches their box
   (`evaluateDiscretionaryCandidates(horiz_bp, last, last)`). An origin retired
   at a breakpoint before that box is already overfull without the box, so it
@@ -209,6 +230,15 @@ One limitation remains and is not caused by retirement: if several boxes lie
 between two permitted breakpoints, only the last one is considered by the
 tight-line lookup. Retirement makes this final for the retired state.
 
+**Forced-boundary rescue needs its own handling.** For a single long textbox
+followed immediately by the terminal fill, `previousContentBox` stops at that
+non-discardable fill. Locate the textbox without globally changing discardable
+semantics. A discretionary discovered at the forced boundary also creates a
+successor outside the current horizon snapshot. Evaluate its already-consumed
+post-break remainder through the forced boundary before clearing earlier
+origins. Test this without an intervening ordinary space and with internal
+forced boundaries, not only at paragraph end.
+
 ### Retroactive Discretionary Targets
 
 Pass-2 lookup can create states at discretionary breakpoints inside a box the
@@ -220,7 +250,10 @@ to it, the new state would be overfull as well.
 Today `evalNewSegmentSeed` asserts that a state exists whenever the predecessor
 table has an entry for it. That assertion would fire for a retired state.
 Retired states are therefore recorded (a `retired` set of origins), and
-`evalNewSegmentSeed` ignores transitions to them instead of asserting.
+`evalNewSegmentSeed` ignores transitions to them instead of asserting. Insertion
+must report whether the target has a live working state; callers must not add
+rejected targets to the horizon unconditionally. A cheaper rejected transition
+must not rewrite predecessor history already used by descendants.
 
 This case is rare (it needs two lookups targeting the same box from different
 origins, with a retirement in between), but it must not panic.
@@ -239,13 +272,22 @@ guarantee comes from the final-pass rule of the design document instead:
   outcome does not depend on the order of the snapshot.
 - If after this step the horizon would be empty and `E` was not reached by any
   transition:
-  - in the **final pass**, the retired state with the lowest total cost (ties
+  - in the **final pass**, the eligible source with the lowest complete
+    fallback transition cost (including terminal hyphen extras; ties
     by `compareBreakRef`, then by line count) is connected to `E` with
     `AwfulDemerits` as an overfull line, and `E` becomes active;
   - in **other passes**, the pass fails without a path.
-- At a **forced** breakpoint, lines from active states are accepted whatever
-  their badness, as today. If no active state remains, the same fallback rule
-  applies. A non-final pass fails.
+- At a **forced** breakpoint, acceptable lines reach it normally. If none
+  reaches it, the final pass may create an over-/underfull fallback; a non-final
+  pass fails. Unlike today's unconditional forced acceptance, this honors the
+  pass tolerance and follows the design document.
+
+Choose and insert a fallback before deleting its source, or retain the source's
+cost/quality explicitly: current insertion reads `kp.paths[from][line-1]`.
+When negative widths disable retirement, fallback eligibility must not depend
+on entries actually being deleted. Keep historical predecessors and terminal
+working states required for collection. Deferred work must store values/IDs,
+not borrowed evaluation slices that subsequent scoring calls overwrite.
 
 This replaces both the `len(kp.horizon) <= 1` drain check and the connection
 of infeasible states at forced breaks.
@@ -256,83 +298,131 @@ starts pass 2. The current check for an overfull pass-1 result
 (`totalCost >= AwfulDemerits`) is no longer needed, because pass 1 cannot
 create fallback lines.
 
+Exhausting a non-final pass is a normal no-solution outcome (`ok=false`), not
+an error that causes `BreakParagraph` to return before attempting pass 2.
+Provider/input errors must still propagate without being mistaken for a retry.
+
 
 ## Plan
 
-Each step should leave the test suite passing.
+Use three controlled changes. Tests and their implementation land together;
+do not leave failing characterization tests in an otherwise finished change.
 
-### Step 1: Characterization Tests
+### Change 1: Shared Classification and Focused Tests
 
-Add failing tests first:
+- Share local geometry and tolerance screening between ordinary and
+  discretionary candidates. Keep penalty/first-line extras in their existing
+  ranking paths.
+- `lineOverfull` means `w.Min > t`, independently of tolerance. Its badness is
+  10000 and its signed ratio is below -1, or negative infinity without shrink.
+- Short lines without stretch have positive infinite ratio and badness 10000;
+  they are screened out unless the tolerance admits that badness. Exact fit
+  needs no elasticity, and `r = -1` remains geometrically feasible.
+- Cover exact fit, both sides of the shrink limit, finite stretch, zero
+  capacities, badness saturation and tolerance boundaries. Test the same
+  geometry through ordinary and discretionary scoring, including `r = -1.1`
+  at tolerance 200: neither path may accept it.
+- Do not enable early retirement in this change. Temporarily retain the old
+  ratio-availability signal for horizon/fallback control and lazy lookup.
+  Thus zero-capacity end-to-end behavior and forced-break acceptance remain
+  pending even though local classification is corrected. This compatibility
+  bridge is explicitly removed in change 2, not used as a retirement criterion.
 
-1. **Short lines without stretch** (Problem 2): `"aaa bbb ccc ddd"` at 200 pt
-   with zero side skips yields `[7]`.
-2. **Bounded horizon** (Problem 1): after scanning a prefix of the lorem corpus,
-   every active state satisfies `w.Min ≤ t`, and the number of active
-   breakpoints stays bounded by the number of breakpoints fitting into one
-   line (independent of paragraph length).
-3. **Tight-line hyphenation without shrink** (Problem 3): a single long word
-   overflowing its line with zero side skips is hyphenated in pass 2 when the
-   hyphenator offers a fitting variant.
-4. **Final-pass fallback**: a paragraph with an unbreakable overlong word
-   - yields one overfull line in pass 2,
-   - makes a stand-alone pass 1 (`breakParagraphPassRefs(…, false)`) fail.
-5. **Forced breaks**: a forced break after an overlong word is reached in the
-   final pass, and the result is independent of map iteration order (repeat
-   the run several times).
-6. **Precondition**: a manually constructed khipu with a negative-`MinW` kern
-   breaks exactly as before.
+### Change 2: Boundary Processing, Retirement and Pass Control
 
-### Step 2: Line Dispositions
+Implement these together: deleting states independently of fallback and pass
+control can drain the horizon, lose valid rescue transitions, or trigger asserts.
 
-Replace `lineInfeasible` by an explicit geometric classification:
+- Evaluate the horizon snapshot, perform tight-line rescue, and stage
+  retirements. Handle newly discovered discretionary successors at forced
+  boundaries before deciding whether the boundary is reachable.
+- Apply the width precondition and provider contract. Delete overfull working
+  states/seeds only after rescue/fallback decisions; preserve predecessors.
+  Remove a breakpoint from the horizon only when no live states remain.
+- Prevent resurrection through the insertion result contract. Keep fallback
+  source data available, and rank fallback transitions deterministically.
+- Replace `canReach` and ratio-availability gates with geometric disposition.
+  A zero-shrink overfull line must get its rescue opportunity; a zero-stretch
+  short line must stay active. Remove the old drain check.
+- Add the final-pass flag and normal no-solution outcome. Enforce tolerance
+  at forced boundaries in non-final passes; reserve fallback for the final
+  pass. Keep pass 2 final until the emergency pass exists.
 
-- `lineOverfull`: `w.Min > t`. Ratio is reported as below −1 (or −∞ without
-  shrink), badness 10000.
-- `lineScreenedOut`, `lineAccepted`: as now. A short line without stretch has
-  badness 10000 and is screened out unless the tolerance admits it.
+Required integration cases include:
 
-`evaluateCandidates` returns the evaluations only; the `canReach` result goes
-away. `wantsHyphenation` and `hyphenationCandidateForPass2` treat
-`lineOverfull` as a tight line.
+1. `"aaa bbb ccc ddd"` at 200 pt and zero side skips yields `[7]`.
+2. A single overlong word immediately followed by terminal fill is rescued
+   by a fitting discretionary in pass 2; its successor reaches the terminus.
+3. An unbreakable overlong word fails pass 1 normally and yields a final-pass
+   fallback. An underfull forced line above tolerance likewise fails pass 1.
+4. Mixed live/dead line counts at one breakpoint, varying line shapes,
+   reconstruction through retired predecessors, and rejected resurrection.
+5. Internal forced boundaries, multiple fallbacks, canonical ties and terminal
+   hyphen extras; no dependency on map iteration order.
+6. Negative original widths, including a rescuing negative trailer, opt out of
+   pruning. Cached and lazy fragments obey the chosen width-safety contract.
 
-### Step 3: Retirement of States
+### Change 3: Regression and Performance Verification
 
-- After the evaluations for `E` (and, in pass 2, the tight-line lookup for
-  overfull states), collect overfull states.
-- After processing the whole horizon snapshot for `E`, delete each collected
-  state from `kp.paths` and `kp.seeds`, add it to the `retired` set, and remove
-  breakpoints without remaining states from the horizon.
-- `evalNewSegmentSeed` ignores transitions to retired states.
-- Check the `MinW ≥ 0` precondition once per pass; without it, skip retirement.
+- Reuse ordinary and `BenchmarkSecondPassHyphenatingLorem` benchmarks. Add
+  precisely defined peak active-state and state-evaluation counts; final
+  retained-state totals do not establish pruning effectiveness.
+- For the fixed-width lorem workload, examine mature states after complete
+  permitted-boundary processing, not mid-update or future lookahead targets.
+  Compare against an unpruned reference with the same scoring rules.
+- The observed roughly 270 potentially live states out of 27,000 is a baseline
+  estimate, not a general bound for arbitrary shapes or discretionaries.
+- Update tests that explicitly assert dead working-state retention. Preserve
+  path validity and canonical choices; document intended changes caused by
+  rejecting overfull candidates and correcting pass/fallback policy.
+- Update [KP.md](KP.md), [TESTING.md](TESTING.md), and only the final
+  implementation-status section of [khipu-algorithm.md](khipu-algorithm.md).
 
-### Step 4: Final-Pass Fallback
 
-- Add a `final` flag to the breaker, set by the pass control.
-- Implement the fallback rule described above, using the states retired at
-  `E`.
-- Remove the `len(kp.horizon) <= 1` drain check and the connection of
-  infeasible states at forced breaks.
+## Implementation Status
 
-### Step 5: Pass Control
+Change 1 is implemented: `geometry.go` provides shared classification used by
+ordinary and discretionary scoring. `geometry_test.go` checks the same width
+triples through both paths, including seed replay and lookahead, pass thresholds,
+zero capacities, and excessive shrink hidden by cubic rounding. Ranking still
+uses the existing penalties and first-line discretionary extra.
 
-Simplify `BreakParagraph` as described in [Final-Pass Fallback](#final-pass-fallback).
-Keep the structure open for the emergency pass.
+Change 2 is implemented in `boundary.go`. Each knot first advances existing
+origins, then discovers rescue transitions, then scores all mature successors
+and commits the boundary. This last phase includes newly discovered post-break
+remainders, so terminal and internal forced boundaries can be reached in the
+same iteration. Retained boundary glue/kern is bypassed only for last-textbox
+discovery; trimming flags are unchanged. Discretionaries on forced textboxes or
+at/before their originating textbox are not generated.
 
-### Step 6: Benchmarks
+Overfull working states/seeds are retired after rescue and fallback decisions;
+short zero-stretch origins survive. Forced boundaries discard all working
+states except the boundary's own bucket. Predecessors and retirement tombstones
+remain, and rejected insertion cannot revive an origin. The collector reads
+terminal costs/quality and walks preserved predecessor history. The temporary
+`ratioAvailable`/`canReach` compatibility bridge has been removed.
 
-- Report active states per knot as a benchmark metric.
-- Add a pass-2 benchmark with a deterministic hyphenator, so the cost of
-  discretionary lookups is covered.
-- Expected effect at 1,000 words: active states drop from about 27,000 to
-  about 270. The remaining growth comes from the widening band of line counts
-  per breakpoint (see below).
+Only pass 2 is final until the emergency pass exists. Non-final exhaustion is
+an ordinary no-solution outcome, including forced lines above tolerance.
+Fallback selection is boundary-wide and deterministic, includes terminal hyphen
+extras, and occurs before source deletion. Provider errors propagate normally.
 
-### Step 7: Documentation
+Discretionary rescans now use an immutable post-break-only seed; the current
+working segment separately includes the suffix already consumed after its box.
+All existing origins advance before insertion, avoiding double accumulation
+when retroactive discovery replaces an existing target. Requested rescue scoring
+visits the requesting line state rather than all siblings repeatedly.
 
-Update the implementation status in [khipu-algorithm.md](khipu-algorithm.md)
-(remove the deviations that are fixed) and [KP.md](KP.md).
+`boundary_test.go` covers these contracts, negative/overflow safety, ordinary
+drain fallback, provider errors, mixed line-count survival, and reconstruction
+after retirement. On rectangular and varying shapes, pruned passes match an
+unpruned reference using the same scoring rules, both with and without a lazy
+hyphenator, while reducing peak live working states. The original 50-word
+regression breakpoints, total costs and worst badness remain unchanged.
 
+Initial timing evidence is recorded in [TESTING.md](TESTING.md#boundary-processing-and-retirement).
+Broader workload profiling and dedicated peak/evaluation benchmark counters
+remain follow-up work; terminal retained-state counts are not peak activity.
 
 ## Out of Scope
 

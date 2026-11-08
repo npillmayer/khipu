@@ -148,10 +148,7 @@ func TestEvaluateCandidatesSeparatesScreeningFromRanking(t *testing.T) {
 		seenContent: true,
 	}
 
-	evals, ok := kp.evaluateCandidates(kp.root, 0)
-	if !ok {
-		t.Fatalf("expected at least one geometrically feasible line")
-	}
+	evals := kp.evaluateCandidates(kp.root, 0)
 	if len(evals) != 2 {
 		t.Fatalf("expected 2 evaluations, got %d", len(evals))
 	}

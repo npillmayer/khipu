@@ -312,16 +312,25 @@ penalty hints from the shaper.
 Pass 1 runs without discretionary lookup. If the first result is unacceptable
 or unavailable, pass 2 uses `Tolerance` and permits local lookup.
 
-During pass 2, geometrically feasible line evaluations with
-`badness > PreTolerance` can trigger lookup, including candidates which still
-pass `Tolerance`. This is a badness threshold, not a demerit threshold.
+During pass 2, evaluations with `badness > PreTolerance` can trigger lookup,
+including candidates which still pass `Tolerance`. Overfull evaluations also
+get a rescue attempt before retirement, even without shrink capacity. This is
+a badness/geometric gate, not a demerit threshold.
 Loose lines scan forward for a textbox; tight lines scan backward, skipping
 flagged discardables and stopping at other retained material.
+At forced glue/kern boundaries, last-box discovery starts before that marker;
+its trimming flags are not changed. Newly discovered successors are scored
+through the current forced boundary before old origins are discarded.
 
 Internal `BreakRef{At, Variant}` values identify ordinary boundaries (variant
 zero) and discretionary alternatives (nonzero variant). Different variants
 can coexist at a source knot. Path construction evaluates the pre-break
 fragment and seeds the next line with the post-break fragment.
+The immutable rescan seed contains only that fragment; the live segment also
+contains knots already consumed after its source box. Retired targets cannot
+be resurrected by late discovery. Lazy provider minima must be nonnegative and
+fit the pruning pass's conservative accumulation bound; cached unsafe manual
+variants disable pruning before the pass. See [RETIREMENT.md](RETIREMENT.md).
 
 Local cost uses `PreBreak.Penalty`. `FirstHyphenDemerits` adds cost when the
 discretionary line starts at the root. `FinalHyphenDemerits` adds cost on the

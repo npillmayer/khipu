@@ -30,7 +30,7 @@ func TestForcedBreakFallbacksKeepPositiveAccumulatedCost(t *testing.T) {
 		{w: 10, minw: 10, maxw: 10, p: InfinityMerits, kind: khipu.KTTextBox},
 		{maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
-	breaks, quality, ok, err := breakParagraphPass(khp, layout, params, false)
+	breaks, quality, ok, err := breakParagraphPass(khp, layout, params, true)
 	if err != nil || !ok || !slices.Equal(breaks, []int{0, 1, 2, 3}) {
 		t.Fatalf("forced breaks=%v ok=%v err=%v", breaks, ok, err)
 	}
@@ -57,6 +57,7 @@ func TestCollectOptimalBreakpointsTracksWorstBadness(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareLineBreaker failed: %v", err)
 	}
+	kp.final = true // exercise worst-badness collection through a final fallback
 	if err := kp.constructBreakpointGraph(khp); err != nil {
 		t.Fatalf("constructBreakpointGraph failed: %v", err)
 	}
@@ -87,18 +88,12 @@ func TestBreakParagraphStartsSecondPassAfterFailedPreTolerancePass(t *testing.T)
 	parshape := linebreak.RectangularParShape(8000)
 	layout := khipu.Params{LineShape: parshape}
 
-	firstPassBreaks, quality, ok, err := breakParagraphPass(khp, layout, params, false)
+	firstPassBreaks, _, ok, err := breakParagraphPass(khp, layout, params, false)
 	if err != nil {
 		t.Fatalf("first pass failed unexpectedly: %v", err)
 	}
-	if !ok || len(firstPassBreaks) == 0 {
-		t.Fatalf("expected first pass to produce a fallback path, got ok=%v breakpoints=%v", ok, firstPassBreaks)
-	}
-	if want := []kinx{0, 2}; slices.Equal(firstPassBreaks, want) {
-		t.Fatalf("expected first pass to miss the better breakpoint path, got %v", firstPassBreaks)
-	}
-	if quality.totalCost < AwfulDemerits {
-		t.Fatalf("expected first-pass fallback to carry awful cost, got %+v", quality)
+	if ok || len(firstPassBreaks) != 0 {
+		t.Fatalf("expected ordinary first-pass failure without fallback, got ok=%v breaks=%v", ok, firstPassBreaks)
 	}
 	secondPassBreaks, _, ok, err := breakParagraphPass(khp, layout, params, true)
 	if err != nil {

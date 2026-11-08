@@ -17,10 +17,21 @@ and a shared testing package remain proposals.
 
 ## Existing Guarantees and Evidence
 
+- `linebreak/knuthplass/geometry_test.go` checks shared ordinary/discretionary
+  classification at exact fit, shrink and tolerance boundaries, zero capacities
+  and badness saturation, including overfull lines hidden by cubic rounding.
+  Lookahead and seed-replay scoring agree, ranking extras stay separate, and
+  local classification does not retire working states; boundary commit does.
+- `linebreak/knuthplass/boundary_test.go` covers zero-capacity lines, rescue at
+  terminal/internal forced boundaries, final-pass-only fallback, normal pass
+  failure versus provider errors, per-line retirement, rejected resurrection,
+  immutable fragment seeds, canonical fallback costs and negative/overflow
+  opt-outs. Pruned and unpruned runs match paths/quality on rectangular and
+  varying shapes with and without hyphenation, while peak live work decreases.
 - `linebreak/knuthplass/hyphenation_benchmark_test.go` checks that the pass-2
   workload discovers and shapes real discretionary candidates, reuses successful
-  provider lookups, and creates discretionary paths. A retained overlong origin
-  demonstrates the current capped-badness gate and seed-rescan case even when
+  provider lookups, and creates discretionary predecessor history. An isolated
+  overlong origin demonstrates the capped-badness gate and seed-rescan case even when
   splitting its last word cannot rescue the line. No timing assertions are used.
 - `linebreak/knuthplass/scratch_test.go` checks buffer reuse, growth, smaller and
   empty results, independence across breakers, and nested pass-2 candidate
@@ -32,8 +43,10 @@ and a shared testing package remain proposals.
   multiple line counts, distinct discretionary variants, line-specific rescan
   seeds, missing buckets, and replacement without altering sibling states.
   Rectangular and varying-shape corpus results were captured before indexing;
-  exact breakpoints, quality and predecessor counts remain unchanged. Final
-  working-state/seed counts verify that no retirement policy changed.
+  exact breakpoints and quality remain unchanged. Shared geometric screening
+  later reduced predecessor counts by rejecting previously admitted overfull
+  candidates. Final working-state/seed assertions now verify that forced-boundary
+  retirement leaves only terminal work while preserving historical predecessors.
 - `linebreak/knuthplass/logging_test.go` checks that disabled hot-loop debug
   calls and final info dumps never reach the tracer. Enabled dumps remain
   available, and ordinary/discretionary paths, costs and predecessor tables
@@ -567,7 +580,7 @@ so discovery is cold rather than silently becoming a warm-cache benchmark.
 This is not the combined latency of the public first/second-pass pipeline.
 
 Additional metrics separate provider requests from actual hyphenator calls,
-and report retained discretionary states alongside all retained states, line
+and report historical discretionary predecessors alongside retained states, line
 count, cost and worst badness. Successful lookups are cached, but declined
 lookups currently are not: short words can cause repeated policy calls. Neither
 counter measures rescanned knots; use CPU profiling to attribute that work.
@@ -601,8 +614,44 @@ benchmark. It does not isolate the fraction specifically caused by dead states.
 
 As above, process-wide profiles include untimed setup. Default-layout synthetic
 results are not predictions for a real dictionary, font, or shaping engine.
-This benchmark adds coverage only; it does not change retirement, hyphenation
-gating, negative caching or discretionary replay.
+These are the pre-retirement measurements. The benchmark initially added
+coverage only; subsequent boundary-processing changes are recorded below.
+
+### Boundary Processing and Retirement
+
+Ordinary and discretionary candidates share geometric classification. Boundary
+processing now advances existing origins before inserting replacements, gives
+overfull lines a state-local discretionary rescue opportunity, scores newly
+discovered successors through the current boundary, and then retires dead work.
+Only the final pass uses deterministic fallback transitions. Negative minima or
+unsafe minimum sums opt out of pruning; lazy fragment violations return errors.
+See [RETIREMENT.md](RETIREMENT.md) for contracts and remaining limitations.
+
+An initial unprofiled single-iteration run on Apple M1 / Go 1.25.6 measured:
+
+| Workload | Time | B/op | Final working states | Historical predecessors |
+| --- | ---: | ---: | ---: | ---: |
+| First pass, 250 words | 4.25 ms | 0.82 MB | 14 | 1,679 |
+| First pass, 1,000 words | 35.39 ms | 13.19 MB | 53 | 26,448 |
+| Hyphenating second pass, 250 words | 53.25 ms | 15.67 MB | 39 | 3,440 discretionary |
+
+The hyphenating run made 29,506 provider requests and 6,216 policy calls.
+Three further unprofiled single-iteration runs measured 2.62-4.31 ms for the
+250-word first pass, 32.24-32.50 ms for the 1,000-word first pass, and
+47.45-48.73 ms for the 250-word hyphenating pass, with identical workload counts.
+Costs/line counts/worst badness match the earlier 250-word hyphenating and
+250-/1,000-word first-pass baselines. Historical predecessor counts and final
+working counts need not match: overfull candidates are no longer accepted and
+retired working states are deleted. Tombstones and predecessor history remain.
+The benchmark now reports `discretionary-predecessors`, since no discretionary
+working bucket survives the terminal forced boundary.
+
+These are initial measurements, not an isolated speedup estimate: they combine
+retirement, geometric/pass-policy corrections, state-local rescue evaluation,
+and rescan-seed bookkeeping fixes. Earlier profile-enabled timings and current
+unprofiled timings also have different instrumentation. Broader profiling and
+dedicated peak-active/state-evaluation counters remain follow-up work. Empty
+hyphenator responses are still not cached.
 
 ## Validation and Next Work
 

@@ -60,6 +60,7 @@ func hyphenatingLorem(tb testing.TB, words int) (*khipu.Khipu, *linebreaker, *co
 	// Default lorem can finish in pass 1. Explicitly select pass 2 rather than
 	// changing its thresholds or claiming to measure the public two-pass call.
 	kp.hyphenating = true
+	kp.final = true
 	return khp, kp, provider, policy
 }
 
@@ -86,10 +87,12 @@ func BenchmarkSecondPassHyphenatingLorem(b *testing.B) {
 					b.Fatalf("incomplete second-pass result: %v, %v", breaks, err)
 				}
 				retained, discretionary := 0, 0
-				for ref, lines := range kp.paths {
+				for _, lines := range kp.paths {
 					retained += len(lines)
-					if ref.Variant != 0 {
-						discretionary += len(lines)
+				}
+				for state := range kp.preds {
+					if state.to.IsDiscretionary() {
+						discretionary++
 					}
 				}
 				if policy.calls == 0 || provider.requests <= policy.calls || discretionary == 0 {
@@ -101,7 +104,7 @@ func BenchmarkSecondPassHyphenatingLorem(b *testing.B) {
 				b.ReportMetric(float64(provider.requests), "provider-requests/op")
 				b.ReportMetric(float64(policy.calls), "hyphenator-calls/op")
 				b.ReportMetric(float64(retained), "retained-states")
-				b.ReportMetric(float64(discretionary), "discretionary-states")
+				b.ReportMetric(float64(discretionary), "discretionary-predecessors")
 				b.ReportMetric(float64(len(breaks)), "lines")
 				b.ReportMetric(float64(quality.totalCost), "demerits")
 				b.ReportMetric(float64(quality.worstBadness), "worst-badness")
@@ -122,8 +125,8 @@ func TestHyphenatingLoremExercisesColdDiscoveryAndPaths(t *testing.T) {
 	if policy.calls == 0 || provider.requests <= policy.calls {
 		t.Fatal("fixture did not exercise discovery and cached requests")
 	}
-	for ref := range kp.paths {
-		if ref.Variant != 0 {
+	for state := range kp.preds {
+		if state.to.IsDiscretionary() {
 			return
 		}
 	}
@@ -139,7 +142,7 @@ func TestHyphenatingLoremTightStateRequestsCachedCandidates(t *testing.T) {
 	for i := 0; i <= breakpoint; i++ {
 		kp.updatePath(kp.root, i, khp.KnotByIndex(i))
 	}
-	evals, _ := kp.evaluateCandidates(kp.root, khp.Penalty[breakpoint])
+	evals := kp.evaluateCandidates(kp.root, khp.Penalty[breakpoint])
 	if len(evals) != 1 {
 		t.Fatalf("got %d evaluations", len(evals))
 	}

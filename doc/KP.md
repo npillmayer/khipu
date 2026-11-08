@@ -1,6 +1,6 @@
 # Knuth-Plass Status And Design History
 
-Reviewed against the code on November 4, 2026; shared geometry updated November 8.
+Reviewed against the code on November 4, 2026; geometry and retirement updated November 8.
 
 ## Current State
 
@@ -67,7 +67,9 @@ Each state holds accumulated costs, worst line badness, and segment bookkeeping.
 Width updates and ordinary/discretionary scoring visit only the requested
 breakpoint's bucket. Full BreakRef keys keep variants at the same knot separate.
 The rescan `seeds` map remains keyed by `(BreakRef, line)`; predecessor storage
-is unchanged. Retired working states are still retained, not pruned.
+is unchanged. Overfull working states/seeds are retired after discretionary
+rescue; historical predecessors and retirement tombstones remain. Negative
+minimum widths or unsafe sums disable early pruning. See [RETIREMENT.md](RETIREMENT.md).
 The horizon contains active `BreakRef` values. Despite its historical name,
 `constructBreakpointGraph` now builds predecessor states, not a general graph.
 
@@ -75,8 +77,10 @@ Each single-pass breaker owns separate reusable slices for ordinary evaluations,
 discretionary candidates and the sorted horizon snapshot. Results borrow storage
 until the next call to their producer; callers consume them before rescoring.
 The ordinary buffer survives nested discretionary evaluation in pass 2. Horizon
-membership may change while a snapshot is consumed, but the next snapshot is
-not built until the next knot. No global pool or cross-paragraph sharing is used.
+membership may change while a snapshot is consumed. A completed discovery phase
+is followed by a fresh boundary snapshot, so newly discovered post-break lines
+can reach a forced boundary immediately. Retirement IDs use another scratch
+slice. No global pool or cross-paragraph sharing is used.
 
 `collectOptimalBreakRefs` chooses the cheapest state in the terminal bucket over line counts
 (preferring fewer lines on equal cost),
@@ -106,13 +110,16 @@ badness, squared breakpoint penalties, inclusive tolerance thresholds, and
 demerits outside the small penalty-sentinel range. Candidate evaluation
 separates geometric feasibility, badness screening, and ranking.
 
-Pass 1 uses `PreTolerance`. If its result is unavailable, unacceptable, or an
-overfull fallback, a fresh pass runs with `hyphenating=true` and `Tolerance`.
-The winning path records its maximum line badness.
+Pass 1 uses `PreTolerance`. If no acceptable complete path exists, a fresh pass
+runs with `hyphenating=true` and `Tolerance`. Only that final pass may fall back
+to over-/underfull lines. The winning path records its maximum line badness.
+Shared classification rejects `MinW > target` independently of tolerance;
+short lines without stretch get badness 10000 and remain active.
 
 Forced breaks are handled in construction control flow with neutralized local
 penalties. Earlier active origins are retired at every forced break, preventing
-later lines from bypassing it. Infeasible forced lines retain a fallback path;
+later lines from bypassing it. Non-final passes must satisfy tolerance there;
+the final pass can create a deterministic fallback before deleting its source.
 64-bit costs prevent repeated fallback demerits from wrapping negative.
 First-line discretionary extras and terminal-transition extras are
 implemented. Fitness classes and consecutive-discretionary demerits remain deferred.
@@ -124,16 +131,16 @@ does not supply a nonzero penalty.
 `EmergencyStretch` is retained for the final emergency pass described in
 [the algorithm design](khipu-algorithm.md#knuth-plass), but is not yet read.
 It will augment finite stretch for badness calculation only, without changing
-knots or shrink capacity. Neither that pass nor final-pass-only fallbacks are
-implemented, and freezing still needs over-/underfull output support.
+knots or shrink capacity. That emergency pass is not implemented, so pass 2 is
+currently final regardless of this parameter. Freezing still needs over-/underfull output support.
 Parameter defaults differ between `DefaultParameters` and
 `NewKPDefaultParameters`; consult the chosen initializer rather than assuming
 TeX defaults.
 
 ## Lazy Discretionaries
 
-During pass 2, a geometrically feasible candidate with badness above
-`PreTolerance` may request local discretionary alternatives. Loose lines look
+During pass 2, candidates above `PreTolerance` and all overfull candidates
+may request local discretionary alternatives before retirement. Loose lines look
 forward for a textbox; tight lines look backward. These local scans avoid
 storing textbox identities on every path.
 
@@ -142,6 +149,10 @@ and post-break fragments, assigns their penalty, and caches candidates.
 The breaker reads `PreBreak.Penalty` directly and evaluates variants as distinct
 `BreakRef` states. Successor lines are seeded with the post-break fragment.
 Only winning selections are committed; candidate caches remain available.
+Immutable rescan seeds contain only the post-break fragment; already-consumed
+suffix knots belong to live bookkeeping. Lazy provider fragments must have
+nonnegative minima and obey the accumulation safety bound documented in
+[RETIREMENT.md](RETIREMENT.md#why-retirement-is-safe).
 
 See [HYPHENATION.md](HYPHENATION.md) for the implemented interfaces and limits.
 
@@ -174,10 +185,11 @@ font-backed or international-script performance.
 
 Path bookkeeping is now indexed by breakpoint rather than repeatedly scanning
 the entire state table. Candidate-result and horizon-snapshot buffers now reuse
-capacity within a pass. Active/retained-state growth remains an optimization target.
+capacity within a pass. Dead working states are now deleted; widening line-count
+bands, predecessor history and tombstones remain memory/performance targets.
 Expensive debug arguments and final info dumps are now guarded before formatting;
-enabled tracing retains the existing detail. No retirement, candidate eligibility,
-tie-breaking or pruning policy changed. Further performance changes should follow the measured
+enabled tracing retains path diagnostics. Boundary-wide decisions make retirement
+and final-pass fallback independent of horizon iteration order. Further changes should follow the measured
 baseline rather than a representation chosen only on theoretical grounds.
 
 ## Verification

@@ -59,6 +59,7 @@ func TestTraceGuardsPreservePathResults(t *testing.T) {
 				t.Fatal(err)
 			}
 			kp.hyphenating = hyphenating
+			kp.final = true // exercise diagnostic fallback independently of discovery
 			if err := kp.constructBreakpointGraph(khp); err != nil {
 				t.Fatal(err)
 			}

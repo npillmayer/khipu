@@ -13,8 +13,8 @@ import (
 
 // linebreaker is an internal entity for K&P-linebreaking.
 // Working-state buckets let width updates and scoring visit only the requested
-// breakpoint's line counts. They still retain retired states; horizon membership
-// controls activity, while the separate predecessor table owns reconstruction.
+// breakpoint's line counts. Retired working states are deleted; the separate
+// predecessor table retains the history needed for reconstruction.
 // A full BreakRef is the key so discretionary variants never share a bucket.
 type linebreaker struct {
 	*pathTable
@@ -24,6 +24,10 @@ type linebreaker struct {
 	params      *Parameters                         // typesetting parameters relevant for line-breaking
 	layout      khipu.Params                        // resolved geometry, shared with freezing
 	hyphenating bool                                // second pass may relax limits and use discretionaries
+	final       bool                                // only the final pass may use fallback transitions
+	retired     map[origin]struct{}                 // tombstones prevent retroactive resurrection
+	prune       bool                                // original/cached widths permit monotone retirement
+	minimumSum  int64                               // bound for minimum-width accumulation before trimming
 	root        BreakRef                            // "break" at start of paragraph
 	end         BreakRef                            // "break" at end of paragraph
 
@@ -35,6 +39,7 @@ type linebreaker struct {
 	evaluationScratch    []lineEvaluation
 	discretionaryScratch []breakCandidate
 	horizonScratch       []BreakRef
+	retirementScratch    []origin
 }
 
 func pathsAsString(paths map[BreakRef]map[lineNo]bookkeeping) string {
@@ -65,6 +70,7 @@ func newLinebreaker(layout khipu.Params, params *Parameters) *linebreaker {
 	kp.horizon = make(map[BreakRef]struct{})
 	kp.paths = make(map[BreakRef]map[lineNo]bookkeeping)
 	kp.seeds = make(map[origin]bookkeeping)
+	kp.retired = make(map[origin]struct{})
 	kp.layout = layout
 	if params == nil {
 		params = NewKPDefaultParameters()
@@ -238,11 +244,17 @@ func (kp *linebreaker) terminalHyphenDemerits(from, to BreakRef) merits {
 
 // --- Segments ---------------------------------------------------------
 
-func (kp *linebreaker) evalNewSegment(from, to BreakRef, line lineNo, c cost) {
-	kp.evalNewSegmentSeed(from, to, line, c, bookkeeping{})
+func (kp *linebreaker) evalNewSegment(from, to BreakRef, line lineNo, c cost) bool {
+	return kp.evalNewSegmentSeed(from, to, line, c, bookkeeping{})
 }
 
-func (kp *linebreaker) evalNewSegmentSeed(from, to BreakRef, line lineNo, c cost, seed bookkeeping) {
+// evalNewSegmentSeed reports whether the target has a live working state,
+// including when an existing predecessor wins. Callers may activate only live
+// targets. Retired targets keep their historical predecessor unchanged.
+func (kp *linebreaker) evalNewSegmentSeed(from, to BreakRef, line lineNo, c cost, seed bookkeeping) bool {
+	if _, retired := kp.retired[origin{to, line}]; retired {
+		return false
+	}
 	trace := tracer()
 	debug := trace.GetTraceLevel() >= tracing.LevelDebug
 	if bp := kp.pathTable.Breakpoint(to); bp == NoBreakRef {
@@ -263,7 +275,7 @@ func (kp *linebreaker) evalNewSegmentSeed(from, to BreakRef, line lineNo, c cost
 		assert(!ok, "K&P internal error: path with non-existent predecessor state exists")
 	} else if !betterPredecessor(from, evalCost, pred) {
 		assert(ok, "K&P internal error: path for predecessor state does not exist")
-		return // existing path is cheaper or wins the canonical tie
+		return true // existing path is cheaper or wins the canonical tie
 	} else {
 		if debug {
 			trace.Debugf("K&P remove sub-optimal seg %v", origin{to, line})
@@ -287,6 +299,7 @@ func (kp *linebreaker) evalNewSegmentSeed(from, to BreakRef, line lineNo, c cost
 		trace.Debugf("new segment %s ---(C:%d|L:%d)---> %s", from.String(), c.demerits,
 			line, to.String())
 	}
+	return true
 }
 
 // === Algorithms ============================================================
@@ -307,9 +320,9 @@ func (lc lineCost) String() string {
 type lineDisposition uint8
 
 const (
-	// lineInfeasible means the segment cannot be adjusted to the target line at all:
-	// there is not enough stretch or shrink capacity to compute an adjustment ratio.
-	lineInfeasible lineDisposition = iota
+	// lineOverfull means the effective minimum width exceeds the target. No
+	// tolerance can make this an acceptable ordinary or discretionary line.
+	lineOverfull lineDisposition = iota
 	// lineScreenedOut means the segment is geometrically feasible, but its badness
 	// exceeds the active threshold of the current pass.
 	lineScreenedOut
@@ -332,9 +345,10 @@ type lineEvaluation struct {
 }
 
 type breakCandidate struct {
-	eval   lineEvaluation
-	target BreakRef
-	seed   bookkeeping
+	eval    lineEvaluation
+	target  BreakRef
+	seed    bookkeeping
+	initial bookkeeping // post-break fragment alone, without the consumed suffix
 }
 
 func (ev lineEvaluation) accepted() bool {
@@ -379,20 +393,19 @@ func (bc breakCandidate) lineCost() lineCost {
 //
 // The procedure is intentionally split into two conceptual phases:
 // 1. screening
-//   - can an adjustment ratio be computed at all?
+//   - does the line fit within its shrink capacity?
 //   - if so, is the badness within the active pass limit?
 //
 // 2. ranking
 //   - only accepted candidates receive demerits
 //
-// This separation matters because pass 2 hyphenation hooks into screened-out
-// but still geometrically meaningful candidates.
+// Ordinary and discretionary lines use the same local classifier. Retirement
+// is a later boundary-wide decision, after all rescue transitions are considered.
 //
 // The returned slice borrows breaker-owned storage until the next call to
 // evaluateCandidates. Scoring completes before callers mutate path state;
 // discretionary evaluation uses separate storage and does not invalidate it.
-func (kp *linebreaker) evaluateCandidates(bp BreakRef, penalty khipu.Penalty) ([]lineEvaluation, bool) {
-	canReach := false
+func (kp *linebreaker) evaluateCandidates(bp BreakRef, penalty khipu.Penalty) []lineEvaluation {
 	trace := tracer()
 	debug := trace.GetTraceLevel() >= tracing.LevelDebug
 	// find all paths ending at `bp`
@@ -400,37 +413,24 @@ func (kp *linebreaker) evaluateCandidates(bp BreakRef, penalty khipu.Penalty) ([
 	for line, path := range kp.paths[bp] {
 		linelen := kp.layout.LineShape.LineLength(int32(line + 1))
 		segwss := path.effectiveWidth(kp.layout)
-		stsh := absD(linelen - segwss.W) // stretch or shrink of glue in line
 		if debug {
 			trace.Debugf("    +---%.2f--->    | %.2f", segwss.W.Points(), linelen.Points())
 		}
-		ev := lineEvaluation{
-			bp:          bp,
-			line:        line,
-			stretch:     stsh,
-			disposition: lineInfeasible,
-		}
-		if ratio, ok := calcAdjustmentRatio(segwss, linelen); ok {
-			canReach = true
-			ev.ratio = ratio
-			b, _ := calcBadness(segwss, linelen)
-			ev.badness = b
-			if b <= kp.badnessLimit() {
-				ev.disposition = lineAccepted
-				ev.demerits = calcDemerits(b, penalty, kp.params)
-			} else {
-				ev.disposition = lineScreenedOut
-			}
+		ev := classifyLine(segwss, linelen, kp.badnessLimit())
+		ev.bp, ev.line = bp, line
+		if ev.accepted() {
+			ev.demerits = calcDemerits(ev.badness, penalty, kp.params)
 		}
 		result = append(result, ev)
 	}
 	kp.evaluationScratch = result
-	return result, canReach
+	return result
 }
 
 // calcAdjustmentRatio computes the TeX-style adjustment ratio for one line.
 // Positive ratios mean stretching, negative ratios mean shrinking.
-// The ratio is only computable if there is some stretch or shrink capacity.
+// Except at exact fit, the ratio requires stretch or shrink capacity in the
+// relevant direction. The classifier supplies signed infinity when it is absent.
 //
 // In TeX terms:
 // - short lines divide by available stretch
@@ -464,15 +464,14 @@ func calcAdjustmentRatio(segwss WSS, linelen dimen.DU) (float64, bool) {
 //
 // with the same practical cap used elsewhere in the rewrite. Like
 // calcAdjustmentRatio, this function is part of pass screening, not of path
-// ranking.
+// ranking. This low-level helper reports the cubic value only; classifyLine
+// additionally rejects excessive shrink even when that value is below tolerance.
 func calcBadness(segwss WSS, linelen dimen.DU) (merits, bool) {
 	ratio, ok := calcAdjustmentRatio(segwss, linelen)
 	if !ok {
 		return 0, false
 	}
-	r := max(0.0, absFloat64(ratio))
-	badness := merits(min(100.0, r*r*r) * 100.0)
-	return badness, true
+	return badnessForRatio(ratio), true
 }
 
 // calcDemerits computes line demerits from a precomputed badness value.
@@ -532,15 +531,11 @@ func BreakParagraph(khipu *khipu.Khipu, layout khipu.Params, params *Parameters)
 		return nil, err
 	}
 	if ok && len(breakrefs) > 0 &&
-		quality.worstBadness <= params.PreTolerance &&
-		quality.totalCost < AwfulDemerits {
+		quality.worstBadness <= params.PreTolerance {
 		recordSelectedDiscretionaries(khipu, breakrefs)
 		return projectBreakRefs(breakrefs), nil
 	}
-	if ok && quality.totalCost >= AwfulDemerits {
-		tracer().Debugf("K&P: first-pass best path is overfull fallback (%d), retrying with hyphenation enabled",
-			quality.totalCost)
-	} else if ok && quality.worstBadness > params.PreTolerance {
+	if ok && quality.worstBadness > params.PreTolerance {
 		tracer().Debugf("K&P: first-pass best path exceeds PreTolerance (%d > %d)",
 			quality.worstBadness, params.PreTolerance)
 	} else if !ok {
@@ -570,6 +565,9 @@ func breakParagraphPassRefs(khp *khipu.Khipu, layout khipu.Params,
 		return nil, pathQuality{}, false, err
 	}
 	kp.hyphenating = hyphenating
+	// Until an emergency pass exists, pass 2 is the final pass regardless of
+	// the reserved EmergencyStretch parameter.
+	kp.final = hyphenating
 	if err := kp.constructBreakpointGraph(khp); err != nil {
 		tracer().Errorf("K&P: %w", err)
 		return nil, pathQuality{}, false, err
@@ -579,9 +577,9 @@ func breakParagraphPassRefs(khp *khipu.Khipu, layout khipu.Params,
 }
 
 // snapshotHorizon returns a sorted snapshot, valid until its next call. The
-// live horizon can change while processing a knot, but newly added breakpoints
-// must not be visited until the next knot. Reuse capacity without losing that
-// evaluate-then-mutate boundary.
+// live horizon can change while one phase consumes it. Only after that phase
+// finishes may the next phase refresh it, including boundary commit at the same
+// knot. Newly discovered successors then participate without advancing twice.
 func (kp *linebreaker) snapshotHorizon() []BreakRef {
 	kp.horizonScratch = kp.horizonScratch[:0]
 	for bp := range kp.horizon {
@@ -597,160 +595,19 @@ func (kp *linebreaker) snapshotHorizon() []BreakRef {
 // Forced boundaries retire earlier origins; discretionary variants seed the
 // following line with their post-break fragment. Collection follows the
 // predecessor table to recover the single cheapest complete path.
-func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu) error {
-	//
-	if len(khipu.W) == 0 {
+func (kp *linebreaker) constructBreakpointGraph(khp *khipu.Khipu) error {
+	if khp == nil || len(khp.W) == 0 {
 		return ErrNoBreakpoints
 	}
-	kp.end = PlainBreak(len(khipu.W) - 1)
+	kp.end = PlainBreak(len(khp.W) - 1)
+	kp.prepareRetirement(khp)
 	trace := tracer()
-	for last := range len(khipu.W) {
-		debug := trace.GetTraceLevel() >= tracing.LevelDebug
-		k := khipu.KnotByIndex(last)
-		// Explicit markers can be inside an otherwise unbreakable textbox.
-		// Request them once when pass 2 reaches it, before evaluating variants.
-		if kp.hyphenating && khipu.HasExplicitDiscretionary(last) {
-			cands, err := kp.discretionaryCandidates(khipu, last)
-			if err != nil {
-				return err
-			}
-			cacheDiscretionaryCandidates(khipu, last, cands)
+	for last := range len(khp.W) {
+		live, err := kp.processKnot(khp, last)
+		if err != nil || !live {
+			return err
 		}
-		if debug {
-			trace.Debugf("_______________ %d/%v ___________________", last, k)
-		}
-		assert(len(kp.horizon) > 0, "K&P: no more active breakpoints, but input available")
-		if debug {
-			trace.Debugf("horizon: %v", elements(kp.horizon))
-		}
-		// --- main loop over active breakpoints in horizon ------------
-		horizon := kp.snapshotHorizon()
-		if debug {
-			trace.Debugf("horizon: %v", horizon)
-		}
-		for _, horiz_bp := range horizon { // loop over active feasible breakpoints of horizon
-			if debug {
-				trace.Debugf("   --- %s (in horizon) --> candidate %v", horiz_bp.String(), knotString(last, khipu))
-			}
-			if horiz_bp.IsDiscretionary() && last <= horiz_bp.At {
-				// Discretionary breakpoints become active only after the scan has
-				// advanced past their source textbox. Until then they represent a
-				// not-yet-reached logical break inside that textbox.
-				continue
-			}
-			kp.updatePath(horiz_bp, last, k) // now WSS extends to new knot k
-			currentBreak := PlainBreak(last)
-			if kp.hyphenating {
-				// If the current knot itself is a textbox with cached
-				// discretionaries, it may create additional logical breakpoints
-				// inside that knot.
-				discretionaryBreaks := kp.evaluateDiscretionaryCandidates(khipu, horiz_bp, last, last)
-				for _, cand := range discretionaryBreaks {
-					c := cand.lineCost()
-					if debug {
-						trace.Debugf("   check discretionary segm line-costs %s", c.String())
-					}
-					kp.evalNewSegmentSeed(horiz_bp, cand.target, c.line+1, c.cost, cand.seed)
-					kp.horizon[cand.target] = struct{}{}
-				}
-			}
-			if k.Penalty >= InfinityDemerits { // merits prohibit break
-				if debug {
-					trace.Debugf("   --- break prohibited (p=%d)", k.Penalty)
-				}
-				continue
-			}
-			costPenalty := k.Penalty
-			if costPenalty <= InfinityMerits {
-				costPenalty = 0
-			}
-			evals, stillreachable := kp.evaluateCandidates(horiz_bp, costPenalty)
-			if k.Penalty <= InfinityMerits {
-				// A forced boundary must be reached even by an under/overfull
-				// fallback. Earlier origins are retired after all are evaluated.
-				for _, ev := range evals {
-					c := ev.lineCost()
-					if ev.disposition == lineInfeasible {
-						c.cost.badness = InfinityDemerits
-						c.cost.demerits = AwfulDemerits
-					} else {
-						c.cost.demerits = calcDemerits(ev.badness, 0, kp.params)
-					}
-					c.cost.demerits += kp.terminalHyphenDemerits(horiz_bp, currentBreak)
-					kp.evalNewSegment(horiz_bp, currentBreak, c.line+1, c.cost)
-					kp.horizon[currentBreak] = struct{}{}
-				}
-				continue
-			}
-			if debug {
-				trace.Debugf("   %s reachable with evals=%v", knotInxStr(last), evals)
-			}
-			if stillreachable { // yes, position may have been reached in this iteration
-				for _, ev := range evals {
-					if ev.disposition == lineInfeasible {
-						continue
-					}
-					c := ev.lineCost()
-					if debug {
-						trace.Debugf("   check reachable segm line-costs %s", c.String())
-					}
-					if kp.hyphenating && kp.wantsHyphenation(ev) {
-						if err := kp.requestPass2Discretionaries(khipu, last, ev); err != nil {
-							return err
-						}
-						if candidate, ok := hyphenationCandidateForPass2(khipu, last, ev); ok {
-							// A bad pass-2 line may become acceptable if one of the
-							// textbox-local discretionary variants is inserted into
-							// this same segment.
-							discretionaryBreaks := kp.evaluateDiscretionaryCandidates(khipu, horiz_bp, last, candidate)
-							for _, cand := range discretionaryBreaks {
-								c := cand.lineCost()
-								if debug {
-									trace.Debugf("   check requested discretionary segm line-costs %s", c.String())
-								}
-								kp.evalNewSegmentSeed(horiz_bp, cand.target, c.line+1, c.cost, cand.seed)
-								kp.horizon[cand.target] = struct{}{}
-							}
-						}
-						if ev.accepted() { // current graph still uses the unhyphenated path
-							kp.evalNewSegment(horiz_bp, currentBreak, c.line+1, c.cost)
-							kp.horizon[currentBreak] = struct{}{}
-						}
-					} else if ev.accepted() { // happy case: new breakpoint is feasible
-						//
-						kp.evalNewSegment(horiz_bp, currentBreak, c.line+1, c.cost)
-						kp.horizon[currentBreak] = struct{}{} // make new breakpoint member of horizon n+1
-					}
-				}
-			} else { // no longer reachable => check against draining of horizon
-				if len(kp.horizon) <= 1 { // oops, low on options
-					for _, ev := range evals {
-						if ev.disposition != lineInfeasible {
-							continue
-						}
-						c := ev.lineCost()
-						if trace.GetTraceLevel() >= tracing.LevelInfo {
-							trace.Infof("Overfull box at line %d, cost=%d", c.line+1, AwfulDemerits)
-						}
-						c.cost.demerits = AwfulDemerits
-						kp.evalNewSegment(horiz_bp, currentBreak, c.line+1, c.cost)
-						kp.horizon[currentBreak] = struct{}{}
-					}
-				}
-				delete(kp.horizon, horiz_bp) // no longer valid in horizon
-			}
-
-		} // --- end of main loop over horizon ----------------------
-		if k.Penalty <= InfinityMerits {
-			forced := PlainBreak(last)
-			_, reached := kp.horizon[forced]
-			clear(kp.horizon)
-			if !reached {
-				return ErrNoBreakpoints
-			}
-			kp.horizon[forced] = struct{}{}
-		}
-	} // end of outer loop over input knots
+	}
 	if trace.GetTraceLevel() >= tracing.LevelInfo {
 		trace.Infof("Collected %d potential breakpoints for paragraph", len(kp.feasBP))
 		trace.Infof("          %v", kp.feasBP)

@@ -1,9 +1,20 @@
 package knuthplass
 
-import "github.com/npillmayer/khipu"
+import (
+	"fmt"
+	"github.com/npillmayer/khipu"
+)
 
 // DiscretionaryProvider supplies hyphenation alternatives for one textbox knot.
 // Ownership of candidate discovery and caching stays with the provider.
+// Lazily returned PreBreak/PostBreak cores must have nonnegative minimum
+// widths. Negative fragments could rescue an already retired origin and are
+// rejected as illegal arguments. Cached manual negative-width fixtures instead
+// opt out of pruning before a pass starts.
+// With pruning enabled, each lazy fragment's minimum must also fit half the
+// remaining int32 headroom after summing original minima. This conservative
+// bound allows a post-break seed and pre-break prefix without saturating the
+// minimum-width arithmetic on which retirement relies.
 type DiscretionaryProvider interface {
 	DiscretionaryCandidates(khp *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error)
 }
@@ -16,7 +27,19 @@ func (kp *linebreaker) discretionaryCandidates(khp *khipu.Khipu, at kinx) ([]khi
 		return nil, khipu.ErrIllegalArguments
 	}
 	if kp != nil && kp.params != nil && kp.params.DiscretionaryProvider != nil {
-		return kp.params.DiscretionaryProvider.DiscretionaryCandidates(khp, int(at))
+		cands, err := kp.params.DiscretionaryProvider.DiscretionaryCandidates(khp, int(at))
+		if err != nil {
+			return nil, err
+		}
+		for _, cand := range cands {
+			if cand.PreBreak.MinW < 0 || cand.PostBreak.MinW < 0 {
+				return nil, fmt.Errorf("%w: discretionary provider returned negative minimum width", khipu.ErrIllegalArguments)
+			}
+			if kp.prune && (!kp.safeFragment(cand.PreBreak) || !kp.safeFragment(cand.PostBreak)) {
+				return nil, fmt.Errorf("%w: discretionary minimum width exceeds safe accumulation bound", khipu.ErrIllegalArguments)
+			}
+		}
+		return cands, nil
 	}
 	return khp.DiscretionariesAt(int(at)), nil
 }
@@ -93,30 +116,38 @@ func nextContentBox(khp *khipu.Khipu, at kinx) (kinx, bool) {
 	return noinx, false
 }
 
-// wantsHyphenation is the pass-2 gate. A line must already be geometrically
-// meaningful; only then does pass 2 ask whether its badness is high enough to
-// justify looking for discretionary alternatives.
+// wantsHyphenation allows an overfull line one rescue opportunity before it is
+// retired, including lines with no shrink and tolerance set as high as 10000.
 func (kp *linebreaker) wantsHyphenation(ev lineEvaluation) bool {
-	if kp == nil || !kp.hyphenating || ev.disposition == lineInfeasible {
+	if kp == nil || !kp.hyphenating {
 		return false
 	}
-	return ev.badness > kp.params.PreTolerance
+	return ev.disposition == lineOverfull || ev.badness > kp.params.PreTolerance
 }
 
 // hyphenationCandidateForPass2 picks the textbox to consult for one bad line:
 // loose lines ask for the next box that did not fit, tight lines ask for the
 // last box that is already on the line.
 func hyphenationCandidateForPass2(khp *khipu.Khipu, breakpoint kinx, ev lineEvaluation) (kinx, bool) {
-	if khp == nil || ev.disposition == lineInfeasible {
+	if khp == nil || breakpoint < 0 || breakpoint >= len(khp.Kind) {
 		return noinx, false
 	}
 	switch {
 	case ev.ratio > 0:
+		if khp.Penalty[breakpoint] <= InfinityMerits {
+			return noinx, false // never look ahead across a mandatory boundary
+		}
 		if breakpoint+1 >= len(khp.Kind) {
 			return noinx, false
 		}
 		return nextContentBox(khp, breakpoint+1)
 	case ev.ratio < 0:
+		k := khp.KnotByIndex(breakpoint)
+		if k.Penalty <= InfinityMerits && (k.Kind == khipu.KTGlue || k.Kind == khipu.KTKern) {
+			// The retained terminal fill (or an internal boundary glue/kern)
+			// is a marker here, not a change to line-edge trimming semantics.
+			return previousContentBox(khp, breakpoint-1)
+		}
 		return previousContentBox(khp, breakpoint)
 	default:
 		return noinx, false
@@ -228,14 +259,21 @@ func (kp *linebreaker) discretionaryDemerits(badness merits, penalty khipu.Penal
 // Ordinary evaluations remain valid during this call: pass 2 nests this work
 // inside its loop over those results, so the two scratch buffers are separate.
 func (kp *linebreaker) evaluateDiscretionaryCandidates(khp *khipu.Khipu, from BreakRef, breakpoint, candidate kinx) []breakCandidate {
+	return kp.evaluateDiscretionaryLine(khp, from, -1, breakpoint, candidate)
+}
+
+// evaluateDiscretionaryLine limits a rescue request to the originating line
+// state; line=-1 evaluates the entire bucket for cached-at-box discovery.
+// This avoids rescanning all sibling line counts once per bad line state.
+func (kp *linebreaker) evaluateDiscretionaryLine(khp *khipu.Khipu, from BreakRef, onlyLine lineNo, breakpoint, candidate kinx) []breakCandidate {
 	if kp == nil {
 		return nil
 	}
 	kp.discretionaryScratch = kp.discretionaryScratch[:0]
-	if khp == nil || candidate < 0 || candidate >= len(khp.Kind) {
+	if khp == nil || candidate < 0 || candidate >= len(khp.Kind) || candidate <= from.At {
 		return nil
 	}
-	if khp.Kind[candidate] != khipu.KTTextBox {
+	if khp.Kind[candidate] != khipu.KTTextBox || khp.Penalty[candidate] <= InfinityMerits {
 		return nil
 	}
 	cands := khp.DiscretionariesAt(int(candidate))
@@ -247,6 +285,9 @@ func (kp *linebreaker) evaluateDiscretionaryCandidates(khp *khipu.Khipu, from Br
 	}
 	results := kp.discretionaryScratch
 	for line, path := range kp.paths[from] {
+		if onlyLine >= 0 && line != onlyLine {
+			continue
+		}
 		linelen := kp.layout.LineShape.LineLength(int32(line + 1))
 		for _, cand := range cands {
 			lineBook := bookkeeping{}
@@ -269,26 +310,17 @@ func (kp *linebreaker) evaluateDiscretionaryCandidates(khp *khipu.Khipu, from Br
 				kp.appendActualKnots(&nextSeed, khp, candidate+1, breakpoint)
 			}
 			segwss := lineBook.effectiveWidth(kp.layout)
-			ratio, ok := calcAdjustmentRatio(segwss, linelen)
-			if !ok {
+			ev := classifyLine(segwss, linelen, kp.badnessLimit())
+			if !ev.accepted() {
 				continue
 			}
-			badness, _ := calcBadness(segwss, linelen)
-			if badness > kp.badnessLimit() {
-				continue
-			}
+			ev.bp, ev.line = from, line
+			ev.demerits = kp.discretionaryDemerits(ev.badness, cand.PreBreak.Penalty, from)
 			results = append(results, breakCandidate{
-				eval: lineEvaluation{
-					bp:          from,
-					line:        line,
-					ratio:       ratio,
-					stretch:     absD(linelen - segwss.W),
-					disposition: lineAccepted,
-					badness:     badness,
-					demerits:    kp.discretionaryDemerits(badness, cand.PreBreak.Penalty, from),
-				},
-				target: targetBreak(cand.Variant),
-				seed:   nextSeed,
+				eval:    ev,
+				target:  targetBreak(cand.Variant),
+				seed:    nextSeed,
+				initial: seedBookkeepingFromKnot(cand.PostBreak),
 			})
 		}
 	}

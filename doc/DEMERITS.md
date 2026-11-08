@@ -64,7 +64,11 @@ TeX treats `p <= -10000` inside the demerits formula as a special case:
 d = q^2
 ```
 
-The current rewrite handles forced breaks earlier, in [constructBreakpointGraph()](../linebreak/knuthplass/knuthplass.go). Before the cost function is called, forced-break penalties are neutralized to `0`, and the forced-break branch is taken in the graph-construction loop.
+The current rewrite handles forced breaks in boundary control flow,
+[finishBoundary()](../linebreak/knuthplass/boundary.go), called by graph
+construction. Forced-break penalties are neutralized to `0` before scoring.
+Normal transitions must satisfy pass tolerance even at a forced boundary;
+only the final pass may supply a fallback when no acceptable transition reaches it.
 
 This still deviates structurally from TeX, but it is now an intentional design choice rather than a numerical bug. It keeps `calcDemerits(...)` simpler while preserving the intended effect.
 
@@ -104,15 +108,18 @@ state discussed below.
 
 ### 4. Overfull fallback is still a local policy, not a TeX-faithful detail
 
-When the horizon is about to drain, or a mandatory boundary is geometrically
-infeasible, the breaker inserts a fallback path with `AwfulDemerits`. Mandatory
+In the final pass, when the horizon is about to drain or no acceptable line
+reaches a mandatory boundary, the breaker inserts a fallback with
+`AwfulDemerits`. Earlier passes fail normally and trigger the next pass. Mandatory
 boundaries retire earlier origins so they cannot be skipped. Accumulated costs
 use 64 bits to accommodate repeated fallbacks. This policy keeps the paragraph
-breakable and interacts with the pass-2 trigger. `EmergencyStretch` is currently
+breakable. Fallback selection is boundary-wide, deterministic and includes
+terminal hyphen extras; insertion precedes source deletion. `EmergencyStretch` is currently
 retained for the planned final emergency pass; there is no such pass yet.
 That pass is specified in [the algorithm design](khipu-algorithm.md#knuth-plass):
 add E to finite stretch for badness calculation only, leave shrink and knot
-capacities unchanged, and restrict fallbacks to the final pass. The existing
+capacities unchanged, and make that emergency pass final when enabled. Pass 2
+is currently final regardless of the reserved parameter's value. The existing
 defaults (20 BP in NewKPDefaultParameters, 50 BP in DefaultParameters) remain
 unchanged by the parameter cleanup. Freezing still rejects insufficient real
 capacity; supporting and reporting over-/underfull lines is a separate change.
@@ -140,10 +147,16 @@ The following cleanup stages are now in place in the rewrite:
   - the math has focused table-driven tests
 - Stage 4:
   - candidate evaluation now distinguishes:
-    - infeasible
+    - overfull (`MinW > target`, rejected regardless of tolerance)
     - screened out
     - accepted
   - screening and ranking are explicit separate steps
+
+The subsequent boundary/retirement change is described in [RETIREMENT.md](RETIREMENT.md).
+Ordinary and discretionary scoring share classification. Short zero-stretch
+lines have badness 10000, not an infeasible disposition; overfull working states
+are retired only after their discretionary rescue opportunity. Predecessor
+history remains available for collection.
 
 ### Still Missing
 
