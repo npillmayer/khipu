@@ -17,6 +17,11 @@ and a shared testing package remain proposals.
 
 ## Existing Guarantees and Evidence
 
+- `linebreak/knuthplass/hyphenation_benchmark_test.go` checks that the pass-2
+  workload discovers and shapes real discretionary candidates, reuses successful
+  provider lookups, and creates discretionary paths. A retained overlong origin
+  demonstrates the current capped-badness gate and seed-rescan case even when
+  splitting its last word cannot rescue the line. No timing assertions are used.
 - `linebreak/knuthplass/scratch_test.go` checks buffer reuse, growth, smaller and
   empty results, independence across breakers, and nested pass-2 candidate
   processing without overwriting outstanding ordinary evaluations. Horizon
@@ -424,7 +429,7 @@ and reveal visual issues but should not be the only correctness oracle.
 
 ## Knuth-Plass Performance Baseline
 
-`linebreak/knuthplass/benchmark_test.go` provides three independent benchmarks:
+`linebreak/knuthplass/benchmark_test.go` provides three ordinary benchmarks:
 
 - `BenchmarkEncodeLorem` measures streaming encoding without linebreaking.
 - `BenchmarkBreakLorem` measures the public breaker, with encoding outside the
@@ -543,6 +548,61 @@ sources. It now includes a large proportion of untimed encoding/setup work;
 within the breaker, growing path/seed/predecessor maps remain. Profile totals
 must not be confused with B/op, which excludes fixture setup. Active-state
 growth and safe retirement remain separate algorithmic work.
+
+### Hyphenating Second Pass
+
+`BenchmarkSecondPassHyphenatingLorem` in `hyphenation_benchmark_test.go` adds
+50-, 100- and 250-word cases using the same corpus, synthetic shaping and
+150 pt default layout. A deterministic test-only hyphenator supplies one
+midpoint split for ASCII words of at least four characters and declines shorter
+words. This is a reproducible workload, not a linguistic hyphenation policy.
+The real Khipukamayuq validates and shapes its fragments and caches candidates.
+
+This diagnostic explicitly enables pass 2 with the default thresholds. Merely
+installing a provider on the public call would not suffice: the ordinary lorem
+fixture can finish in pass 1. Timings include lazy discovery, replacement
+shaping, graph construction and best-path collection. Paragraph encoding and
+breaker setup are excluded. Each iteration gets a fresh owner and paragraph,
+so discovery is cold rather than silently becoming a warm-cache benchmark.
+This is not the combined latency of the public first/second-pass pipeline.
+
+Additional metrics separate provider requests from actual hyphenator calls,
+and report retained discretionary states alongside all retained states, line
+count, cost and worst badness. Successful lookups are cached, but declined
+lookups currently are not: short words can cause repeated policy calls. Neither
+counter measures rescanned knots; use CPU profiling to attribute that work.
+State counts are final retained totals, not peak active counts, and custom
+metrics describe the last iteration rather than accumulating over `b.N`.
+
+Start small and use explicit iteration counts; the 250-word case is much more
+expensive than its ordinary counterpart. Anchor each sub-benchmark expression
+so selecting `50` does not also select `250`:
+
+```sh
+go test ./linebreak/knuthplass -run '^$' -bench '^BenchmarkSecondPassHyphenatingLorem$/^(50|100)$' -benchtime=1x -count=3 -benchmem -timeout=3m
+go test ./linebreak/knuthplass -run '^$' -bench '^BenchmarkSecondPassHyphenatingLorem$/^250$' -benchtime=1x -benchmem -timeout=3m -cpuprofile=/tmp/khipu-hyphen.cpu -memprofile=/tmp/khipu-hyphen.mem -o /tmp/khipu-hyphen.test
+go tool pprof -top -cum /tmp/khipu-hyphen.test /tmp/khipu-hyphen.cpu
+```
+
+Initial single-iteration measurements on Apple M1, Go 1.25.6, with CPU/memory
+profiling enabled across all three sizes:
+
+| Words | Time | B/op | Provider requests | Hyphenator calls | Retained states |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 50 | 14.2 ms | 2.21 MB | 4,363 | 1,255 | 320 |
+| 100 | 202 ms | 15.35 MB | 38,467 | 10,240 | 1,306 |
+| 250 | 17.16 s | 239.87 MB | 660,205 | 170,379 | 8,393 |
+
+The combined CPU profile attributes 90.2% cumulatively to
+`evaluateDiscretionaryCandidates`, including 85.5% to `appendActualKnots`.
+These percentages overlap, not add: replay is inside discretionary evaluation.
+This confirms that the workload exposes seed rescanning, unlike the ordinary
+benchmark. It does not isolate the fraction specifically caused by dead states.
+
+As above, process-wide profiles include untimed setup. Default-layout synthetic
+results are not predictions for a real dictionary, font, or shaping engine.
+This benchmark adds coverage only; it does not change retirement, hyphenation
+gating, negative caching or discretionary replay.
 
 ## Validation and Next Work
 
