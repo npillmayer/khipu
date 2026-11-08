@@ -19,6 +19,7 @@ type recordingKPTrace struct {
 	tracing.Trace
 	level       tracing.TraceLevel
 	debug, info strings.Builder
+	errors      strings.Builder
 }
 
 func (tr *recordingKPTrace) GetTraceLevel() tracing.TraceLevel { return tr.level }
@@ -27,6 +28,10 @@ func (tr *recordingKPTrace) Debugf(format string, args ...interface{}) {
 }
 func (tr *recordingKPTrace) Infof(format string, args ...interface{}) {
 	fmt.Fprintf(&tr.info, format, args...)
+}
+
+func (tr *recordingKPTrace) Errorf(format string, args ...interface{}) {
+	fmt.Fprintf(&tr.errors, format, args...)
 }
 
 // Like the package's QuickConfig tests, this test installs a process-global
@@ -51,7 +56,7 @@ func TestTraceGuardsPreservePathResults(t *testing.T) {
 				PreBreak:  khipu.KnotCore{W: 5 * dimen.BP, MinW: 5 * dimen.BP, MaxW: 5 * dimen.BP, Penalty: 50, Kind: khipu.KTTextBox},
 				PostBreak: khipu.KnotCore{W: 15 * dimen.BP, MinW: 15 * dimen.BP, MaxW: 15 * dimen.BP, Kind: khipu.KTTextBox},
 			})
-			params := NewKPDefaultParameters()
+			params := NewDefaultParameters()
 			params.LinePenalty = 0
 			layout := khipu.Params{LineShape: linebreak.RectangularParShape(26 * dimen.BP), RightSkip: glue(0, 0, 5*dimen.BP)}
 			kp, err := prepareLineBreaker(layout, params)

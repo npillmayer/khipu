@@ -1,5 +1,11 @@
 # Testing Khipu Knotting
 
+Benchmark history note: the recorded timing, cost and work-count tables below
+predate neutral Unicode penalty translation. They remain evidence for the
+individual optimization experiments, but selected paths, demerits and discovery
+work can change under the new policy. Re-measure before using them as a current
+baseline or claiming a new speedup.
+
 ## Purpose and Status
 
 Reviewed November 8, 2026. The sole encoder is `EncodeParagraph(ctx, para)`.
@@ -17,6 +23,19 @@ and a shared testing package remain proposals.
 
 ## Existing Guarantees and Evidence
 
+- `linebreak/knuthplass/parameters_test.go` pins both independent profile values
+  and pass counts, checks constructor isolation, and verifies that mutations to
+  one profile cannot affect nil-parameter calls. Provider-error tests
+  capture logging to verify that pass-2/pass-3 failures are returned unchanged,
+  without retry, selection publication or duplicate error-level logging.
+- `penalties_test.go` checks Unicode-to-layout translation at both sentinels and
+  integer extremes. `boundary_preparation_test.go` checks neutral spaces, ZWSP
+  and CJK opportunities alongside mandatory/prohibited boundaries and CRLF
+  precedence. `linebreak/knuthplass/penalty_translation_test.go` checks the real
+  encoder/breaker roundtrip has no ordinary-break rewards while intentional
+  negative penalties still affect ranking. Corpus quality expectations use
+  neutral opportunities; the leading-space materialization fixture no longer
+  expects a rewarded empty first line.
 - `linebreak/knuthplass/evaluation_cache_test.go` checks boundary/penalty scoping,
   scratch independence, zero warm allocations, invalidation on successful writes
   (but not losing proposals), changed seeds/new line counts, forced-boundary
@@ -494,7 +513,7 @@ and reveal visual issues but should not be the only correctness oracle.
 The fixed 19-word ASCII corpus repeats to 250, 500 or 1,000 words, with a trailing
 space. Synthetic `Config{}` shaping uses 5 pt cells and default space elasticity;
 there are `2*words+1` knots. Breaking uses `DefaultLayout` at 150 pt and
-`NewKPDefaultParameters`, without a discretionary provider. This isolates the
+`NewDefaultParameters`, without a discretionary provider. This isolates the
 ordinary path-building cost, not font shaping or hyphenation performance.
 Benchmarks require info/debug logging disabled and do not change global logging
 configuration. The default no-op tracer meets that requirement.

@@ -10,6 +10,9 @@
 // then reuse the resolved geometry for freezing. The input must end with a
 // non-discardable paragraph-fill knot carrying InfinityMerits. Discardability
 // comes from knot flags, not from an inferred glue or kern rule.
+// NewDefaultParameters supplies the profile used for nil algorithm parameters;
+// NewTolerantParameters explicitly opts into higher tolerance and emergency
+// stretch. Both return independent values; there is no shared mutable profile.
 //
 // The result contains zero-based line-ending knot indices, including the final
 // trailer. BreakRef distinguishes ordinary breaks from discretionary variants

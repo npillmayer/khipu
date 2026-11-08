@@ -14,7 +14,7 @@ func TestKPVoid(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "khipu.linebreak")
 	defer teardown()
 	//
-	params := DefaultParameters
+	params := NewTolerantParameters()
 	parfillnode := node{
 		params.ParFillSkip.W,
 		params.ParFillSkip.MinW,
@@ -153,7 +153,7 @@ func TestBookkeepingAccumulatesConsecutiveDiscardables(t *testing.T) {
 }
 
 func TestBreakParagraphTrimsTrailingDiscardableAtBreakpoint(t *testing.T) {
-	params := DefaultParameters
+	params := NewTolerantParameters()
 	parfillnode := node{
 		params.ParFillSkip.W,
 		params.ParFillSkip.MinW,
@@ -178,7 +178,7 @@ func TestBreakParagraphTrimsTrailingDiscardableAtBreakpoint(t *testing.T) {
 }
 
 func TestBreakParagraphTrimsLeadingDiscardableOnLaterLine(t *testing.T) {
-	params := DefaultParameters
+	params := NewTolerantParameters()
 	parfillnode := node{
 		params.ParFillSkip.W,
 		params.ParFillSkip.MinW,

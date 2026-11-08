@@ -9,6 +9,7 @@ import (
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/dimen"
 	"github.com/npillmayer/khipu/linebreak"
+	"github.com/npillmayer/schuko/tracing"
 )
 
 // A forced first line isolates pass screening from the retained terminal fill.
@@ -20,11 +21,11 @@ func emergencyForcedLine(width, maximum dimen.DU) *khipu.Khipu {
 }
 
 func TestEmergencyPassPolicy(t *testing.T) {
-	if NewKPDefaultParameters().EmergencyStretch != 0 || DefaultParameters.EmergencyStretch != 50*dimen.BP {
+	if NewDefaultParameters().EmergencyStretch != 0 || NewTolerantParameters().EmergencyStretch != 50*dimen.BP {
 		t.Fatal("constructor must opt out; tolerant profile must retain its explicit recovery policy")
 	}
 	for _, extra := range []dimen.DU{-1, 0, 1, dimen.Fil - 1} {
-		params := NewKPDefaultParameters()
+		params := NewDefaultParameters()
 		params.EmergencyStretch = extra
 		passes, err := paragraphPasses(params)
 		want := []passConfig{{id: passPreTolerance}, {id: passTolerance, hyphenating: true, final: extra <= 0}}
@@ -39,7 +40,7 @@ func TestEmergencyPassPolicy(t *testing.T) {
 
 func TestEmergencyStretchValidatedBeforeFirstPass(t *testing.T) {
 	for _, extra := range []dimen.DU{dimen.Fil, dimen.Fill, dimen.Filll, dimen.Infinity} {
-		params := NewKPDefaultParameters()
+		params := NewDefaultParameters()
 		params.EmergencyStretch = extra
 		provider := &testDiscretionaryProvider{}
 		params.DiscretionaryProvider = provider
@@ -75,7 +76,7 @@ func TestEmergencyPassRecoveryAndLimits(t *testing.T) {
 		{"overfull still needs fallback", 150, 100, passEmergency, 10000, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			params := NewKPDefaultParameters()
+			params := NewDefaultParameters()
 			params.EmergencyStretch = tc.extra * dimen.BP
 			khp := emergencyForcedLine(tc.width, tc.width)
 			widths, minima, maxima := slices.Clone(khp.W), slices.Clone(khp.MinW), slices.Clone(khp.MaxW)
@@ -120,7 +121,7 @@ func TestEarlierSuccessfulPassWins(t *testing.T) {
 		{100, 100, passPreTolerance, 0},
 		{90, 99, passTolerance, 137},
 	} {
-		params := NewKPDefaultParameters()
+		params := NewDefaultParameters()
 		params.EmergencyStretch = 100 * dimen.BP
 		// Even an accepted total cost above AwfulDemerits is not evidence of
 		// pass failure. Nor may pass 3 compete with an acceptable pass-2 path.
@@ -153,6 +154,11 @@ func emergencyLaterDiscovery() *khipu.Khipu {
 }
 
 func TestProviderErrorsStopPassSequence(t *testing.T) {
+	// Capture even error-level output: returned provider errors are reported
+	// by callers, not logged again at the internal pass boundary.
+	trace := &recordingKPTrace{Trace: tracing.NoOpTrace(), level: tracing.LevelError}
+	tracing.SetTraceSelector(tracing.SelectorForAdapter(func() tracing.Trace { return trace }))
+	t.Cleanup(func() { tracing.SetTraceSelector(nil) })
 	for _, failIn := range []passID{passTolerance, passEmergency} {
 		khp := emergencyLaterDiscovery()
 		if failIn == passTolerance {
@@ -162,7 +168,7 @@ func TestProviderErrorsStopPassSequence(t *testing.T) {
 		before := maps.Clone(khp.SelectedDiscretionaries)
 		want := errors.New("provider failed")
 		calls := 0
-		params := NewKPDefaultParameters()
+		params := NewDefaultParameters()
 		params.EmergencyStretch = 10 * dimen.BP
 		params.DiscretionaryProvider = emergencyProviderFunc(func(_ *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error) {
 			calls++
@@ -181,6 +187,9 @@ func TestProviderErrorsStopPassSequence(t *testing.T) {
 		if !errors.Is(err, want) || len(breaks) != 0 || calls != 1 || !maps.Equal(before, khp.SelectedDiscretionaries) {
 			t.Fatal("public failure published partial selections or retried the error", breaks, err)
 		}
+		if trace.errors.Len() != 0 {
+			t.Fatalf("returned provider error was also logged: %s", trace.errors.String())
+		}
 	}
 }
 
@@ -193,7 +202,7 @@ func TestEmergencyPublishesOnlyWinningSelections(t *testing.T) {
 		PreBreak:  khipu.KnotCore{Kind: khipu.KTTextBox, W: 90 * dimen.BP, MinW: 90 * dimen.BP, MaxW: 90 * dimen.BP},
 		PostBreak: khipu.KnotCore{Kind: khipu.KTTextBox, W: 60 * dimen.BP, MinW: 60 * dimen.BP, MaxW: 60 * dimen.BP},
 	}}}
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.EmergencyStretch, params.DiscretionaryProvider = 10*dimen.BP, provider
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}
 	result, err := selectParagraphBreaks(khp, layout, params)

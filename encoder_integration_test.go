@@ -169,7 +169,7 @@ func TestEncodedParagraphLazyDiscretionaries(t *testing.T) {
 			if algorithm == "firstfit" {
 				breaks, err = firstfit.BreakParagraph(khp, firstfit.DefaultLayout(shape), &firstfit.Parameters{DiscretionaryProvider: owner})
 			} else {
-				params := knuthplass.NewKPDefaultParameters()
+				params := knuthplass.NewDefaultParameters()
 				layout := knuthplass.DefaultLayout(shape)
 				layout.RightSkip = khipu.KnotCore{MaxW: 5 * dimen.PT, Kind: khipu.KTGlue}
 				params.DiscretionaryProvider = owner

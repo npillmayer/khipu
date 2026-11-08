@@ -20,15 +20,16 @@ func (alternatingIndexShape) LineLength(line int32) dimen.DU {
 }
 
 func TestIndexedCorpusBaseline(t *testing.T) {
-	// Breaks and quality were captured with the original flat map. Retirement
-	// and forced-boundary screening now remove dead work, not reconstruction.
+	// Corpus regression for indexed reconstruction. Costs use neutral ordinary
+	// boundaries, not the former raw UAX rewards. Retirement removes dead work,
+	// not the history needed to reconstruct these paths.
 	for _, tc := range []struct {
 		shape   khipu.LineShape
 		breaks  []kinx
 		quality pathQuality
 	}{
-		{linebreak.RectangularParShape(150 * dimen.PT), []kinx{9, 13, 23, 33, 41, 49, 57, 65, 75, 85, 91, 100}, pathQuality{-2770, 43}},
-		{alternatingIndexShape{}, []kinx{7, 11, 21, 25, 35, 41, 49, 55, 63, 71, 81, 87, 97, 100}, pathQuality{-5930, 47}},
+		{linebreak.RectangularParShape(150 * dimen.PT), []kinx{9, 13, 23, 33, 41, 49, 57, 65, 75, 85, 91, 100}, pathQuality{6481, 43}},
+		{alternatingIndexShape{}, []kinx{7, 11, 21, 25, 35, 41, 49, 55, 63, 71, 81, 87, 97, 100}, pathQuality{5003, 47}},
 	} {
 		khp, err := khipu.NewKhipukamayuq(khipu.Config{}).EncodeParagraph(t.Context(), loremParagraph(t, 50))
 		if err != nil {

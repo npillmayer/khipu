@@ -110,7 +110,7 @@ copied in full, including zero fields.
 To enable lazy discovery, pass the same owner as the breaker's provider:
 
 ```go
-params := knuthplass.NewKPDefaultParameters()
+params := knuthplass.NewDefaultParameters()
 params.DiscretionaryProvider = owner
 layout := knuthplass.DefaultLayout(shape)
 breaks, err := knuthplass.BreakParagraph(khp, layout, params)

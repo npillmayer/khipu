@@ -125,6 +125,12 @@ badness, squared breakpoint penalties, inclusive tolerance thresholds, and
 demerits outside the small penalty-sentinel range. Candidate evaluation
 separates geometric feasibility, badness screening, and ranking.
 
+The encoder now translates finite allowed UAX#14 opportunities to zero penalties;
+mandatory and prohibited classifications retain their sentinels. Raw Unicode
+rule weights no longer act as squared rewards for extra lines. Explicit knot
+preferences and discretionary penalties remain unchanged. See
+[DEMERITS.md](DEMERITS.md#unicode-boundary-translation).
+
 Pass 1 uses `PreTolerance`. If no acceptable complete path exists, a fresh pass
 runs with `hyphenating=true` and `Tolerance`. With positive finite
 `EmergencyStretch`, pass 2 is non-final and failure starts a fresh emergency
@@ -152,14 +158,36 @@ pass 3; values at or above `dimen.Fil` fail validation before pass 1. The first
 complete pass wins, and only its discretionary selections are published.
 `Max >= dimen.Fil` keeps existing numerical fill/saturation behavior; exact fill
 semantics are not added. Freezing still needs over-/underfull output support.
-`NewKPDefaultParameters` now uses zero E to preserve default two-pass behavior;
-the tolerant `DefaultParameters` profile retains 50 bp, now active.
+`NewDefaultParameters` uses zero E to preserve default two-pass behavior;
+`NewTolerantParameters` enables 50 BP emergency stretch.
 See [PASS3.md](PASS3.md) for regression coverage and
 [TESTING.md](TESTING.md#emergency-pass-workloads) for public/isolated emergency
 benchmarks, baselines and workload limitations.
-Parameter defaults differ between `DefaultParameters` and
-`NewKPDefaultParameters`; consult the chosen initializer rather than assuming
-TeX defaults.
+
+### Parameter Profiles
+
+Both constructors return independent parameter values; neither reads a mutable
+global. Nil algorithm parameters select `NewDefaultParameters`, never the
+tolerant profile. Numeric defaults have not changed:
+
+| Setting | `NewDefaultParameters()` | `NewTolerantParameters()` |
+| --- | ---: | ---: |
+| PreTolerance | 100 | 100 |
+| Tolerance | 200 | 5000 |
+| LinePenalty | 10 | 10 |
+| FirstHyphenDemerits | 0 | 0 |
+| FinalHyphenDemerits | 10000 | 50 |
+| EmergencyStretch | 0 | 50 BP |
+| Final configured pass | 2 | 3 |
+
+Both leave the discretionary provider unset and provide fill glue as the upstream
+ParFillSkip convenience. Geometry remains in separately resolved `khipu.Params`.
+There is no shared mutable profile or compatibility constructor. Use the two
+named constructors and customize the returned value for each caller.
+
+Provider/input errors are returned to the caller without being logged at the
+internal pass boundary. The caller owns error reporting; failed searches are
+not retried after such errors.
 
 ## Lazy Discretionaries
 
@@ -228,7 +256,7 @@ enabled tracing retains path diagnostics. Boundary-wide decisions make retiremen
 and final-pass fallback independent of horizon iteration order. Further changes should follow the measured
 baseline rather than a representation chosen only on theoretical grounds.
 
-The broader synthetic 1,000-word/150 pt measurements still report about 88 ms
+The pre-translation synthetic 1,000-word/150 pt measurements reported about 88 ms
 with an empty provider and 844 ms with a productive provider, with approximately
 28 MB and 99 MB allocated respectively. Halving ordinary classifications saved
 only about 7% and 3% of runtime. Discovery, seed replay, updates and retained
@@ -236,6 +264,8 @@ history remain profiling targets. The newer emergency fixtures keep very few
 states active; their lower timings do not supersede the broader workloads.
 See [TESTING.md](TESTING.md#boundary-local-ordinary-evaluation-reuse) for recorded
 conditions and limitations; these figures are not a fresh measurement here.
+Penalty translation changes ranking and can change selected paths and discovery
+work, so those measurements are historical, not current performance guarantees.
 
 ## Code Reading Guide
 

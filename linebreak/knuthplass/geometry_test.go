@@ -43,7 +43,7 @@ func TestLineClassificationAndCandidateConsistency(t *testing.T) {
 			if got := classifyLine(tc.width, 100, tc.tolerance, 0); got != want {
 				t.Fatalf("classification=%+v, want %+v", got, want)
 			}
-			params := NewKPDefaultParameters()
+			params := NewDefaultParameters()
 			params.PreTolerance, params.Tolerance = tc.tolerance, tc.tolerance
 			params.FirstHyphenDemerits = 37
 			layout := khipu.Params{LineShape: linebreak.RectangularParShape(100)}
@@ -97,7 +97,7 @@ func TestLineClassificationAndCandidateConsistency(t *testing.T) {
 }
 
 func TestSharedClassificationUsesCurrentPassTolerance(t *testing.T) {
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.PreTolerance, params.Tolerance = 99, 100
 	kp, err := prepareLineBreaker(khipu.Params{LineShape: linebreak.RectangularParShape(100)}, params)
 	if err != nil {

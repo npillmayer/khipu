@@ -150,7 +150,7 @@ func checkBoundarySuccessors(t *testing.T, extra dimen.DU) {
 
 func TestBoundaryEvaluationsEndOnProviderError(t *testing.T) {
 	want := errors.New("provider failed")
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.DiscretionaryProvider = failedRetirementProvider{want}
 	kp, _ := prepareLineBreaker(khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}, params)
 	kp.hyphenating, kp.final = true, true
@@ -187,7 +187,7 @@ func TestBoundaryEvaluationReuseMatchesUncached(t *testing.T) {
 							khp.Penalty[at] = InfinityMerits
 						}
 					}
-					params := NewKPDefaultParameters()
+					params := NewDefaultParameters()
 					params.DiscretionaryProvider = owner
 					kp, err := prepareLineBreaker(DefaultLayout(shape), params)
 					if err != nil {

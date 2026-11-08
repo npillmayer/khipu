@@ -118,7 +118,7 @@ func readParagraphBoundaries(source io.Reader) ([]sourceBoundary, error) {
 	}
 	feed(0)
 	for i := range result {
-		result[i].penalty = normPenalty(totals[i])
+		result[i].penalty = penaltyFromUAX(totals[i])
 		if mandatory[i] {
 			result[i].penalty = MaxMerit
 		}

@@ -37,7 +37,7 @@ func TestForcedBoundaryRescuesZeroShrinkWord(t *testing.T) {
 			PreBreak:  khipu.KnotCore{Kind: khipu.KTTextBox, W: 100 * dimen.BP, MinW: 100 * dimen.BP, MaxW: 100 * dimen.BP},
 			PostBreak: khipu.KnotCore{Kind: khipu.KTTextBox, W: 50 * dimen.BP, MinW: 50 * dimen.BP, MaxW: 50 * dimen.BP},
 		}}}
-		params := NewKPDefaultParameters()
+		params := NewDefaultParameters()
 		params.DiscretionaryProvider = provider
 		nodes := []node{
 			{w: 150, minw: 150, maxw: 150, p: InfinityDemerits, kind: khipu.KTTextBox},
@@ -106,7 +106,7 @@ func TestRetroactiveDiscretionaryKeepsOnlyFragmentInRescanSeed(t *testing.T) {
 		PreBreak:  khipu.KnotCore{Kind: khipu.KTTextBox, W: 29 * dimen.BP, MinW: 29 * dimen.BP, MaxW: 29 * dimen.BP},
 		PostBreak: khipu.KnotCore{Kind: khipu.KTTextBox, W: 20 * dimen.BP, MinW: 20 * dimen.BP, MaxW: 20 * dimen.BP},
 	}}}
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.DiscretionaryProvider = provider
 	khp := newKhipu([]node{
 		{w: 20, minw: 20, maxw: 20, p: InfinityDemerits, kind: khipu.KTTextBox},
@@ -233,7 +233,7 @@ func TestCachedNegativeFragmentsOptOutAndLazyNegativeFragmentsFail(t *testing.T)
 		t.Fatal("cached negative fragment must disable pruning before scanning")
 	}
 	clear(khp.DiscretionaryCandidates)
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.DiscretionaryProvider = &testDiscretionaryProvider{want: []khipu.DiscretionaryCandidate{negative}}
 	if _, err := BreakParagraph(khp, layout, params); !errors.Is(err, khipu.ErrIllegalArguments) {
 		t.Fatalf("lazy negative fragment must fail rather than invalidate retirement: %v", err)
@@ -254,7 +254,7 @@ func (p failedRetirementProvider) DiscretionaryCandidates(*khipu.Khipu, int) ([]
 
 func TestProviderErrorIsNotNormalPassFailure(t *testing.T) {
 	want := errors.New("hyphenator unavailable")
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.DiscretionaryProvider = failedRetirementProvider{want}
 	khp := newKhipu([]node{
 		{w: 150, minw: 150, maxw: 150, p: InfinityDemerits, kind: khipu.KTTextBox},
@@ -284,7 +284,7 @@ func TestForcedFallbackWhenPruningIsDisabled(t *testing.T) {
 func TestFallbackCanonicalCostIncludesTerminalHyphenExtra(t *testing.T) {
 	for _, extra := range []merits{0, 91} {
 		for run := range 20 {
-			params := NewKPDefaultParameters()
+			params := NewDefaultParameters()
 			params.FinalHyphenDemerits = extra
 			kp, _ := prepareLineBreaker(khipu.Params{LineShape: linebreak.RectangularParShape(100)}, params)
 			kp.final, kp.prune, kp.end = true, true, PlainBreak(9)

@@ -27,7 +27,7 @@ func TestEmergencyDeterministicTiesAndWarmRuns(t *testing.T) {
 			slices.Reverse(candidates)
 		}
 		provider := &testDiscretionaryProvider{want: slices.Clone(candidates)}
-		params := NewKPDefaultParameters()
+		params := NewDefaultParameters()
 		params.EmergencyStretch, params.DiscretionaryProvider = 10*dimen.BP, provider
 		layout := khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}
 		quality := pathQuality{
@@ -54,7 +54,7 @@ func TestEmergencyDeterministicTiesAndWarmRuns(t *testing.T) {
 
 func TestEmergencyRetroactiveSeedsRemainPhysical(t *testing.T) {
 	for _, uncached := range []bool{false, true} {
-		params := NewKPDefaultParameters()
+		params := NewDefaultParameters()
 		candidate := khipu.DiscretionaryCandidate{
 			Variant:   1,
 			PreBreak:  khipu.KnotCore{Kind: khipu.KTTextBox, W: 90 * dimen.BP, MinW: 90 * dimen.BP, MaxW: 90 * dimen.BP},

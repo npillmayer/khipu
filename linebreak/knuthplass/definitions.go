@@ -33,17 +33,32 @@ type Parameters struct {
 	DiscretionaryProvider DiscretionaryProvider
 }
 
-// DefaultParameters are the standard line-breaking parameters.
-// They promote a tolerant configuration, suitable for almost always finding an
-// acceptable set of linebreaks.
-var DefaultParameters = &Parameters{
-	Tolerance:           5000,
-	PreTolerance:        100,
-	LinePenalty:         10,
-	FirstHyphenDemerits: 0,
-	FinalHyphenDemerits: 50,
-	EmergencyStretch:    dimen.DU(dimen.BP * 50),
-	ParFillSkip:         glue(0, 0, dimen.Fill),
+// NewDefaultParameters returns an independent standard algorithm profile:
+// PreTolerance 100, Tolerance 200, LinePenalty 10, FirstHyphenDemerits 0,
+// FinalHyphenDemerits 10000, and EmergencyStretch 0. This is the profile used
+// when BreakParagraph receives nil parameters; final fallback occurs in pass 2.
+// ParFillSkip is fill glue for upstream encoding; layout remains separate.
+func NewDefaultParameters() *Parameters {
+	return &Parameters{
+		Tolerance:           200,
+		PreTolerance:        100,
+		LinePenalty:         10,
+		FinalHyphenDemerits: 10000,
+		ParFillSkip:         glue(0, 0, dimen.Fill),
+	}
+}
+
+// NewTolerantParameters returns an independent permissive algorithm profile.
+// Relative to NewDefaultParameters it sets Tolerance to 5000,
+// FinalHyphenDemerits to 50, and EmergencyStretch to 50 BP, enabling pass 3.
+// Neither profile installs a discretionary provider. Mutating returned fields
+// does not change future constructor results or the nil-parameter defaults.
+func NewTolerantParameters() *Parameters {
+	params := NewDefaultParameters()
+	params.Tolerance = 5000
+	params.FinalHyphenDemerits = 50
+	params.EmergencyStretch = 50 * dimen.BP
+	return params
 }
 
 func glue(w, wmin int, wmax dimen.DU) khipu.KnotCore {

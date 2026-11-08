@@ -67,8 +67,10 @@ Trimming matches both breakers: flagged knots before the first or after the
 last non-discardable textbox are removed. Retained neutral glue/kern survive
 but do not stop trimming. A line without content keeps neutrals and removes all
 discardables. The final fill survives. An empty line selected by a breaker is
-preserved; in particular, current K&P may select a leading-space breakpoint.
-This stage does not change the deferred first-line whitespace policy.
+preserved if supplied by the breaker. Neutral Unicode penalties no longer reward
+an empty leading-space line in the standard integration fixture; this is a
+ranking change, not a prohibition of that breakpoint or a change to the deferred
+first-line whitespace policy.
 
 The result owns line slices and core snapshots and retains arena slice headers
 for immutable published records. Appending candidates, replacing selections or

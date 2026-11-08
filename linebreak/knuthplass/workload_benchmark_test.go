@@ -18,8 +18,9 @@ func (h *decliningHyphenator) Discretionaries(string, *khipu.Params) ([]khipu.Hy
 	return nil, nil
 }
 
-// Baselines were captured before empty-result caching. Policy calls may fall,
-// but discovery requests, scoring demands, history and final decisions must not.
+// Work baselines originated before empty-result caching; quality is updated for
+// neutral Unicode opportunities. Policy calls may fall, but discovery requests,
+// scoring demands, history and final decisions must not change across warm runs.
 // Boundary reuse may now satisfy an ordinary demand without a classification.
 func TestEmptyDiscoveryCachePreservesPassWork(t *testing.T) {
 	for _, tc := range []struct {
@@ -28,8 +29,8 @@ func TestEmptyDiscoveryCachePreservesPassWork(t *testing.T) {
 		peak, predecessors, requests int
 		quality                      pathQuality
 	}{
-		{"empty", 1230, 0, 33, 129, 390, pathQuality{-2770, 43}},
-		{"productive", 2828, 1695, 74, 284, 929, pathQuality{-5451, 21}},
+		{"empty", 1230, 0, 33, 129, 390, pathQuality{6481, 43}},
+		{"productive", 2828, 1695, 74, 284, 929, pathQuality{1855, 3}},
 	} {
 		t.Run(tc.mode, func(t *testing.T) {
 			empty, productive := &decliningHyphenator{}, &loremHyphenator{}
@@ -43,7 +44,7 @@ func TestEmptyDiscoveryCachePreservesPassWork(t *testing.T) {
 				t.Fatal(err)
 			}
 			provider := &countingLoremProvider{owner: owner}
-			params := NewKPDefaultParameters()
+			params := NewDefaultParameters()
 			params.DiscretionaryProvider = provider
 			var first []BreakRef
 			var preds map[pathState]predecessor
@@ -127,7 +128,7 @@ func BenchmarkRetirementWorkloads(b *testing.B) {
 							}
 						}
 						provider := &countingLoremProvider{owner: owner}
-						params := NewKPDefaultParameters()
+						params := NewDefaultParameters()
 						if mode != "ordinary" {
 							params.DiscretionaryProvider = provider
 						} else {

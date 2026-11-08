@@ -51,7 +51,7 @@ func hyphenatingLorem(tb testing.TB, words int) (*khipu.Khipu, *linebreaker, *co
 		tb.Fatal("fixture must have ordinary lorem knots and no eager hyphenation")
 	}
 	provider := &countingLoremProvider{owner: owner}
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.DiscretionaryProvider = provider
 	kp, err := prepareLineBreaker(DefaultLayout(linebreak.RectangularParShape(150*dimen.PT)), params)
 	if err != nil {

@@ -78,25 +78,10 @@ func newLinebreaker(layout khipu.Params, params *Parameters) *linebreaker {
 	kp.retired = make(map[origin]struct{})
 	kp.layout = layout
 	if params == nil {
-		params = NewKPDefaultParameters()
+		params = NewDefaultParameters()
 	}
 	kp.params = params
 	return kp
-}
-
-// NewKPDefaultParameters creates line-breaking parameters similar to
-// (but not identical) to TeX's. Emergency recovery is opt-in; nil parameters
-// retain the two-pass policy with final fallback in pass 2.
-func NewKPDefaultParameters() *Parameters {
-	return &Parameters{
-		Tolerance:           200,
-		PreTolerance:        100,
-		LinePenalty:         10,
-		FirstHyphenDemerits: 0,
-		FinalHyphenDemerits: 10000,
-		EmergencyStretch:    0,
-		ParFillSkip:         glue(0, 0, dimen.Fill),
-	}
 }
 
 // DefaultLayout preserves the finite-stretch right skip of the K&P profile.
@@ -541,7 +526,7 @@ type pathQuality struct {
 // trailer. SelectedDiscretionaries is replaced only on success. Errors preserve
 // earlier selections, although discovery may have populated candidate caches.
 // Nil params selects
-// NewKPDefaultParameters. Only the single best path is returned; alternative
+// NewDefaultParameters. Only the single best path is returned; alternative
 // line-count solutions are not enumerated. Layout must be resolved explicitly
 // (for example with DefaultLayout) and reused unchanged for freezing.
 // Positive finite EmergencyStretch enables a third pass after two unsuccessful

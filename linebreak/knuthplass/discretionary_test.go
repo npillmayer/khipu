@@ -34,7 +34,7 @@ func TestDiscretionaryCandidatesFallbackToKhipuCache(t *testing.T) {
 			W: 12 * dimen.BP, MinW: 12 * dimen.BP, MaxW: 12 * dimen.BP, Kind: khipu.KTTextBox,
 		},
 	})
-	kp := newLinebreaker(DefaultLayout(nil), NewKPDefaultParameters())
+	kp := newLinebreaker(DefaultLayout(nil), NewDefaultParameters())
 	got, err := kp.discretionaryCandidates(khp, 0)
 	if err != nil {
 		t.Fatalf("expected cached discretionary lookup to succeed: %v", err)
@@ -56,7 +56,7 @@ func TestDiscretionaryCandidatesDelegateToProvider(t *testing.T) {
 			},
 		}},
 	}
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.DiscretionaryProvider = provider
 	khp := newKhipu([]node{
 		{w: 20, minw: 20, maxw: 20, p: InfinityDemerits, kind: khipu.KTTextBox},
@@ -146,7 +146,7 @@ func TestHyphenationCandidateForTightPass2Line(t *testing.T) {
 
 func TestPass2RequestsDiscretionariesForScreenedOutCandidate(t *testing.T) {
 	provider := &testDiscretionaryProvider{}
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.LinePenalty = 0
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(8000)}
 	params.DiscretionaryProvider = provider
@@ -187,7 +187,7 @@ func TestBreakParagraphSelectsDiscretionaryVariantOnSecondPass(t *testing.T) {
 			},
 		}},
 	}
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.LinePenalty = 0
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(26 * dimen.BP), RightSkip: glue(0, 0, 5*dimen.BP)}
 	params.DiscretionaryProvider = provider
@@ -224,7 +224,7 @@ func TestBreakParagraphSelectsDiscretionaryVariantOnSecondPass(t *testing.T) {
 }
 
 func TestBreakParagraphClearsStaleSelectedDiscretionaries(t *testing.T) {
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.LinePenalty = 0
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(20 * dimen.BP)}
 	parfillnode := node{
@@ -256,7 +256,7 @@ func TestBreakParagraphClearsStaleSelectedDiscretionaries(t *testing.T) {
 }
 
 func TestDiscretionaryCandidateUsesPreBreakPenaltyForDemerits(t *testing.T) {
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.LinePenalty = 0
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(26 * dimen.BP)}
 	khp := testKhipu()

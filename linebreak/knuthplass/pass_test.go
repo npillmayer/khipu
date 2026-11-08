@@ -18,7 +18,7 @@ func breakParagraphPass(khp *khipu.Khipu, layout khipu.Params,
 }
 
 func TestFirstPassUsesPreTolerance(t *testing.T) {
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	kp := newLinebreaker(DefaultLayout(nil), params)
 	if got := kp.badnessLimit(); got != params.PreTolerance {
 		t.Fatalf("expected first-pass badness limit %d, got %d", params.PreTolerance, got)
@@ -30,7 +30,7 @@ func TestFirstPassUsesPreTolerance(t *testing.T) {
 }
 
 func TestForcedBreakFallbacksKeepPositiveAccumulatedCost(t *testing.T) {
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(80 * dimen.BP)}
 	khp := newKhipu([]node{
 		{w: 10, minw: 10, maxw: 10, p: InfinityMerits, kind: khipu.KTTextBox},
@@ -48,7 +48,7 @@ func TestForcedBreakFallbacksKeepPositiveAccumulatedCost(t *testing.T) {
 }
 
 func TestCollectOptimalBreakpointsTracksWorstBadness(t *testing.T) {
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	parfillnode := node{
 		params.ParFillSkip.W,
 		params.ParFillSkip.MinW,
@@ -82,7 +82,7 @@ func TestCollectOptimalBreakpointsTracksWorstBadness(t *testing.T) {
 }
 
 func TestBreakParagraphStartsSecondPassAfterFailedPreTolerancePass(t *testing.T) {
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.LinePenalty = 0
 	khp := testKhipu()
 	khp.W = append(khp.W, 7990, 7990, params.ParFillSkip.W)

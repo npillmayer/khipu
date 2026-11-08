@@ -46,7 +46,7 @@ func TestEmergencyClassificationAndCandidateConsistency(t *testing.T) {
 			if got := classifyLine(tc.w, tc.target, tc.tolerance, tc.extra); got != want {
 				t.Fatalf("got %+v, want %+v", got, want)
 			}
-			params := NewKPDefaultParameters()
+			params := NewDefaultParameters()
 			params.PreTolerance, params.Tolerance = tc.tolerance, tc.tolerance
 			params.FirstHyphenDemerits = 37
 			kp, err := prepareLineBreaker(khipu.Params{LineShape: linebreak.RectangularParShape(tc.target)}, params)
@@ -149,7 +149,7 @@ func TestNonpositiveEmergencyStretchPreservesLegacyClassification(t *testing.T) 
 }
 
 func TestPassConfigurationControlsEmergencyStretch(t *testing.T) {
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.EmergencyStretch = 100 * dimen.BP
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}
 	khp := newKhipu([]node{

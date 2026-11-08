@@ -46,7 +46,7 @@ func TestLineGeometryFromBothBreakers(t *testing.T) {
 					params := *firstfit.DefaultParameters
 					breaks, err = firstfit.BreakParagraph(k, layout, &params)
 				} else {
-					params := knuthplass.NewKPDefaultParameters()
+					params := knuthplass.NewDefaultParameters()
 					breaks, err = knuthplass.BreakParagraph(k, layout, params)
 				}
 				if err != nil {

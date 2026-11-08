@@ -57,7 +57,7 @@ func TestStreamingAutomaticBreaksEndToEnd(t *testing.T) {
 						p.DiscretionaryProvider = owner
 						return firstfit.BreakParagraph(k, firstfit.DefaultLayout(shape), &p)
 					}
-					p := knuthplass.NewKPDefaultParameters()
+					p := knuthplass.NewDefaultParameters()
 					layout := knuthplass.DefaultLayout(shape)
 					p.DiscretionaryProvider = owner
 					if width == 25*dimen.PT {

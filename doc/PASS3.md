@@ -37,8 +37,9 @@ freezing.
   discovery results. Errors are not cached. These caches survive breaker passes.
 - Boundary-local ordinary evaluation reuse belongs to an individual breaker
   and boundary. A fresh pass cannot accidentally reuse another pass's scores.
-- `NewKPDefaultParameters` specifies zero emergency stretch;
-  the explicitly tolerant `DefaultParameters` profile specifies 50 bp.
+- `NewDefaultParameters` specifies zero emergency stretch;
+  `NewTolerantParameters` specifies 50 BP. Both return independent values.
+  See [KP.md](KP.md#parameter-profiles) for the complete profile comparison.
   The latter now enables emergency recovery when earlier passes fail.
 - Public `BreakParagraph` returns breakpoint indices and an error. It does not
   expose pass identity or the private `pathQuality` value.
@@ -49,9 +50,9 @@ freezing.
 
 Implemented policy:
 
-- Set `NewKPDefaultParameters().EmergencyStretch` to zero. This preserves the
+- Set `NewDefaultParameters().EmergencyStretch` to zero. This preserves the
   existing two-pass behavior for callers supplying nil algorithm parameters.
-- Retain 50 bp in the explicitly tolerant `DefaultParameters` profile. Its
+- Retain 50 BP in the explicit `NewTolerantParameters` profile. Its
   nonzero value would become an intentional recovery policy rather than an
   unused setting.
 - Treat `EmergencyStretch <= 0` as disabled; use an effective value of zero.

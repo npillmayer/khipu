@@ -88,7 +88,7 @@ func TestEmergencyReusesOwnerDiscoveryAcrossPasses(t *testing.T) {
 				khp.SelectedDiscretionaries = map[int]khipu.DiscretionarySelection{0: {Source: 0, Variant: 9}}
 				stale := maps.Clone(khp.SelectedDiscretionaries)
 				requests := 0
-				params := NewKPDefaultParameters()
+				params := NewDefaultParameters()
 				params.EmergencyStretch = 2 * dimen.PT
 				params.DiscretionaryProvider = emergencyProviderFunc(func(k *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error) {
 					requests++
@@ -175,7 +175,7 @@ func TestEmergencyAutomaticDiscoveryGate(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			provider := &testDiscretionaryProvider{}
-			params := NewKPDefaultParameters()
+			params := NewDefaultParameters()
 			params.DiscretionaryProvider = provider
 			kp, err := prepareLineBreaker(khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}, params)
 			if err != nil {
@@ -216,7 +216,7 @@ func TestEmergencyExplicitRequestBypassesAutomaticGate(t *testing.T) {
 		inputs = append(inputs, word)
 		return []khipu.HyphenationFragment{{PreBreak: "-"}}, nil
 	}))
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.DiscretionaryProvider = f.owner
 	kp, err := prepareLineBreaker(khipu.Params{LineShape: linebreak.RectangularParShape(30 * dimen.PT)}, params)
 	if err != nil {

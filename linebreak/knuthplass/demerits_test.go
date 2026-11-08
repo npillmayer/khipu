@@ -92,7 +92,7 @@ func TestCalcAdjustmentRatioAndBadness(t *testing.T) {
 }
 
 func TestCalcDemeritsSquaresPenalty(t *testing.T) {
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.LinePenalty = 10
 	if got := calcDemerits(50, 50, params); got != 6100 {
 		t.Fatalf("expected positive-penalty demerits 6100, got %d", got)
@@ -103,7 +103,7 @@ func TestCalcDemeritsSquaresPenalty(t *testing.T) {
 }
 
 func TestFirstPassAcceptsBadnessAtPreToleranceBoundary(t *testing.T) {
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.LinePenalty = 0
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(8000)}
 	khp := testKhipu()
@@ -132,7 +132,7 @@ func TestFirstPassAcceptsBadnessAtPreToleranceBoundary(t *testing.T) {
 }
 
 func TestEvaluateCandidatesSeparatesScreeningFromRanking(t *testing.T) {
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.LinePenalty = 0
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(100)}
 	kp, err := prepareLineBreaker(layout, params)
@@ -173,7 +173,7 @@ func TestEvaluateCandidatesSeparatesScreeningFromRanking(t *testing.T) {
 }
 
 func TestDiscretionaryDemeritsAddFirstLineExtra(t *testing.T) {
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.LinePenalty = 0
 	params.FirstHyphenDemerits = 37
 	kp := newLinebreaker(DefaultLayout(nil), params)
@@ -190,7 +190,7 @@ func TestDiscretionaryDemeritsAddFirstLineExtra(t *testing.T) {
 }
 
 func TestTerminalHyphenDemeritsApplyOnlyToFinalTransitionFromDiscretionary(t *testing.T) {
-	params := NewKPDefaultParameters()
+	params := NewDefaultParameters()
 	params.FinalHyphenDemerits = 91
 	kp := newLinebreaker(DefaultLayout(nil), params)
 	kp.end = PlainBreak(9)

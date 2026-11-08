@@ -97,7 +97,7 @@ func BenchmarkFirstPassLorem(b *testing.B) {
 	benchmarkLorem(b, func(b *testing.B, words int) {
 		khp := encodedLorem(b, words)
 		layout := DefaultLayout(linebreak.RectangularParShape(150 * dimen.PT))
-		params := NewKPDefaultParameters()
+		params := NewDefaultParameters()
 		var kp *linebreaker
 		var quality pathQuality
 		var breaks []BreakRef

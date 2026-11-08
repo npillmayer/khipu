@@ -51,7 +51,7 @@ func TestLogicalLinesFromBothBreakers(t *testing.T) {
 					layout = firstfit.DefaultLayout(shape)
 					breaks, err = firstfit.BreakParagraph(k, layout, &params)
 				} else {
-					params := knuthplass.NewKPDefaultParameters()
+					params := knuthplass.NewDefaultParameters()
 					layout = knuthplass.DefaultLayout(shape)
 					params.DiscretionaryProvider = owner
 					if tc.discretionary {
@@ -84,11 +84,8 @@ func TestLogicalLinesFromBothBreakers(t *testing.T) {
 					}
 				}
 				wantWidths := tc.widths
-				if engine == "knuthplass" && tc.text == "  aa  bb  " {
-					// Current K&P may choose the initial space opportunity as an
-					// empty first line. Materialization preserves that decision.
-					wantWidths = append([]dimen.DU{0}, wantWidths...)
-				}
+				// Neutral ordinary penalties no longer reward inserting an empty
+				// first line at the leading-space opportunity.
 				if len(lines) != len(wantWidths) || len(policy.requests) != calls {
 					t.Fatal(lines, policy.requests)
 				}

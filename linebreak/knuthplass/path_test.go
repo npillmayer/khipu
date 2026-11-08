@@ -120,7 +120,7 @@ func TestPathTableCanonicalPredecessorOnTie(t *testing.T) {
 
 func TestCollectOptimalBreakRefsCostThenLineCount(t *testing.T) {
 	for _, longCost := range []merits{10, 9} {
-		kp := newLinebreaker(DefaultLayout(nil), NewKPDefaultParameters())
+		kp := newLinebreaker(DefaultLayout(nil), NewDefaultParameters())
 		kp.root = PlainBreak(-1)
 		mid, end := PlainBreak(4), PlainBreak(9)
 		kp.pathTable.SetPred(kp.root, end, 10, 10, 1)
@@ -147,7 +147,7 @@ func TestCollectOptimalBreakRefsCostThenLineCount(t *testing.T) {
 }
 
 func TestCanonicalTieReplacesLivePathAndSeed(t *testing.T) {
-	kp := newLinebreaker(DefaultLayout(nil), NewKPDefaultParameters())
+	kp := newLinebreaker(DefaultLayout(nil), NewDefaultParameters())
 	low, high, end := PlainBreak(1), PlainBreak(3), PlainBreak(5)
 	kp.paths[low] = map[lineNo]bookkeeping{1: {totalcost: 10, worstbadness: 20}}
 	kp.paths[high] = map[lineNo]bookkeeping{1: {totalcost: 10, worstbadness: 40}}

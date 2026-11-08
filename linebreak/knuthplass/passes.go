@@ -61,7 +61,7 @@ func paragraphPasses(params *Parameters) ([]passConfig, error) {
 // with fallback. Publication belongs to the successful public-call boundary.
 func selectParagraphBreaks(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (passResult, error) {
 	if params == nil {
-		params = NewKPDefaultParameters()
+		params = NewDefaultParameters()
 	}
 	passes, err := paragraphPasses(params)
 	if err != nil {
@@ -101,7 +101,8 @@ func breakParagraphPassRefs(khp *khipu.Khipu, layout khipu.Params,
 	}
 	kp.hyphenating, kp.final, kp.emergencyStretch = pass.hyphenating, pass.final, pass.emergencyStretch
 	if err := kp.constructBreakpointGraph(khp); err != nil {
-		tracer().Errorf("K&P: %w", err)
+		// Reporting belongs to the caller; return the original provider/input
+		// error without logging it again at this internal pass boundary.
 		return result, err
 	}
 	result.breaks, result.quality, result.complete = kp.collectOptimalBreakRefs(kp.end)

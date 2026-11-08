@@ -13,21 +13,21 @@ import (
 
 func TestReadParagraphBoundaryPolicy(t *testing.T) {
 	// Explicit scalar-end expectations replace the retired metric encoder as
-	// oracle. Finite values pin our UAX translation policy, not a Unicode rule's
-	// mandated numeric penalty. Hard breaks retain the corrected precedence.
+	// oracle. Allowed positions are neutral regardless of UAX rule weight;
+	// hard breaks retain the corrected precedence.
 	const P, F = MaxPenalty, MaxMerit
 	for _, tc := range []struct {
 		source    string
 		penalties []Penalty
 	}{
 		{"", nil}, {"hello", []Penalty{P, P, P, P, F}},
-		{"hello world ", []Penalty{P, P, P, P, P, -29, P, P, P, P, P, F}},
+		{"hello world ", []Penalty{P, P, P, P, P, 0, P, P, P, P, P, F}},
 		{"a\u00a0b", []Penalty{P, P, F}}, {"a\r\nb", []Penalty{P, P, F, F}},
 		{"a\nb", []Penalty{P, F, F}}, {"a\u2028b", []Penalty{P, F, F}},
 		{"aéz", []Penalty{P, P, F}}, {"e\u0301", []Penalty{P, F}}, {"\ufffd", []Penalty{F}},
-		{"a\x00b", []Penalty{P, P, F}}, {"a\u200bb", []Penalty{P, -417, F}}, {"a\u2060b", []Penalty{P, P, F}},
+		{"a\x00b", []Penalty{P, P, F}}, {"a\u200bb", []Penalty{P, 0, F}}, {"a\u2060b", []Penalty{P, P, F}},
 		{"a\u2067אב\u2069z", []Penalty{P, P, P, P, P, F}}, {"\u2066\u2069", []Penalty{P, F}},
-		{"中文测试", []Penalty{1, 1, 1, F}}, {"(one) two!", []Penalty{P, P, P, P, P, -29, P, P, P, F}},
+		{"中文测试", []Penalty{0, 0, 0, F}}, {"(one) two!", []Penalty{P, P, P, P, P, 0, P, P, P, F}},
 	} {
 		source := tc.source
 		t.Run(source, func(t *testing.T) {

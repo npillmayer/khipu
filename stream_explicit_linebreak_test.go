@@ -63,7 +63,7 @@ func TestStreamingExplicitBreaksEndToEnd(t *testing.T) {
 						p.DiscretionaryProvider = owner
 						return firstfit.BreakParagraph(k, firstfit.DefaultLayout(shape), &p)
 					}
-					p := knuthplass.NewKPDefaultParameters()
+					p := knuthplass.NewDefaultParameters()
 					layout := knuthplass.DefaultLayout(shape)
 					p.DiscretionaryProvider = owner
 					// Keep a small finite stretch so intermediate short segments

@@ -7,6 +7,25 @@ This note compares the demerits and badness calculation described in
 The legacy `linebreak/kp` package has been removed. Its approximate formula is
 summarized below for design history; it is no longer part of the codebase.
 
+## Unicode Boundary Translation
+
+Encoding translates finalized accumulated UAX#14 values into layout penalties:
+mandatory boundaries become `MaxMerit`, prohibited boundaries become `MaxPenalty`,
+and every finite allowed opportunity becomes zero. The existing hard-separator
+precedence correction remains in place. Translation happens only after all rule
+contributions have been accumulated, including EOF revisions.
+
+UAX rule weights are not calibrated typographic preferences. Previously an
+ordinary space could carry -29 into K&P, yielding `(10 + badness)^2 - 841` with
+the default line penalty. This rewarded additional low-badness lines, including
+an empty leading-space line in one integration fixture. Neutral ordinary breaks
+remove that accidental reward without changing K&P's demerit formula.
+
+Client-assigned knot penalties and discretionary `PreBreak.Penalty` values do
+not pass through this translation. Intentional negative preferences remain
+valid, so negative total costs are not themselves an error. No configurable
+Unicode preference mapping is introduced by this policy.
+
 ## Original TeX / Knuth-Plass Model
 
 For each candidate line, the original algorithm conceptually proceeds as follows:
@@ -171,8 +190,9 @@ The main remaining TeX-related gaps are:
 Discretionary integration and first/final-line extras are implemented.
 During pass 2, local lookup is triggered by geometrically feasible candidates
 with badness above `PreTolerance`, including those accepted by `Tolerance`.
-Current defaults must be read from the selected initializer:
-`DefaultParameters` and `NewKPDefaultParameters` differ.
+Current defaults are explicit independent profiles: `NewDefaultParameters`
+matches nil algorithm parameters; `NewTolerantParameters` raises tolerance and
+enables emergency stretch. See [the profile table](KP.md#parameter-profiles).
 
 ## Comparison With The Legacy `kp` Package
 

@@ -63,7 +63,7 @@ func newEmergencyWorkload(tb testing.TB, tc emergencyWorkload, words int) emerge
 		tb.Fatal(err)
 	}
 	f.provider = &countingLoremProvider{owner: owner}
-	f.params = NewKPDefaultParameters()
+	f.params = NewDefaultParameters()
 	f.params.EmergencyStretch = 6 * dimen.PT
 	if tc.provider != "" {
 		f.params.DiscretionaryProvider = f.provider
