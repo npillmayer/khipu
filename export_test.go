@@ -49,8 +49,8 @@ type GeometryLineForTest struct {
 	TargetWidth, NaturalWidth, Delta dimen.DU
 }
 
-func MaterializeLineGeometryForTest(owner *Khipukamayuq, k *Khipu, breaks []int, shape lineShape, left, right KnotCore) ([]GeometryLineForTest, error) {
-	p, err := owner.materializeLineGeometry(k, breaks, shape, left, right)
+func MaterializeLineGeometryForTest(owner *Khipukamayuq, k *Khipu, breaks []int, params Params) ([]GeometryLineForTest, error) {
+	p, err := owner.materializeLineGeometry(k, breaks, params)
 	if err != nil {
 		return nil, err
 	}
@@ -74,8 +74,8 @@ type FrozenLineForTest struct {
 
 // FreezeParagraphForTest exercises the internal end-to-end constructor without
 // introducing public output accessors for downstream box creation.
-func FreezeParagraphForTest(owner *Khipukamayuq, k *Khipu, breaks []int, shape lineShape, left, right KnotCore) ([]FrozenLineForTest, error) {
-	p, err := owner.freezeParagraph(k, breaks, shape, left, right)
+func FreezeParagraphForTest(owner *Khipukamayuq, k *Khipu, breaks []int, params Params) ([]FrozenLineForTest, error) {
+	p, err := owner.freezeParagraph(k, breaks, params)
 	if err != nil {
 		return nil, err
 	}

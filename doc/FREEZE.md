@@ -27,8 +27,17 @@ UTF-8 byte endpoints. The metric-only shaping path has been removed.
 
 The next decisions concern a public freeze/result contract and future
 script-sensitive realization, not another encoder migration. See
+[the public result contract draft](FROZEN-API.md),
 [the overall algorithm](khipu-algorithm.md#line-local-bidi-ordering) and
 [discretionary ownership](HYPHENATION.md).
+
+LineShape and both side skips now live in the existing Params, shared by
+breaking and internal freezing rather than duplicated in FreezeOptions.
+`firstfit.DefaultLayout(shape)` selects zero-width right skip with fil stretch
+for ragged-right layout; `knuthplass.DefaultLayout(shape)` retains its 50 BP
+finite-stretch profile. Defaults are resolved once before breaking; explicit
+zero skips remain valid overrides. Both breaker APIs now take the resolved
+Params as their second argument; their algorithm parameter types have no skips.
 
 ## Implemented Logical-Line Stage
 
@@ -127,8 +136,7 @@ Freezing will need at least these inputs:
 - an elastic `Khipu`
 - the breaker's sequence of line-ending knot indices
 - selected discretionaries (`SelectedDiscretionaries`)
-- paragraph shape (`ParShape`) or explicit target line lengths
-- the same left/right skip dimensions used during linebreaking
+- the same resolved Params used during linebreaking, including LineShape and skips
 - retained glyph/context/source records and paragraph bidi resolution
 
 The public entry point belongs to `Khipukamayuq`; its internal collaboration
@@ -402,7 +410,7 @@ invalid marked trailer and unknown unresolved items fail with no partial result
 or input mutation. A successful result owns its index slice. It does not yet
 construct or publish a visual-line object.
 
-LeftSkip and RightSkip are external linebreaker parameters, not knots in the
+LeftSkip and RightSkip are shared Params fields, not knots in the
 materialized snapshot. They are neither synthesized nor placed here. The later
 elastic geometry stage carries those exact inputs in physical edge slots,
 counting their widths once. Unknown source-less kern/glue and zero-source
@@ -456,9 +464,9 @@ preparation from adding skips twice.
 
 `Khipukamayuq.materializeLineGeometry` in `line_geometry.go` connects the complete
 breaker decision to visual construction and `visualParagraph.prepareGeometry`.
-It requires the same paragraph shape and exact left/right skip values used by
-the breaker. There are no implicit defaults and no dependency on package
-`linebreak`: the local `lineShape` interface declares `LineLength(int32)`, which
+It accepts the same resolved Params used by the breaker, including shape and
+exact left/right skip values. There are no implicit defaults and no dependency on
+package `linebreak`: the public `khipu.LineShape` interface declares `LineLength(int32)`, which
 existing `linebreak.ParShape` implementations satisfy structurally.
 
 The result is an internal `geometryParagraph` with one `geometryLine` per line.

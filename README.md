@@ -74,11 +74,13 @@ func main() {
 		panic(err)
 	}
 	shape := linebreak.RectangularParShape(100 * dimen.PT)
-	greedy, err := firstfit.BreakParagraph(khp, shape, nil)
+	greedyLayout := firstfit.DefaultLayout(shape)
+	greedy, err := firstfit.BreakParagraph(khp, greedyLayout, nil)
 	if err != nil {
 		panic(err)
 	}
-	optimal, err := knuthplass.BreakParagraph(khp, shape, nil)
+	optimalLayout := knuthplass.DefaultLayout(shape)
+	optimal, err := knuthplass.BreakParagraph(khp, optimalLayout, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -110,7 +112,8 @@ To enable lazy discovery, pass the same owner as the breaker's provider:
 ```go
 params := knuthplass.NewKPDefaultParameters()
 params.DiscretionaryProvider = owner
-breaks, err := knuthplass.BreakParagraph(khp, shape, params)
+layout := knuthplass.DefaultLayout(shape)
+breaks, err := knuthplass.BreakParagraph(khp, layout, params)
 ```
 
 Firstfit has its own `Parameters.DiscretionaryProvider` field. The

@@ -28,6 +28,8 @@ type Config struct {
 	// Params is copied at construction. Later changes to the caller's value do
 	// not affect the Khipukamayuq. Nil selects the existing default parameters.
 	// A non-nil value is used in full: zero fields are not filled with defaults.
+	// LineShape is a shared service, not deep-copied. Encoding does not use
+	// paragraph geometry; pass the resolved Params to breaking/freezing explicitly.
 	Params *Params
 
 	// ParFillSkip supplies the final knot's W, MinW, and MaxW. Nil selects

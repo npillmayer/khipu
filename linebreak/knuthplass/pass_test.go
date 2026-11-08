@@ -11,7 +11,7 @@ import (
 
 func TestFirstPassUsesPreTolerance(t *testing.T) {
 	params := NewKPDefaultParameters()
-	kp := newLinebreaker(nil, params)
+	kp := newLinebreaker(DefaultLayout(nil), params)
 	if got := kp.badnessLimit(); got != params.PreTolerance {
 		t.Fatalf("expected first-pass badness limit %d, got %d", params.PreTolerance, got)
 	}
@@ -23,14 +23,14 @@ func TestFirstPassUsesPreTolerance(t *testing.T) {
 
 func TestForcedBreakFallbacksKeepPositiveAccumulatedCost(t *testing.T) {
 	params := NewKPDefaultParameters()
-	params.RightSkip = glue(0, 0, 0)
+	layout := khipu.Params{LineShape: linebreak.RectangularParShape(80 * dimen.BP)}
 	khp := newKhipu([]node{
 		{w: 10, minw: 10, maxw: 10, p: InfinityMerits, kind: khipu.KTTextBox},
 		{w: 10, minw: 10, maxw: 10, p: InfinityMerits, kind: khipu.KTTextBox},
 		{w: 10, minw: 10, maxw: 10, p: InfinityMerits, kind: khipu.KTTextBox},
 		{maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
-	breaks, quality, ok, err := breakParagraphPass(khp, linebreak.RectangularParShape(80*dimen.BP), params, false)
+	breaks, quality, ok, err := breakParagraphPass(khp, layout, params, false)
 	if err != nil || !ok || !slices.Equal(breaks, []int{0, 1, 2, 3}) {
 		t.Fatalf("forced breaks=%v ok=%v err=%v", breaks, ok, err)
 	}
@@ -53,7 +53,7 @@ func TestCollectOptimalBreakpointsTracksWorstBadness(t *testing.T) {
 		{w: 80, minw: 80, maxw: 80, p: InfinityDemerits, kind: khipu.KTTextBox},
 		parfillnode,
 	})
-	kp, err := prepareLineBreaker(linebreak.RectangularParShape(80*dimen.BP), params)
+	kp, err := prepareLineBreaker(DefaultLayout(linebreak.RectangularParShape(80*dimen.BP)), params)
 	if err != nil {
 		t.Fatalf("prepareLineBreaker failed: %v", err)
 	}
@@ -75,7 +75,6 @@ func TestCollectOptimalBreakpointsTracksWorstBadness(t *testing.T) {
 func TestBreakParagraphStartsSecondPassAfterFailedPreTolerancePass(t *testing.T) {
 	params := NewKPDefaultParameters()
 	params.LinePenalty = 0
-	params.RightSkip = glue(0, 0, 0)
 	khp := testKhipu()
 	khp.W = append(khp.W, 7990, 7990, params.ParFillSkip.W)
 	khp.MinW = append(khp.MinW, 7990, 7990, params.ParFillSkip.MinW)
@@ -86,8 +85,9 @@ func TestBreakParagraphStartsSecondPassAfterFailedPreTolerancePass(t *testing.T)
 	khp.Len = append(khp.Len, 0, 0, 0)
 	khp.Flags = append(khp.Flags, 0, 0, 0) // paragraph fill is retained
 	parshape := linebreak.RectangularParShape(8000)
+	layout := khipu.Params{LineShape: parshape}
 
-	firstPassBreaks, quality, ok, err := breakParagraphPass(khp, parshape, params, false)
+	firstPassBreaks, quality, ok, err := breakParagraphPass(khp, layout, params, false)
 	if err != nil {
 		t.Fatalf("first pass failed unexpectedly: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestBreakParagraphStartsSecondPassAfterFailedPreTolerancePass(t *testing.T)
 	if quality.totalCost < AwfulDemerits {
 		t.Fatalf("expected first-pass fallback to carry awful cost, got %+v", quality)
 	}
-	secondPassBreaks, _, ok, err := breakParagraphPass(khp, parshape, params, true)
+	secondPassBreaks, _, ok, err := breakParagraphPass(khp, layout, params, true)
 	if err != nil {
 		t.Fatalf("second pass failed unexpectedly: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestBreakParagraphStartsSecondPassAfterFailedPreTolerancePass(t *testing.T)
 		t.Fatalf("expected second pass to find a path, got ok=%v breakpoints=%v", ok, secondPassBreaks)
 	}
 
-	breakpoints, err := BreakParagraph(khp, parshape, params)
+	breakpoints, err := BreakParagraph(khp, layout, params)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}

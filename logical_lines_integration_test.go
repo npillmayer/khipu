@@ -44,21 +44,21 @@ func TestLogicalLinesFromBothBreakers(t *testing.T) {
 				}
 				shape := linebreak.RectangularParShape(width)
 				var breaks []int
-				var leftSkip, rightSkip khipu.KnotCore
+				var layout khipu.Params
 				if engine == "firstfit" {
 					params := *firstfit.DefaultParameters
 					params.DiscretionaryProvider = owner
-					leftSkip, rightSkip = params.LeftSkip, params.RightSkip
-					breaks, err = firstfit.BreakParagraph(k, shape, &params)
+					layout = firstfit.DefaultLayout(shape)
+					breaks, err = firstfit.BreakParagraph(k, layout, &params)
 				} else {
 					params := knuthplass.NewKPDefaultParameters()
+					layout = knuthplass.DefaultLayout(shape)
 					params.DiscretionaryProvider = owner
 					if tc.discretionary {
-						params.RightSkip = khipu.KnotCore{MaxW: dimen.PT}
+						layout.RightSkip = khipu.KnotCore{MaxW: dimen.PT}
 						params.EmergencyStretch = 0
 					}
-					leftSkip, rightSkip = params.LeftSkip, params.RightSkip
-					breaks, err = knuthplass.BreakParagraph(k, shape, params)
+					breaks, err = knuthplass.BreakParagraph(k, layout, params)
 				}
 				if err != nil {
 					t.Fatal(err)
@@ -72,11 +72,12 @@ func TestLogicalLinesFromBothBreakers(t *testing.T) {
 				if err != nil || !reflect.DeepEqual(lines, visual) {
 					t.Fatal("LTR visual integration changed content", visual, err)
 				}
-				geometry, err := khipu.MaterializeLineGeometryForTest(owner, k, breaks, shape, leftSkip, rightSkip)
+				geometry, err := khipu.MaterializeLineGeometryForTest(owner, k, breaks, layout)
 				if err != nil || len(geometry) != len(visual) {
 					t.Fatal(geometry, err)
 				}
 				for i, line := range geometry {
+					leftSkip, rightSkip := layout.LeftSkip, layout.RightSkip
 					natural := visual[i].NaturalWidth + leftSkip.W + rightSkip.W
 					if !reflect.DeepEqual(line.Content, visual[i]) || line.NaturalWidth != natural || line.TargetWidth != width || line.Delta != width-natural || line.LeftSkip != leftSkip || line.RightSkip != rightSkip {
 						t.Fatal("geometry changed selected/trimmed content", line)

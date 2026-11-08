@@ -42,9 +42,9 @@ func TestVisualLinesFromBothBreakers(t *testing.T) {
 				var breaks []int
 				if engine == "firstfit" {
 					params := *firstfit.DefaultParameters
-					breaks, err = firstfit.BreakParagraph(k, shape, &params)
+					breaks, err = firstfit.BreakParagraph(k, firstfit.DefaultLayout(shape), &params)
 				} else {
-					breaks, err = knuthplass.BreakParagraph(k, shape, knuthplass.NewKPDefaultParameters())
+					breaks, err = knuthplass.BreakParagraph(k, knuthplass.DefaultLayout(shape), knuthplass.NewKPDefaultParameters())
 				}
 				if err != nil {
 					t.Fatal(err)

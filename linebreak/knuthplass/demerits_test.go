@@ -105,7 +105,7 @@ func TestCalcDemeritsSquaresPenalty(t *testing.T) {
 func TestFirstPassAcceptsBadnessAtPreToleranceBoundary(t *testing.T) {
 	params := NewKPDefaultParameters()
 	params.LinePenalty = 0
-	params.RightSkip = glue(0, 0, 0)
+	layout := khipu.Params{LineShape: linebreak.RectangularParShape(8000)}
 	khp := testKhipu()
 	khp.W = append(khp.W, 7990, 7990, params.ParFillSkip.W)
 	khp.MinW = append(khp.MinW, 7990, 7990, params.ParFillSkip.MinW)
@@ -116,7 +116,7 @@ func TestFirstPassAcceptsBadnessAtPreToleranceBoundary(t *testing.T) {
 	khp.Len = append(khp.Len, 0, 0, 0)
 	khp.Flags = append(khp.Flags, 0, 0, 0) // paragraph fill is retained
 
-	breakpoints, quality, ok, err := breakParagraphPass(khp, linebreak.RectangularParShape(8000), params, false)
+	breakpoints, quality, ok, err := breakParagraphPass(khp, layout, params, false)
 	if err != nil {
 		t.Fatalf("first pass failed unexpectedly: %v", err)
 	}
@@ -134,9 +134,8 @@ func TestFirstPassAcceptsBadnessAtPreToleranceBoundary(t *testing.T) {
 func TestEvaluateCandidatesSeparatesScreeningFromRanking(t *testing.T) {
 	params := NewKPDefaultParameters()
 	params.LinePenalty = 0
-	params.LeftSkip = glue(0, 0, 0)
-	params.RightSkip = glue(0, 0, 0)
-	kp, err := prepareLineBreaker(linebreak.RectangularParShape(100), params)
+	layout := khipu.Params{LineShape: linebreak.RectangularParShape(100)}
+	kp, err := prepareLineBreaker(layout, params)
 	if err != nil {
 		t.Fatalf("prepareLineBreaker failed: %v", err)
 	}
@@ -180,7 +179,7 @@ func TestDiscretionaryDemeritsAddFirstLineExtra(t *testing.T) {
 	params := NewKPDefaultParameters()
 	params.LinePenalty = 0
 	params.FirstHyphenDemerits = 37
-	kp := newLinebreaker(nil, params)
+	kp := newLinebreaker(DefaultLayout(nil), params)
 	kp.root = PlainBreak(noinx)
 	base := calcDemerits(12, 50, params)
 	got := kp.discretionaryDemerits(12, 50, kp.root)
@@ -196,7 +195,7 @@ func TestDiscretionaryDemeritsAddFirstLineExtra(t *testing.T) {
 func TestTerminalHyphenDemeritsApplyOnlyToFinalTransitionFromDiscretionary(t *testing.T) {
 	params := NewKPDefaultParameters()
 	params.FinalHyphenDemerits = 91
-	kp := newLinebreaker(nil, params)
+	kp := newLinebreaker(DefaultLayout(nil), params)
 	kp.end = PlainBreak(9)
 	if got := kp.terminalHyphenDemerits(BreakRef{At: 4, Variant: 1}, kp.end); got != params.FinalHyphenDemerits {
 		t.Fatalf("expected final-line discretionary demerits %d, got %d", params.FinalHyphenDemerits, got)

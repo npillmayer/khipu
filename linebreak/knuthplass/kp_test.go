@@ -31,7 +31,7 @@ func TestKPVoid(t *testing.T) {
 	t.Logf("khipu of length %d", len(khp.Kind))
 	t.Logf("khipu: %v", khp)
 	parshape := linebreak.RectangularParShape(100 * dimen.BP)
-	breakpoints, err := BreakParagraph(khp, parshape, nil)
+	breakpoints, err := BreakParagraph(khp, DefaultLayout(parshape), nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestBookkeepingEffectiveWidth(t *testing.T) {
 		leadingTrim:  WSS{W: 10 * dimen.BP, Min: 5 * dimen.BP, Max: 15 * dimen.BP},
 		trailingTrim: WSS{W: 12 * dimen.BP, Min: 6 * dimen.BP, Max: 18 * dimen.BP},
 	}
-	params := &Parameters{
+	params := khipu.Params{
 		LeftSkip:  glue(3, 0, 0),
 		RightSkip: glue(4, 0, 10*dimen.BP),
 	}
@@ -123,7 +123,7 @@ func TestBookkeepingEffectiveWidthRetainsInternalDiscardable(t *testing.T) {
 	book.appendItem(LICTrimDiscardable, glue)
 	book.appendItem(LICContent, text)
 
-	got := book.effectiveWidth(&Parameters{
+	got := book.effectiveWidth(khipu.Params{
 		LeftSkip:  glueKnot(0, 0, 0),
 		RightSkip: glueKnot(0, 0, 0),
 	})
@@ -168,7 +168,7 @@ func TestBreakParagraphTrimsTrailingDiscardableAtBreakpoint(t *testing.T) {
 		parfillnode,
 	})
 
-	breakpoints, err := BreakParagraph(khp, linebreak.RectangularParShape(80*dimen.BP), nil)
+	breakpoints, err := BreakParagraph(khp, DefaultLayout(linebreak.RectangularParShape(80*dimen.BP)), nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestBreakParagraphTrimsLeadingDiscardableOnLaterLine(t *testing.T) {
 		parfillnode,
 	})
 
-	breakpoints, err := BreakParagraph(khp, linebreak.RectangularParShape(80*dimen.BP), nil)
+	breakpoints, err := BreakParagraph(khp, DefaultLayout(linebreak.RectangularParShape(80*dimen.BP)), nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}

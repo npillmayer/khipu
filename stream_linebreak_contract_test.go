@@ -47,11 +47,11 @@ func TestStreamingLinebreakContractAtNarrowWidths(t *testing.T) {
 				before[i] = k.KnotByIndex(i)
 			}
 			shape := linebreak.RectangularParShape(tc.width)
-			f, err := firstfit.BreakParagraph(k, shape, nil)
+			f, err := firstfit.BreakParagraph(k, firstfit.DefaultLayout(shape), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			kp, err := knuthplass.BreakParagraph(k, shape, nil)
+			kp, err := knuthplass.BreakParagraph(k, knuthplass.DefaultLayout(shape), nil)
 			if err != nil {
 				t.Fatal(err)
 			}

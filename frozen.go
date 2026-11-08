@@ -76,8 +76,8 @@ type frozenShaping struct {
 // selected fragments and orders knots; geometry snapshots inclusive targets.
 // No shaper or hyphenator is consulted. Failure publishes no partial paragraph
 // and leaves the elastic input and its decisions unchanged.
-func (kq *Khipukamayuq) freezeParagraph(k *Khipu, breaks []int, shape lineShape, left, right KnotCore) (*frozenParagraph, error) {
-	p, err := kq.materializeLineGeometry(k, breaks, shape, left, right)
+func (kq *Khipukamayuq) freezeParagraph(k *Khipu, breaks []int, params Params) (*frozenParagraph, error) {
+	p, err := kq.materializeLineGeometry(k, breaks, params)
 	if err != nil {
 		return nil, err
 	}

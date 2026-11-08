@@ -17,20 +17,28 @@ const (
 )
 
 // Parameters configures the SOA first-fit breaker.
-// The model is intentionally small: first-fit only needs the paragraph skips
-// for width accounting, not the richer demerit model of Knuth-Plass.
+// Geometry lives exclusively in khipu.Params, shared with freezing.
 type Parameters struct {
-	LeftSkip              khipu.KnotCore
-	RightSkip             khipu.KnotCore
 	MinHyphenGain         dimen.DU // minimum width improvement to justify a discretionary break
 	DiscretionaryProvider DiscretionaryProvider
 }
 
 // DefaultParameters are the standard first-fit parameters for SOA paragraphs.
 var DefaultParameters = &Parameters{
-	LeftSkip:      glue(0, 0, 0),
-	RightSkip:     glue(0, 0, 0),
 	MinHyphenGain: 0,
+}
+
+// DefaultLayout resolves a ragged-right paragraph profile. The physical right
+// skip absorbs positive slack at fil order, leaving finite interword glue at
+// natural width. Higher-order paragraph fill still wins on the final line.
+// Apply overrides after this call and reuse the returned Params for freezing.
+// No defaults are reapplied by BreakParagraph, even for explicitly zero skips.
+func DefaultLayout(shape khipu.LineShape) khipu.Params {
+	layout := khipu.DefaultParams()
+	layout.LineShape = shape
+	layout.LeftSkip = glue(0, 0, 0)
+	layout.RightSkip = glue(0, 0, dimen.Fil)
+	return layout
 }
 
 func glue(w, wmin int, wmax dimen.DU) khipu.KnotCore {
@@ -52,9 +60,15 @@ func glue(w, wmin int, wmax dimen.DU) khipu.KnotCore {
 //
 // Results are zero-based indices of line-ending knots, including the final
 // trailer. SelectedDiscretionaries is replaced on each run. Nil params selects
-// DefaultParameters. Configure DiscretionaryProvider for lazy discovery.
-func BreakParagraph(khp *khipu.Khipu, parshape linebreak.ParShape, params *Parameters) ([]kinx, error) {
-	if khp == nil || parshape == nil {
+// DefaultParameters for algorithm controls only. Layout must be resolved
+// explicitly (for example with DefaultLayout) and reused unchanged for freezing.
+// Configure DiscretionaryProvider for lazy discovery.
+func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) ([]kinx, error) {
+	if err := layout.ValidateGeometry(); err != nil {
+		return nil, err
+	}
+	parshape := layout.LineShape
+	if khp == nil {
 		return nil, errors.New("cannot break a paragraph without khipu or parshape")
 	}
 	if len(khp.Kind) == 0 {
@@ -86,7 +100,7 @@ func BreakParagraph(khp *khipu.Khipu, parshape linebreak.ParShape, params *Param
 			firstInLine = false
 		}
 		linelen := parshape.LineLength(int32(len(breakpoints) + 1))
-		segw := seg.width(params)
+		segw := seg.width(layout)
 		tracer().Debugf("candidate %d: seg=%v len=%.2f", i, segw, linelen.Points())
 		if k.Penalty >= InfinityDemerits {
 			// An overflowing textbox may still be salvageable locally by splitting
@@ -96,7 +110,7 @@ func BreakParagraph(khp *khipu.Khipu, parshape linebreak.ParShape, params *Param
 			// An explicit marker may also salvage an overflowing first word,
 			// even when no earlier space supplied a plain checkpoint.
 			if (lastFeasible >= 0 || khp.HasExplicitDiscretionary(i)) && k.Kind == khipu.KTTextBox && segw.Min > linelen {
-				cand, nextSeg, ok, err := tryLooseHyphenation(khp, i, prevSeg, lastFeasibleWidth, linelen, params)
+				cand, nextSeg, ok, err := tryLooseHyphenation(khp, i, prevSeg, lastFeasibleWidth, linelen, layout, params)
 				if err != nil {
 					return nil, err
 				}
@@ -140,7 +154,7 @@ func BreakParagraph(khp *khipu.Khipu, parshape linebreak.ParShape, params *Param
 			// first-fit decision is therefore to commit the last acceptable
 			// checkpoint and continue with the carried post-break material.
 			if (lastFeasible >= 0 || khp.HasExplicitDiscretionary(i)) && k.Kind == khipu.KTTextBox {
-				cand, nextSeg, ok, err := tryLooseHyphenation(khp, i, prevSeg, lastFeasibleWidth, linelen, params)
+				cand, nextSeg, ok, err := tryLooseHyphenation(khp, i, prevSeg, lastFeasibleWidth, linelen, layout, params)
 				if err != nil {
 					return nil, err
 				}
@@ -174,7 +188,7 @@ func BreakParagraph(khp *khipu.Khipu, parshape linebreak.ParShape, params *Param
 			// After committing the old checkpoint it may fit the next line;
 			// retain it there instead of losing a legal break until later overflow.
 			if breakpoints[len(breakpoints)-1] != i {
-				nextWidth := seg.width(params)
+				nextWidth := seg.width(layout)
 				if nextWidth.Min <= parshape.LineLength(int32(len(breakpoints)+1)) {
 					seg.trackcarry()
 					lastFeasible = i
@@ -299,7 +313,7 @@ func (s *segmentState) appendToCarry(w WSS, cls lineItemClass) {
 
 // width returns the effective width of the current candidate line after
 // trimming discardable material at both edges and adding paragraph side skips.
-func (s *segmentState) width(params *Parameters) WSS {
+func (s *segmentState) width(params khipu.Params) WSS {
 	segw := s.length.Subtract(s.leadingTrim)
 	segw = segw.Subtract(s.trailingTrim)
 	segw = segw.Add(WSS{}.SetFromKnot(params.LeftSkip))
@@ -369,7 +383,7 @@ func discretionaryCandidates(khp *khipu.Khipu, at kinx, params *Parameters) ([]k
 //   - use lower breakpoint penalty as a tie-break
 //
 // This keeps firstfit simple while still preventing gratuitous soft hyphens.
-func tryLooseHyphenation(khp *khipu.Khipu, at kinx, base segmentState, checkpointWidth WSS, linelen dimen.DU, params *Parameters) (khipu.DiscretionaryCandidate, segmentState, bool, error) {
+func tryLooseHyphenation(khp *khipu.Khipu, at kinx, base segmentState, checkpointWidth WSS, linelen dimen.DU, layout khipu.Params, params *Parameters) (khipu.DiscretionaryCandidate, segmentState, bool, error) {
 	cands, err := discretionaryCandidates(khp, at, params)
 	if err != nil || len(cands) == 0 {
 		return khipu.DiscretionaryCandidate{}, segmentState{}, false, err
@@ -381,7 +395,7 @@ func tryLooseHyphenation(khp *khipu.Khipu, at kinx, base segmentState, checkpoin
 	for _, cand := range cands {
 		lineSeg := base.segmentState()
 		lineSeg.append(cand.PreBreak)
-		segw := lineSeg.width(params)
+		segw := lineSeg.width(layout)
 		if segw.Min > linelen {
 			continue
 		}

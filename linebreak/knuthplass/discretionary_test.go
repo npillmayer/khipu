@@ -34,7 +34,7 @@ func TestDiscretionaryCandidatesFallbackToKhipuCache(t *testing.T) {
 			W: 12 * dimen.BP, MinW: 12 * dimen.BP, MaxW: 12 * dimen.BP, Kind: khipu.KTTextBox,
 		},
 	})
-	kp := newLinebreaker(nil, NewKPDefaultParameters())
+	kp := newLinebreaker(DefaultLayout(nil), NewKPDefaultParameters())
 	got, err := kp.discretionaryCandidates(khp, 0)
 	if err != nil {
 		t.Fatalf("expected cached discretionary lookup to succeed: %v", err)
@@ -61,7 +61,7 @@ func TestDiscretionaryCandidatesDelegateToProvider(t *testing.T) {
 	khp := newKhipu([]node{
 		{w: 20, minw: 20, maxw: 20, p: InfinityDemerits, kind: khipu.KTTextBox},
 	})
-	kp := newLinebreaker(nil, params)
+	kp := newLinebreaker(DefaultLayout(nil), params)
 	got, err := kp.discretionaryCandidates(khp, 0)
 	if err != nil {
 		t.Fatalf("expected provider lookup to succeed: %v", err)
@@ -148,7 +148,7 @@ func TestPass2RequestsDiscretionariesForScreenedOutCandidate(t *testing.T) {
 	provider := &testDiscretionaryProvider{}
 	params := NewKPDefaultParameters()
 	params.LinePenalty = 0
-	params.RightSkip = glue(0, 0, 0)
+	layout := khipu.Params{LineShape: linebreak.RectangularParShape(8000)}
 	params.DiscretionaryProvider = provider
 	khp := testKhipu()
 	khp.W = append(khp.W, 7990, 7990, params.ParFillSkip.W)
@@ -160,7 +160,7 @@ func TestPass2RequestsDiscretionariesForScreenedOutCandidate(t *testing.T) {
 	khp.Len = append(khp.Len, 0, 0, 0)
 	khp.Flags = append(khp.Flags, 0, 0, khipu.KFDiscardable)
 
-	_, _, ok, err := breakParagraphPass(khp, linebreak.RectangularParShape(8000), params, true)
+	_, _, ok, err := breakParagraphPass(khp, layout, params, true)
 	if err != nil {
 		t.Fatalf("second pass failed unexpectedly: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestBreakParagraphSelectsDiscretionaryVariantOnSecondPass(t *testing.T) {
 	}
 	params := NewKPDefaultParameters()
 	params.LinePenalty = 0
-	params.RightSkip = glue(0, 0, 5*dimen.BP)
+	layout := khipu.Params{LineShape: linebreak.RectangularParShape(26 * dimen.BP), RightSkip: glue(0, 0, 5*dimen.BP)}
 	params.DiscretionaryProvider = provider
 	khp := testKhipu()
 	khp.W = append(khp.W, 20*dimen.BP, 1*dimen.BP, 20*dimen.BP, params.ParFillSkip.W)
@@ -201,7 +201,7 @@ func TestBreakParagraphSelectsDiscretionaryVariantOnSecondPass(t *testing.T) {
 	khp.Len = append(khp.Len, 0, 0, 0, 0)
 	khp.Flags = append(khp.Flags, 0, khipu.KFDiscardable, 0, 0) // paragraph fill is retained
 
-	breakpoints, err := BreakParagraph(khp, linebreak.RectangularParShape(26*dimen.BP), params)
+	breakpoints, err := BreakParagraph(khp, layout, params)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestBreakParagraphSelectsDiscretionaryVariantOnSecondPass(t *testing.T) {
 func TestBreakParagraphClearsStaleSelectedDiscretionaries(t *testing.T) {
 	params := NewKPDefaultParameters()
 	params.LinePenalty = 0
-	params.RightSkip = glue(0, 0, 0)
+	layout := khipu.Params{LineShape: linebreak.RectangularParShape(20 * dimen.BP)}
 	parfillnode := node{
 		params.ParFillSkip.W,
 		params.ParFillSkip.MinW,
@@ -243,7 +243,7 @@ func TestBreakParagraphClearsStaleSelectedDiscretionaries(t *testing.T) {
 		0: {Source: 0, Variant: 9},
 	}
 
-	breakpoints, err := BreakParagraph(khp, linebreak.RectangularParShape(20*dimen.BP), params)
+	breakpoints, err := BreakParagraph(khp, layout, params)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestBreakParagraphClearsStaleSelectedDiscretionaries(t *testing.T) {
 func TestDiscretionaryCandidateUsesPreBreakPenaltyForDemerits(t *testing.T) {
 	params := NewKPDefaultParameters()
 	params.LinePenalty = 0
-	params.RightSkip = glue(0, 0, 0)
+	layout := khipu.Params{LineShape: linebreak.RectangularParShape(26 * dimen.BP)}
 	khp := testKhipu()
 	khp.W = append(khp.W, 20*dimen.BP, 1*dimen.BP, 20*dimen.BP, params.ParFillSkip.W)
 	khp.MinW = append(khp.MinW, 20*dimen.BP, 1*dimen.BP, 20*dimen.BP, params.ParFillSkip.MinW)
@@ -286,7 +286,7 @@ func TestDiscretionaryCandidateUsesPreBreakPenaltyForDemerits(t *testing.T) {
 			W: 15 * dimen.BP, MinW: 15 * dimen.BP, MaxW: 15 * dimen.BP, Kind: khipu.KTTextBox,
 		},
 	})
-	kp, err := prepareLineBreaker(linebreak.RectangularParShape(26*dimen.BP), params)
+	kp, err := prepareLineBreaker(layout, params)
 	if err != nil {
 		t.Fatalf("prepareLineBreaker failed: %v", err)
 	}

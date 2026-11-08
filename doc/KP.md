@@ -1,6 +1,6 @@
 # Knuth-Plass Status And Design History
 
-Reviewed against the code on November 4, 2026.
+Reviewed against the code on November 4, 2026; shared geometry updated November 8.
 
 ## Current State
 
@@ -9,6 +9,16 @@ The modern implementation in `linebreak/knuthplass` works directly on indexed
 (`kinx` is an alias for `int`) and records applied discretionary variants in
 `Khipu.SelectedDiscretionaries`.
 
+The call is now `BreakParagraph(input, layout khipu.Params, algorithmParams)`.
+Shape and side skips come exclusively from the resolved paragraph Params;
+reuse that value for freezing. `DefaultLayout(shape)` starts with base paragraph
+defaults and retains K&P's zero left skip and zero-natural-width right skip with
+50 BP finite stretch. Apply overrides after initialization, including explicit
+zero skips. Nil algorithm parameters do not substitute layout defaults.
+The algorithm Parameters no longer has LeftSkip/RightSkip. Its ParFillSkip field
+is still an upstream encoding convenience; actual trailer geometry comes from
+the encoded input, not from defaults reapplied during breaking.
+
 The legacy `linebreak/kp` implementation and its AOS/cursor support have been
 removed. Its useful test scenarios moved to the SOA suite before deletion; see
 the coverage map in [MIGRATION.md](MIGRATION.md). Behavioral parity with the old
@@ -16,7 +26,8 @@ breaker is not promised.
 
 ## Package Boundaries
 
-- `khipu` owns paragraph storage, shaping coordination, flags, and discretionaries.
+- `khipu` owns paragraph storage, shaping coordination, flags, discretionaries,
+  and shared paragraph geometry in Params/LineShape.
 - `linebreak` owns shared `ParShape`, rectangular shapes, and `WSS`.
 - `linebreak/knuthplass` owns dynamic programming, costs, passes, and its parameters.
 - `linebreak/firstfit` owns a greedy indexed breaker and its parameters.

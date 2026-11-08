@@ -57,7 +57,7 @@ func TestFreezeFiniteGlue(t *testing.T) {
 		// A fixed terminal makes finite interword capacity observable.
 		k.MaxW[len(k.Kind)-1] = 0
 		shape := geometryShapeFunc(func(int32) dimen.DU { return 25*dimen.PT + delta })
-		g, err := owner.materializeLineGeometry(k, []int{len(k.Kind) - 1}, shape, KnotCore{}, KnotCore{})
+		g, err := owner.materializeLineGeometry(k, []int{len(k.Kind) - 1}, Params{LineShape: shape, LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -83,7 +83,7 @@ func TestFreezeSideSkipsAndFill(t *testing.T) {
 	// Side skips are glue by role even when supplied with a textbox Kind.
 	left, right := allocationItem(dimen.PT, 0, 10*dimen.PT), allocationItem(2*dimen.PT, 0, 10*dimen.PT)
 	left.Kind = KTTextBox
-	g, err := geometryFixture(t).prepareGeometry(geometryShapeFunc(func(int32) dimen.DU { return 20 * dimen.PT }), left, right)
+	g, err := geometryFixture(t).prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 20 * dimen.PT }), LeftSkip: left, RightSkip: right})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestFreezeRejectsElasticNonGlue(t *testing.T) {
 			} else {
 				core.MaxW++
 			}
-			g, err := p.prepareGeometry(geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), KnotCore{}, KnotCore{})
+			g, err := p.prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -135,7 +135,7 @@ func TestFreezeFailureAndRetry(t *testing.T) {
 	for _, mode := range []string{"capacity", "cache"} {
 		p := geometryFixture(t)
 		p.lines[1].knots[len(p.lines[1].knots)-1].core.MaxW = 0
-		g, err := p.prepareGeometry(geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), KnotCore{}, KnotCore{})
+		g, err := p.prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -163,7 +163,7 @@ func TestFreezeFailureAndRetry(t *testing.T) {
 	if got, err := (*geometryParagraph)(nil).freeze(); got != nil || !errors.Is(err, ErrIllegalArguments) {
 		t.Fatal(got, err)
 	}
-	if got, err := (*Khipukamayuq)(nil).freezeParagraph(nil, nil, nil, KnotCore{}, KnotCore{}); got != nil || !errors.Is(err, ErrVoidKhipukamayuq) {
+	if got, err := (*Khipukamayuq)(nil).freezeParagraph(nil, nil, Params{LineShape: nil, LeftSkip: KnotCore{}, RightSkip: KnotCore{}}); got != nil || !errors.Is(err, ErrVoidKhipukamayuq) {
 		t.Fatal(got, err)
 	}
 }
@@ -176,7 +176,7 @@ func TestFreezeSelectedReplacementLifetime(t *testing.T) {
 	widths := slices.Clone(k.W)
 	shape := geometryShapeFunc(func(int32) dimen.DU { return 30 * dimen.PT })
 	right := KnotCore{MaxW: dimen.Fil}
-	got, err := owner.freezeParagraph(k, []int{0, len(k.Kind) - 1}, shape, KnotCore{}, right)
+	got, err := owner.freezeParagraph(k, []int{0, len(k.Kind) - 1}, Params{LineShape: shape, LeftSkip: KnotCore{}, RightSkip: right})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +205,7 @@ func TestFreezeSilentReplacements(t *testing.T) {
 		t.Fatal(err)
 	}
 	k.SelectDiscretionary(0, DiscretionarySelection{0, 1})
-	got, err := k.owner.freezeParagraph(k, []int{0, len(k.Kind) - 1}, geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), KnotCore{}, KnotCore{MaxW: dimen.Fil})
+	got, err := k.owner.freezeParagraph(k, []int{0, len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{MaxW: dimen.Fil}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestFreezeSilentReplacements(t *testing.T) {
 func TestFreezeEmptyAndTrimmed(t *testing.T) {
 	for _, text := range []string{"", "   ", "  aa  "} {
 		owner, k := logicalTestParagraph(t, text)
-		got, err := owner.freezeParagraph(k, []int{len(k.Kind) - 1}, geometryShapeFunc(func(int32) dimen.DU { return 20 * dimen.PT }), KnotCore{}, KnotCore{})
+		got, err := owner.freezeParagraph(k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 20 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
 		if err != nil {
 			t.Fatal(err)
 		}

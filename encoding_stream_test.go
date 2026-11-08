@@ -44,11 +44,11 @@ func TestPublicStreamingEncodingAndBreakers(t *testing.T) {
 			t.Fatal("unexpected metrics", khp)
 		}
 		shape := linebreak.RectangularParShape(100 * dimen.PT)
-		greedy, err := firstfit.BreakParagraph(khp, shape, nil)
+		greedy, err := firstfit.BreakParagraph(khp, firstfit.DefaultLayout(shape), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		optimal, err := knuthplass.BreakParagraph(khp, shape, nil)
+		optimal, err := knuthplass.BreakParagraph(khp, knuthplass.DefaultLayout(shape), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -175,11 +175,11 @@ func TestPublicStreamingBoundaryRegressions(t *testing.T) {
 				t.Fatal(err)
 			}
 			shape := linebreak.RectangularParShape(100 * dimen.PT)
-			f, err := firstfit.BreakParagraph(k, shape, nil)
+			f, err := firstfit.BreakParagraph(k, firstfit.DefaultLayout(shape), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			kp, err := knuthplass.BreakParagraph(k, shape, nil)
+			kp, err := knuthplass.BreakParagraph(k, knuthplass.DefaultLayout(shape), nil)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -239,7 +239,7 @@ func (kp *linebreaker) evaluateDiscretionaryCandidates(khp *khipu.Khipu, from Br
 		if st.from != from {
 			continue
 		}
-		linelen := kp.parshape.LineLength(int32(st.line + 1))
+		linelen := kp.layout.LineShape.LineLength(int32(st.line + 1))
 		for _, cand := range cands {
 			lineBook := bookkeeping{}
 			nextSeed := bookkeeping{}
@@ -260,7 +260,7 @@ func (kp *linebreaker) evaluateDiscretionaryCandidates(khp *khipu.Khipu, from Br
 				nextSeed = seedBookkeepingFromKnot(cand.PostBreak)
 				kp.appendActualKnots(&nextSeed, khp, candidate+1, breakpoint)
 			}
-			segwss := lineBook.effectiveWidth(kp.params)
+			segwss := lineBook.effectiveWidth(kp.layout)
 			ratio, ok := calcAdjustmentRatio(segwss, linelen)
 			if !ok {
 				continue

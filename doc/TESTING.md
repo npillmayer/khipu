@@ -17,6 +17,12 @@ and a shared testing package remain proposals.
 
 ## Existing Guarantees and Evidence
 
+- `layout_params_test.go` checks complete independent default profiles, shared
+  Params across breaking/freezing, explicit zero-skip overrides, firstfit's fil
+  ragged-right behavior, finite shrink, terminal fill precedence and physical
+  right skips in RTL paragraphs. Invalid/nil shapes and invalid skip bounds
+  fail before querying the shape or changing breaker selections. Configuration
+  tests distinguish value snapshots from shared LineShape service lifetime.
 - `logical_lines_test.go` covers complete-path validation, source coverage,
   retained-neutral trimming, selected-fragment carry, silent replacements,
   arena lifetime and atomic errors. `logical_lines_integration_test.go` consumes

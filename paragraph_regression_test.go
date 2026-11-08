@@ -147,11 +147,12 @@ func TestModernBreakersParagraphRegressions(t *testing.T) {
 				shape := linebreak.RectangularParShape(width)
 				var breaks []int
 				if algorithm == "firstfit" {
-					breaks, err = firstfit.BreakParagraph(khp, shape, nil)
+					breaks, err = firstfit.BreakParagraph(khp, firstfit.DefaultLayout(shape), nil)
 				} else {
 					params := knuthplass.NewKPDefaultParameters()
-					params.RightSkip = khipu.KnotCore{MaxW: 5 * dimen.PT}
-					breaks, err = knuthplass.BreakParagraph(khp, shape, params)
+					layout := knuthplass.DefaultLayout(shape)
+					layout.RightSkip = khipu.KnotCore{MaxW: 5 * dimen.PT}
+					breaks, err = knuthplass.BreakParagraph(khp, layout, params)
 				}
 				if err != nil {
 					t.Fatal(err)

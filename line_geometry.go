@@ -9,13 +9,6 @@ import (
 	"github.com/npillmayer/khipu/dimen"
 )
 
-// lineShape is the local expectation for paragraph geometry. linebreak.ParShape
-// satisfies it without making the base package import its own client package.
-// LineLength uses one-based line numbers and includes both physical side skips.
-type lineShape interface {
-	LineLength(int32) dimen.DU
-}
-
 // geometryParagraph is elastic visual content with complete line geometry, not
 // frozen output. It owns line/knot snapshots, retaining immutable arena/source
 // data under the visualParagraph lifetime contract. The shape is not retained.
@@ -47,12 +40,12 @@ type geometryLine struct {
 // geometry, so we cannot detect a different but structurally valid parameter set.
 // No breaker defaults are substituted. The result is private until every stage
 // succeeds; failure does not change the elastic khipu or selected discretionaries.
-func (kq *Khipukamayuq) materializeLineGeometry(k *Khipu, breaks []int, shape lineShape, leftSkip, rightSkip KnotCore) (*geometryParagraph, error) {
+func (kq *Khipukamayuq) materializeLineGeometry(k *Khipu, breaks []int, params Params) (*geometryParagraph, error) {
 	p, err := kq.materializeVisualLines(k, breaks)
 	if err != nil {
 		return nil, err
 	}
-	return p.prepareGeometry(shape, leftSkip, rightSkip)
+	return p.prepareGeometry(params)
 }
 
 // prepareGeometry snapshots one target per line in logical paragraph order,
@@ -65,16 +58,17 @@ func (kq *Khipukamayuq) materializeLineGeometry(k *Khipu, breaks []int, shape li
 // totals and inconsistent width triples fail rather than saturate as breaker
 // summaries do. Negative finite skip widths are allowed if the total remains
 // nonnegative. Fit checks and allocation belong to the next stage.
-func (p *visualParagraph) prepareGeometry(shape lineShape, leftSkip, rightSkip KnotCore) (*geometryParagraph, error) {
+func (p *visualParagraph) prepareGeometry(params Params) (*geometryParagraph, error) {
 	bad := func(reason string) (*geometryParagraph, error) {
 		return nil, fmt.Errorf("%w: line geometry: %s", ErrIllegalArguments, reason)
 	}
-	if p == nil || p.paragraph == nil || len(p.lines) == 0 || int64(len(p.lines)) > math.MaxInt32 || nilRunService(shape) {
+	if p == nil || p.paragraph == nil || len(p.lines) == 0 || int64(len(p.lines)) > math.MaxInt32 {
 		return bad("missing or invalid visual paragraph/shape")
 	}
-	if !validGeometryWidths(leftSkip) || !validGeometryWidths(rightSkip) {
-		return bad("invalid side-skip widths")
+	if err := params.ValidateGeometry(); err != nil {
+		return nil, err
 	}
+	shape, leftSkip, rightSkip := params.LineShape, params.LeftSkip, params.RightSkip
 	result := &geometryParagraph{paragraph: p.paragraph, arena: p.arena, lines: make([]geometryLine, len(p.lines))}
 	for i, line := range p.lines {
 		target := shape.LineLength(int32(i + 1))

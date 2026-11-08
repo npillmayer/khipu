@@ -28,8 +28,18 @@ to the new `Khipu` representation, its remaining overlap with the root
 Its runtime API is now:
 
 ```go
-func BreakParagraph(khp *khipu.Khipu, parshape linebreak.ParShape, params *Parameters) ([]kinx, error)
+func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) ([]kinx, error)
 ```
+
+Paragraph geometry is resolved once in `khipu.Params` and shared with freezing.
+`firstfit.DefaultLayout(shape)` starts from base paragraph defaults and selects
+zero left skip plus a zero-natural-width, zero-shrink, fil-stretch physical right
+skip. This makes underfull ordinary lines ragged-right without stretching finite
+interword spaces. Shrink remains finite when necessary; higher-order paragraph
+fill takes precedence on the final line. Physical right remains right for RTL.
+Apply caller overrides after selecting the profile; explicit zero skips are not
+filled back in. Nil `params` selects algorithm defaults only. Firstfit.Parameters
+now contains only MinHyphenGain and DiscretionaryProvider, not side skips.
 
 So the package has already moved away from:
 
@@ -48,7 +58,6 @@ small.
 
 `firstfit` only depends on:
 
-- `linebreak.ParShape`
 - `linebreak.RectangularParShape` in tests and call sites
 - `linebreak.WSS`, used through a local type alias
 
@@ -192,14 +201,14 @@ The relationship is now clearer than before.
 
 Shared concepts:
 
-- `ParShape`
+- paragraph geometry in `khipu.Params` and its `LineShape` contract
 - `WSS`
 - indexed traversal over `Khipu`
 - discardability consumed from `Khipu.Flags`
 
 Not shared intentionally:
 
-- parameter types
+- algorithm-specific parameter types (paragraph Params is shared)
 - cost model
 - discretionary machinery
 

@@ -7,6 +7,9 @@ import (
 )
 
 // Parameters is a collection of configuration parameters for line-breaking.
+// Paragraph geometry lives in khipu.Params, not in this algorithm configuration.
+// ParFillSkip remains an encoding convenience; the breaker reads the actual
+// trailer from its input and does not substitute this value during breaking.
 //
 // The important distinction for the current implementation is:
 //   - PreTolerance screens the rough first pass
@@ -23,8 +26,6 @@ type Parameters struct {
 	DoubleHyphenDemerits  merits         // demerits for consecutive hyphens; currently reserved, not yet applied
 	FinalHyphenDemerits   merits         // demerits for hyphen in the last line
 	EmergencyStretch      dimen.DU       // reserved; no emergency-stretch pass is implemented
-	LeftSkip              khipu.KnotCore // glue at left edge of paragraphs
-	RightSkip             khipu.KnotCore // glue at right edge of paragraphs
 	ParFillSkip           khipu.KnotCore // upstream trailer dimensions; pass to khipu.Config.ParFillSkip when encoding
 	DiscretionaryProvider DiscretionaryProvider
 }
@@ -41,8 +42,6 @@ var DefaultParameters = &Parameters{
 	DoubleHyphenDemerits: 0,
 	FinalHyphenDemerits:  50,
 	EmergencyStretch:     dimen.DU(dimen.BP * 50),
-	LeftSkip:             glue(0, 0, 0),
-	RightSkip:            glue(0, 0, 50*dimen.BP),
 	ParFillSkip:          glue(0, 0, dimen.Fill),
 }
 

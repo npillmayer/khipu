@@ -40,21 +40,20 @@ func TestLineGeometryFromBothBreakers(t *testing.T) {
 				left := khipu.KnotCore{W: 2 * dimen.PT, MinW: 2 * dimen.PT, MaxW: 2 * dimen.PT, Flags: khipu.KFDiscardable}
 				right := khipu.KnotCore{W: 3 * dimen.PT, MinW: 3 * dimen.PT, MaxW: 3 * dimen.PT}
 				shape := &geometryIntegrationShape{}
+				layout := khipu.Params{LineShape: shape, LeftSkip: left, RightSkip: right}
 				var breaks []int
 				if engine == "firstfit" {
 					params := *firstfit.DefaultParameters
-					params.LeftSkip, params.RightSkip = left, right
-					breaks, err = firstfit.BreakParagraph(k, shape, &params)
+					breaks, err = firstfit.BreakParagraph(k, layout, &params)
 				} else {
 					params := knuthplass.NewKPDefaultParameters()
-					params.LeftSkip, params.RightSkip = left, right
-					breaks, err = knuthplass.BreakParagraph(k, shape, params)
+					breaks, err = knuthplass.BreakParagraph(k, layout, params)
 				}
 				if err != nil {
 					t.Fatal(err)
 				}
 				shape.calls = nil
-				got, err := khipu.MaterializeLineGeometryForTest(owner, k, breaks, shape, left, right)
+				got, err := khipu.MaterializeLineGeometryForTest(owner, k, breaks, layout)
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -34,7 +34,7 @@ func TestLineGeometrySnapshot(t *testing.T) {
 	targets := []dimen.DU{15 * dimen.PT, 0} // insufficient shrink is NOT a stage-1 error
 	var calls []int32
 	shape := geometryShapeFunc(func(n int32) dimen.DU { calls = append(calls, n); return targets[n-1] })
-	got, err := p.prepareGeometry(shape, left, right)
+	got, err := p.prepareGeometry(Params{LineShape: shape, LeftSkip: left, RightSkip: right})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestLineGeometryPhysicalEdgesAndFill(t *testing.T) {
 				}
 				left := KnotCore{W: 2, MinW: 2, MaxW: 2}
 				right := KnotCore{W: 3, MinW: 3, MaxW: 3}
-				got, err := owner.materializeLineGeometry(k, []int{len(k.Kind) - 1}, geometryShapeFunc(func(int32) dimen.DU { return 100 * dimen.PT }), left, right)
+				got, err := owner.materializeLineGeometry(k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 100 * dimen.PT }), LeftSkip: left, RightSkip: right})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -106,7 +106,7 @@ func TestLineGeometryPhysicalEdgesAndFill(t *testing.T) {
 func TestLineGeometryNegativeFiniteSkip(t *testing.T) {
 	p := geometryFixture(t)
 	left := KnotCore{W: -5, MinW: -7, MaxW: -1}
-	got, err := p.prepareGeometry(geometryShapeFunc(func(int32) dimen.DU { return 1 }), left, KnotCore{})
+	got, err := p.prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 1 }), LeftSkip: left, RightSkip: KnotCore{}})
 	if err != nil || got.lines[0].naturalWidth != p.lines[0].naturalWidth-5 {
 		t.Fatal(got, err)
 	}
@@ -116,7 +116,7 @@ func TestLineGeometryFailures(t *testing.T) {
 	for _, mode := range []string{"nil paragraph", "no source", "no lines", "nil shape", "typed nil shape", "negative target", "fill target", "reversed skip", "small max", "infinite natural", "infinite min", "infinity max", "total overflow", "negative total", "stale width", "bad content", "late target"} {
 		t.Run(mode, func(t *testing.T) {
 			p := geometryFixture(t)
-			var shape lineShape = geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT })
+			var shape LineShape = geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT })
 			left, right := KnotCore{}, KnotCore{}
 			switch mode {
 			case "nil paragraph":
@@ -164,7 +164,7 @@ func TestLineGeometryFailures(t *testing.T) {
 			if p != nil && len(p.lines) > 0 {
 				before = slices.Clone(p.lines[0].knots)
 			}
-			got, err := p.prepareGeometry(shape, left, right)
+			got, err := p.prepareGeometry(Params{LineShape: shape, LeftSkip: left, RightSkip: right})
 			if got != nil || !errors.Is(err, ErrIllegalArguments) {
 				t.Fatal("accepted invalid geometry", got, err)
 			}
@@ -175,7 +175,7 @@ func TestLineGeometryFailures(t *testing.T) {
 				t.Fatal("failure changed input")
 			}
 			if mode == "late target" {
-				if _, err := p.prepareGeometry(geometryShapeFunc(func(int32) dimen.DU { return 0 }), left, right); err != nil {
+				if _, err := p.prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 0 }), LeftSkip: left, RightSkip: right}); err != nil {
 					t.Fatal("retry failed", err)
 				}
 			}

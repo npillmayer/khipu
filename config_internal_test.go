@@ -1,6 +1,33 @@
 package khipu
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/npillmayer/khipu/dimen"
+)
+
+func TestConfigGeometrySnapshot(t *testing.T) {
+	shape := &geometryIntegrationShapeForConfig{width: 20 * dimen.PT}
+	p := DefaultParams()
+	p.LineShape = shape
+	p.RightSkip = KnotCore{MaxW: dimen.Fil}
+	owner := NewKhipukamayuq(Config{Params: &p})
+	p.RightSkip = KnotCore{}
+	p.LineShape = nil
+	if owner.env.params.RightSkip.MaxW != dimen.Fil || owner.env.params.LineShape != shape {
+		t.Fatal("configuration did not snapshot geometry values")
+	}
+	// Interface services are deliberately not deep-copied. Callers must keep
+	// their behavior stable between breaking and freezing.
+	shape.width++
+	if owner.env.params.LineShape.LineLength(1) != shape.width {
+		t.Fatal("unexpected shape copy")
+	}
+}
+
+type geometryIntegrationShapeForConfig struct{ width dimen.DU }
+
+func (s *geometryIntegrationShapeForConfig) LineLength(int32) dimen.DU { return s.width }
 
 func TestConfigParameterSnapshot(t *testing.T) {
 	for _, tc := range []struct {

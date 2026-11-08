@@ -55,15 +55,16 @@ func TestStreamingAutomaticBreaksEndToEnd(t *testing.T) {
 					if engine == "firstfit" {
 						p := *firstfit.DefaultParameters
 						p.DiscretionaryProvider = owner
-						return firstfit.BreakParagraph(k, shape, &p)
+						return firstfit.BreakParagraph(k, firstfit.DefaultLayout(shape), &p)
 					}
 					p := knuthplass.NewKPDefaultParameters()
+					layout := knuthplass.DefaultLayout(shape)
 					p.DiscretionaryProvider = owner
 					if width == 25*dimen.PT {
-						p.RightSkip = khipu.KnotCore{MaxW: dimen.PT}
+						layout.RightSkip = khipu.KnotCore{MaxW: dimen.PT}
 						p.EmergencyStretch = 0
 					}
-					return knuthplass.BreakParagraph(k, shape, p)
+					return knuthplass.BreakParagraph(k, layout, p)
 				}
 				if wide, err := breakAt(100 * dimen.PT); err != nil || len(wide) != 1 || len(policy.requests) != 0 {
 					t.Fatal("eager lookup", wide, err, policy.requests)

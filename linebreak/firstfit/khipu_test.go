@@ -57,7 +57,7 @@ func TestBreakParagraphKhipuBreaksAtFirstFitCheckpoint(t *testing.T) {
 		{w: 20, minw: 20, maxw: 20, p: -100, kind: khipu.KTTextBox},
 		{w: 0, minw: 0, maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
-	breakpoints, err := BreakParagraph(khp, linebreak.RectangularParShape(20*dimen.BP), nil)
+	breakpoints, err := BreakParagraph(khp, DefaultLayout(linebreak.RectangularParShape(20*dimen.BP)), nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -78,14 +78,15 @@ func TestCarriedCandidateBecomesNextLineCheckpoint(t *testing.T) {
 		{w: 0, minw: 0, maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
 	khp.Flags[7] = 0
-	got, err := BreakParagraph(khp, linebreak.RectangularParShape(15*dimen.BP), nil)
+	got, err := BreakParagraph(khp, DefaultLayout(linebreak.RectangularParShape(15*dimen.BP)), nil)
 	if err != nil || !slices.Equal(got, []kinx{1, 3, 5, 7}) {
 		t.Fatalf("got %v %v", got, err)
 	}
 }
 
 func TestBreakParagraphKhipuTrimsTrailingDiscardablesAtCheckpoint(t *testing.T) {
-	params := &Parameters{
+	layout := khipu.Params{
+		LineShape: linebreak.RectangularParShape(20 * dimen.BP),
 		LeftSkip:  glue(0, 0, 0),
 		RightSkip: glue(0, 0, 0),
 	}
@@ -97,7 +98,7 @@ func TestBreakParagraphKhipuTrimsTrailingDiscardablesAtCheckpoint(t *testing.T) 
 	})
 	khp.Flags[1] = khipu.KFDiscardable
 	khp.Flags[3] = khipu.KFDiscardable
-	breakpoints, err := BreakParagraph(khp, linebreak.RectangularParShape(20*dimen.BP), params)
+	breakpoints, err := BreakParagraph(khp, layout, nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -113,7 +114,7 @@ func TestBreakParagraphKhipuRespectsForcedBreak(t *testing.T) {
 		{w: 10, minw: 10, maxw: 10, p: InfinityDemerits, kind: khipu.KTTextBox},
 		{w: 0, minw: 0, maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
-	breakpoints, err := BreakParagraph(khp, linebreak.RectangularParShape(100*dimen.BP), nil)
+	breakpoints, err := BreakParagraph(khp, DefaultLayout(linebreak.RectangularParShape(100*dimen.BP)), nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -146,8 +147,6 @@ func TestBreakParagraphKhipuUsesLooseLineDiscretionary(t *testing.T) {
 		},
 	}
 	params := &Parameters{
-		LeftSkip:              glue(0, 0, 0),
-		RightSkip:             glue(0, 0, 0),
 		MinHyphenGain:         5 * dimen.BP,
 		DiscretionaryProvider: provider,
 	}
@@ -157,7 +156,7 @@ func TestBreakParagraphKhipuUsesLooseLineDiscretionary(t *testing.T) {
 		{w: 0, minw: 0, maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
 
-	breakpoints, err := BreakParagraph(khp, linebreak.RectangularParShape(24*dimen.BP), params)
+	breakpoints, err := BreakParagraph(khp, khipu.Params{LineShape: linebreak.RectangularParShape(24 * dimen.BP)}, params)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -188,8 +187,6 @@ func TestBreakParagraphKhipuHonorsMinHyphenGain(t *testing.T) {
 		},
 	}
 	params := &Parameters{
-		LeftSkip:              glue(0, 0, 0),
-		RightSkip:             glue(0, 0, 0),
 		MinHyphenGain:         5 * dimen.BP,
 		DiscretionaryProvider: provider,
 	}
@@ -199,7 +196,7 @@ func TestBreakParagraphKhipuHonorsMinHyphenGain(t *testing.T) {
 		{w: 0, minw: 0, maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
 
-	breakpoints, err := BreakParagraph(khp, linebreak.RectangularParShape(24*dimen.BP), params)
+	breakpoints, err := BreakParagraph(khp, khipu.Params{LineShape: linebreak.RectangularParShape(24 * dimen.BP)}, params)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -221,7 +218,7 @@ func TestBreakParagraphKhipuClearsStaleSelectedDiscretionaries(t *testing.T) {
 		1: {Source: 1, Variant: 9},
 	}
 
-	breakpoints, err := BreakParagraph(khp, linebreak.RectangularParShape(24*dimen.BP), nil)
+	breakpoints, err := BreakParagraph(khp, DefaultLayout(linebreak.RectangularParShape(24*dimen.BP)), nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -243,7 +240,7 @@ func TestBreakParagraphKhipuTrimsLeadingDiscardablesOnLaterLine(t *testing.T) {
 	khp.Flags[1] = khipu.KFDiscardable
 	khp.Flags[3] = khipu.KFDiscardable
 
-	breakpoints, err := BreakParagraph(khp, linebreak.RectangularParShape(20*dimen.BP), nil)
+	breakpoints, err := BreakParagraph(khp, DefaultLayout(linebreak.RectangularParShape(20*dimen.BP)), nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -306,7 +303,7 @@ func TestSegmentStateTreatsUnflaggedGlueAsNeutral(t *testing.T) {
 
 func TestSegmentStateWidthTrimsBothEdges(t *testing.T) {
 	seg := &segmentState{}
-	params := &Parameters{LeftSkip: glue(0, 0, 0), RightSkip: glue(0, 0, 0)}
+	params := khipu.Params{LeftSkip: glue(0, 0, 0), RightSkip: glue(0, 0, 0)}
 	seg.append(knot(5, 5, 5, -100, khipu.KTGlue))
 	seg.append(knot(20, 20, 20, -100, khipu.KTTextBox))
 	seg.append(knot(3, 3, 3, -100, khipu.KTKern))

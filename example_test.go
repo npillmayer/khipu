@@ -25,11 +25,11 @@ func ExampleKhipukamayuq_EncodeParagraph() {
 		panic(err)
 	}
 	shape := linebreak.RectangularParShape(100 * dimen.PT)
-	greedy, err := firstfit.BreakParagraph(khp, shape, nil)
+	greedy, err := firstfit.BreakParagraph(khp, firstfit.DefaultLayout(shape), nil)
 	if err != nil {
 		panic(err)
 	}
-	optimal, err := knuthplass.BreakParagraph(khp, shape, nil)
+	optimal, err := knuthplass.BreakParagraph(khp, knuthplass.DefaultLayout(shape), nil)
 	if err != nil {
 		panic(err)
 	}
@@ -66,7 +66,7 @@ func ExampleConfig_hyphenator() {
 	}
 	// Wire the same owner into the breaker to permit lazy discovery.
 	params := &firstfit.Parameters{DiscretionaryProvider: owner}
-	breaks, err := firstfit.BreakParagraph(khp, linebreak.RectangularParShape(45*dimen.PT), params)
+	breaks, err := firstfit.BreakParagraph(khp, firstfit.DefaultLayout(linebreak.RectangularParShape(45*dimen.PT)), params)
 	if err != nil {
 		panic(err)
 	}

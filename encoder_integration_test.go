@@ -71,11 +71,11 @@ func TestEncodedParagraphContract(t *testing.T) {
 			if total != dimen.DU(utf8.RuneCountInString(source))*5*dimen.PT {
 				t.Fatalf("incorrect fixed-shaper width: %v", total)
 			}
-			breaks, err := firstfit.BreakParagraph(khp, linebreak.RectangularParShape(1000*dimen.PT), nil)
+			breaks, err := firstfit.BreakParagraph(khp, firstfit.DefaultLayout(linebreak.RectangularParShape(1000*dimen.PT)), nil)
 			if err != nil || !slices.Equal(breaks, []int{count - 1}) {
 				t.Fatalf("firstfit: breaks=%v err=%v", breaks, err)
 			}
-			breaks, err = knuthplass.BreakParagraph(khp, linebreak.RectangularParShape(1000*dimen.PT), nil)
+			breaks, err = knuthplass.BreakParagraph(khp, knuthplass.DefaultLayout(linebreak.RectangularParShape(1000*dimen.PT)), nil)
 			if err != nil || !slices.Equal(breaks, []int{count - 1}) {
 				t.Fatalf("Knuth-Plass: breaks=%v err=%v", breaks, err)
 			}
@@ -115,10 +115,10 @@ func TestEncodedParagraphStyleAndForcedBoundaries(t *testing.T) {
 				breakPara func(*khipu.Khipu) ([]int, error)
 			}{
 				{"firstfit", func(k *khipu.Khipu) ([]int, error) {
-					return firstfit.BreakParagraph(k, linebreak.RectangularParShape(1000*dimen.PT), nil)
+					return firstfit.BreakParagraph(k, firstfit.DefaultLayout(linebreak.RectangularParShape(1000*dimen.PT)), nil)
 				}},
 				{"Knuth-Plass", func(k *khipu.Khipu) ([]int, error) {
-					return knuthplass.BreakParagraph(k, linebreak.RectangularParShape(1000*dimen.PT), nil)
+					return knuthplass.BreakParagraph(k, knuthplass.DefaultLayout(linebreak.RectangularParShape(1000*dimen.PT)), nil)
 				}},
 			} {
 				breaks, err := run.breakPara(khp)
@@ -167,12 +167,13 @@ func TestEncodedParagraphLazyDiscretionaries(t *testing.T) {
 			shape := linebreak.RectangularParShape(45 * dimen.PT)
 			var breaks []int
 			if algorithm == "firstfit" {
-				breaks, err = firstfit.BreakParagraph(khp, shape, &firstfit.Parameters{DiscretionaryProvider: owner})
+				breaks, err = firstfit.BreakParagraph(khp, firstfit.DefaultLayout(shape), &firstfit.Parameters{DiscretionaryProvider: owner})
 			} else {
 				params := knuthplass.NewKPDefaultParameters()
-				params.RightSkip = khipu.KnotCore{MaxW: 5 * dimen.PT, Kind: khipu.KTGlue}
+				layout := knuthplass.DefaultLayout(shape)
+				layout.RightSkip = khipu.KnotCore{MaxW: 5 * dimen.PT, Kind: khipu.KTGlue}
 				params.DiscretionaryProvider = owner
-				breaks, err = knuthplass.BreakParagraph(khp, shape, params)
+				breaks, err = knuthplass.BreakParagraph(khp, layout, params)
 			}
 			if err != nil {
 				t.Fatal(err)

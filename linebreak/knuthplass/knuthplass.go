@@ -9,7 +9,6 @@ import (
 
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/dimen"
-	"github.com/npillmayer/khipu/linebreak"
 )
 
 // linebreaker is an internal entity for K&P-linebreaking.
@@ -19,7 +18,7 @@ type linebreaker struct {
 	paths       map[origin]bookkeeping // path(-partials) up to horizon
 	seeds       map[origin]bookkeeping // immutable seed state for rescanning a segment
 	params      *Parameters            // typesetting parameters relevant for line-breaking
-	parshape    linebreak.ParShape     // target shape of the paragraph
+	layout      khipu.Params           // resolved geometry, shared with freezing
 	hyphenating bool                   // second pass may relax limits and use discretionaries
 	root        BreakRef               // "break" at start of paragraph
 	end         BreakRef               // "break" at end of paragraph
@@ -42,13 +41,13 @@ func pathsAsString(paths map[origin]bookkeeping) string {
 	return sb.String()
 }
 
-func newLinebreaker(parshape linebreak.ParShape, params *Parameters) *linebreaker {
+func newLinebreaker(layout khipu.Params, params *Parameters) *linebreaker {
 	kp := &linebreaker{}
 	kp.pathTable = newPathTable()
 	kp.horizon = make(map[BreakRef]struct{})
 	kp.paths = make(map[origin]bookkeeping)
 	kp.seeds = make(map[origin]bookkeeping)
-	kp.parshape = parshape
+	kp.layout = layout
 	if params == nil {
 		params = NewKPDefaultParameters()
 	}
@@ -68,19 +67,31 @@ func NewKPDefaultParameters() *Parameters {
 		DoubleHyphenDemerits: 2000,
 		FinalHyphenDemerits:  10000,
 		EmergencyStretch:     dimen.DU(dimen.BP * 20),
-		LeftSkip:             glue(0, 0, 0),
-		RightSkip:            glue(0, 0, 50*dimen.BP),
 		ParFillSkip:          glue(0, 0, dimen.Fill),
 	}
 }
 
-func prepareLineBreaker(parshape linebreak.ParShape,
+// DefaultLayout preserves the finite-stretch right skip of the K&P profile.
+// Resolve it before breaking, apply caller overrides, and pass the same Params
+// to freezing. Nil algorithm parameters never substitute geometry defaults.
+func DefaultLayout(shape khipu.LineShape) khipu.Params {
+	layout := khipu.DefaultParams()
+	layout.LineShape = shape
+	layout.LeftSkip = glue(0, 0, 0)
+	layout.RightSkip = glue(0, 0, 50*dimen.BP)
+	return layout
+}
+
+func prepareLineBreaker(layout khipu.Params,
 	params *Parameters) (*linebreaker, error) {
 	//
-	if parshape == nil {
+	if layout.LineShape == nil {
 		return nil, ErrNoParShape
 	}
-	kp := newLinebreaker(parshape, params)
+	if err := layout.ValidateGeometry(); err != nil {
+		return nil, err
+	}
+	kp := newLinebreaker(layout, params)
 	kp.root = PlainBreak(noinx)                  // virtual starting knot
 	kp.horizon[kp.root] = struct{}{}             // root is now officially a breakpoint
 	kp.paths[origin{kp.root, 0}] = bookkeeping{} // start of every path
@@ -144,7 +155,7 @@ func (book *bookkeeping) appendItem(cls lineItemClass, w WSS) {
 	}
 }
 
-func (book bookkeeping) effectiveWidth(params *Parameters) WSS {
+func (book bookkeeping) effectiveWidth(params khipu.Params) WSS {
 	segw := book.segment
 	segw = segw.Subtract(book.leadingTrim)
 	segw = segw.Subtract(book.trailingTrim)
@@ -346,8 +357,8 @@ func (kp *linebreaker) evaluateCandidates(bp BreakRef, penalty khipu.Penalty) ([
 	var result []lineEvaluation
 	for st, path := range kp.paths { // TODO find a more efficient data-structure
 		if st.from == bp { // found a path ending in `to`
-			linelen := kp.parshape.LineLength(int32(st.line + 1))
-			segwss := path.effectiveWidth(kp.params)
+			linelen := kp.layout.LineShape.LineLength(int32(st.line + 1))
+			segwss := path.effectiveWidth(kp.layout)
 			stsh := absD(linelen - segwss.W) // stretch or shrink of glue in line
 			tracer().Debugf("    +---%.2f--->    | %.2f", segwss.W.Points(), linelen.Points())
 			ev := lineEvaluation{
@@ -463,14 +474,15 @@ type pathQuality struct {
 // Results are zero-based indices of line-ending knots, including the final
 // trailer. SelectedDiscretionaries is replaced on each run. Nil params selects
 // NewKPDefaultParameters. Only the single best path is returned; alternative
-// line-count solutions are not enumerated.
-func BreakParagraph(khipu *khipu.Khipu, parshape linebreak.ParShape, params *Parameters) (
+// line-count solutions are not enumerated. Layout must be resolved explicitly
+// (for example with DefaultLayout) and reused unchanged for freezing.
+func BreakParagraph(khipu *khipu.Khipu, layout khipu.Params, params *Parameters) (
 	[]kinx, error) {
 	//
 	if params == nil {
 		params = NewKPDefaultParameters()
 	}
-	breakrefs, quality, ok, err := breakParagraphPassRefs(khipu, parshape, params, false)
+	breakrefs, quality, ok, err := breakParagraphPassRefs(khipu, layout, params, false)
 	if err != nil {
 		return nil, err
 	}
@@ -489,7 +501,7 @@ func BreakParagraph(khipu *khipu.Khipu, parshape linebreak.ParShape, params *Par
 	} else if !ok {
 		tracer().Debugf("K&P: first pass found no acceptable path, retrying with hyphenation enabled")
 	}
-	breakrefs, _, ok, err = breakParagraphPassRefs(khipu, parshape, params, true)
+	breakrefs, _, ok, err = breakParagraphPassRefs(khipu, layout, params, true)
 	if err != nil {
 		return nil, err
 	}
@@ -500,15 +512,15 @@ func BreakParagraph(khipu *khipu.Khipu, parshape linebreak.ParShape, params *Par
 	return projectBreakRefs(breakrefs), nil
 }
 
-func breakParagraphPass(khp *khipu.Khipu, parshape linebreak.ParShape,
+func breakParagraphPass(khp *khipu.Khipu, layout khipu.Params,
 	params *Parameters, hyphenating bool) ([]kinx, pathQuality, bool, error) {
-	breakrefs, quality, ok, err := breakParagraphPassRefs(khp, parshape, params, hyphenating)
+	breakrefs, quality, ok, err := breakParagraphPassRefs(khp, layout, params, hyphenating)
 	return projectBreakRefs(breakrefs), quality, ok, err
 }
 
-func breakParagraphPassRefs(khp *khipu.Khipu, parshape linebreak.ParShape,
+func breakParagraphPassRefs(khp *khipu.Khipu, layout khipu.Params,
 	params *Parameters, hyphenating bool) ([]BreakRef, pathQuality, bool, error) {
-	kp, err := prepareLineBreaker(parshape, params)
+	kp, err := prepareLineBreaker(layout, params)
 	if err != nil {
 		return nil, pathQuality{}, false, err
 	}
