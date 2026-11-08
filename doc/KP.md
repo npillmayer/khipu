@@ -78,6 +78,12 @@ minimum widths or unsafe sums disable early pruning. See [RETIREMENT.md](RETIREM
 The horizon contains active `BreakRef` values. Despite its historical name,
 `constructBreakpointGraph` now builds predecessor states, not a general graph.
 
+For built-in rectangular shapes, each completed ordinary boundary retains only
+its cheapest working state across line counts (fewer lines wins a cost tie).
+Actual line numbers and predecessor history survive. Root/discretionary buckets
+are not compacted; custom or non-uniform shapes keep the baseline policy. This
+dispatch is automatic in every pass, including public calls. See [UNIFORM.md](UNIFORM.md).
+
 Each single-pass breaker owns separate reusable slices for ordinary evaluations,
 discretionary candidates and the sorted horizon snapshot. Results borrow storage
 until the next call to their producer; callers consume them before rescoring.

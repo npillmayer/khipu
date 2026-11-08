@@ -77,6 +77,9 @@ func (kp *linebreaker) processKnot(khp *khipu.Khipu, last kinx) (bool, error) {
 	if k.Penalty < InfinityDemerits && !kp.finishBoundary(last, k.Penalty) {
 		return false, nil
 	}
+	if kp.compactUniform {
+		kp.compactUniformBoundary(PlainBreak(last))
+	}
 	return true, nil
 }
 

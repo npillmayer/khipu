@@ -22,6 +22,8 @@ separate parameters and policies. Neither materializes or renders final lines.
 
 ## Design History And Future Work
 
+- [Uniform-shape compaction](UNIFORM.md): automatic rectangular-shape fast path,
+  exact-result comparisons and paired single-pass/public-call measurements.
 - [Testing strategy and defaults](TESTING.md): current guarantees with source and
   test evidence, reusable streaming shapers, synthetic font scaling,
   and default style resolution. Standalone helper behavior is distinguished

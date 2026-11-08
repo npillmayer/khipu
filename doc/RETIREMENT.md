@@ -456,6 +456,9 @@ retained-state counts are not peak activity.
   `\parshape`, where line numbers no longer matter. This requires knowing that
   `LineShape` is uniform from some line on, which the interface cannot tell
   today, and must stay compatible with `\looseness` and fitness classes.
+  A subsequent [uniform-shape optimization](UNIFORM.md) compacts only newly completed
+  ordinary buckets for the built-in rectangular shape. It needs no shape API
+  change, leaves discretionary buckets alone and is automatic in public calls.
 - **Emergency pass.** Implemented separately using the final-pass flag; see
   [PASS3.md](PASS3.md).
 - **Fitness classes and adjacent-line demerits.**

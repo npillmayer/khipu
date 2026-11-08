@@ -18,9 +18,9 @@ func (h *decliningHyphenator) Discretionaries(string, *khipu.Params) ([]khipu.Hy
 	return nil, nil
 }
 
-// Work baselines originated before empty-result caching; quality is updated for
-// neutral Unicode opportunities. Policy calls may fall, but discovery requests,
-// scoring demands, history and final decisions must not change across warm runs.
+// Work baselines include neutral Unicode opportunities and automatic ordinary
+// state compaction for rectangular shapes. Policy calls may fall, but discovery
+// requests, scoring demands, history and final decisions must not change across warm runs.
 // Boundary reuse may now satisfy an ordinary demand without a classification.
 func TestEmptyDiscoveryCachePreservesPassWork(t *testing.T) {
 	for _, tc := range []struct {
@@ -29,8 +29,8 @@ func TestEmptyDiscoveryCachePreservesPassWork(t *testing.T) {
 		peak, predecessors, requests int
 		quality                      pathQuality
 	}{
-		{"empty", 1230, 0, 33, 129, 390, pathQuality{6481, 43}},
-		{"productive", 2828, 1695, 74, 284, 929, pathQuality{1855, 3}},
+		{"empty", 494, 0, 8, 59, 158, pathQuality{6481, 43}},
+		{"productive", 1448, 845, 37, 213, 485, pathQuality{1855, 3}},
 	} {
 		t.Run(tc.mode, func(t *testing.T) {
 			empty, productive := &decliningHyphenator{}, &loremHyphenator{}

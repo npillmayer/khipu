@@ -5,6 +5,8 @@ predate neutral Unicode penalty translation. They remain evidence for the
 individual optimization experiments, but selected paths, demerits and discovery
 work can change under the new policy. Re-measure before using them as a current
 baseline or claiming a new speedup.
+The newer [uniform-shape compaction](UNIFORM.md) is measured after translation
+and documents its own paired baseline, scope and correctness comparisons.
 
 ## Purpose and Status
 
@@ -23,6 +25,13 @@ and a shared testing package remain proposals.
 
 ## Existing Guarantees and Evidence
 
+- `linebreak/knuthplass/uniform_test.go` compares automatic ordinary
+  state compaction with baseline paths, quality and completion across shapes,
+  passes, providers, forced boundaries, rewards, emergency recovery and fallback.
+  Unknown shapes stay unoptimized. `uniform_public_test.go` compares the real
+  public API against an identical-width opaque shape across all passes, cold/warm
+  discovery and selection publication. `BenchmarkUniformPublic` times complete
+  calls with fresh owners and candidate caches, excluding paragraph encoding.
 - `linebreak/knuthplass/parameters_test.go` pins both independent profile values
   and pass counts, checks constructor isolation, and verifies that mutations to
   one profile cannot affect nil-parameter calls. Provider-error tests

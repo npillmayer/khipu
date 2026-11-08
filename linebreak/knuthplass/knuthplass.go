@@ -17,7 +17,9 @@ import (
 // predecessor table retains the history needed for reconstruction.
 // A full BreakRef is the key so discretionary variants never share a bucket.
 type linebreaker struct {
-	metrics *workMetrics // optional diagnostics; nil in public breaking calls
+	compactUniform bool         // automatic for built-in rectangles; tests may disable
+	uniformRemoved int          // diagnostic count of dominated ordinary working states
+	metrics        *workMetrics // optional diagnostics; nil in public breaking calls
 	*pathTable
 	horizon     map[BreakRef]struct{}               // horizon of possible linebreaks
 	paths       map[BreakRef]map[lineNo]bookkeeping // working states grouped by breakpoint
@@ -77,6 +79,7 @@ func newLinebreaker(layout khipu.Params, params *Parameters) *linebreaker {
 	kp.seeds = make(map[origin]bookkeeping)
 	kp.retired = make(map[origin]struct{})
 	kp.layout = layout
+	kp.compactUniform = knownUniformShape(layout.LineShape)
 	if params == nil {
 		params = NewDefaultParameters()
 	}

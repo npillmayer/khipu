@@ -51,6 +51,14 @@
 // Collection walks that table backward from the cheapest terminal state and
 // reverses the result. Equal-cost choices use deterministic tie breakers.
 //
+// Built-in linebreak.RectangularParShape values enable ordinary-boundary
+// compaction automatically in every pass. Once a boundary is fully processed,
+// only its cheapest completed-line-count state remains active; equal costs
+// prefer fewer lines. Actual line numbers and predecessor history are retained.
+// Root and discretionary states are not merged. Custom shapes, including
+// constant-width wrappers, keep all line-count alternatives: equal observed
+// widths are not a guarantee of identical future geometry.
+//
 // Ordinary and discretionary evaluations use distinct pass-local scratch
 // buffers. Boundary-local cached evaluations are invalidated when their working
 // bucket changes; they do not cache accumulated predecessor costs. These storage
