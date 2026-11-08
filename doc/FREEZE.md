@@ -6,8 +6,10 @@ assigns final widths to the knots of each line.
 For now, the working term will be **freezing the khipu**.
 
 Status updated November 8, 2026: internal logical-line materialization and
-line-local bidi ordering creation are implemented. Visual knot permutation and
-final width assignment remain a design and implementation plan. No `FrozenKhipu`
+line-local bidi ordering creation are implemented. An internal partial knot
+permutation now maps source-backed knots, including selected discretionary
+fragments. Zero-source attachment, complete visual lines and final width
+assignment remain planned. No `FrozenKhipu`
 type or public freeze entry point exists. Both modern
 linebreakers already return breakpoints and retain chosen discretionary
 variants, providing the inputs for this next stage.
@@ -19,7 +21,7 @@ automatic discretionaries retain shaped replacement fragments and their original
 source split. `BreakpointPositions` maps chosen breaks to paragraph-relative
 UTF-8 byte endpoints. The metric-only shaping path has been removed.
 
-The next work is applying line-local orderings to knots and assigning final widths, not
+The next work is completing visual-line placement and assigning final widths, not
 another encoder migration. See
 [the overall algorithm](khipu-algorithm.md#line-local-bidi-ordering) and
 [discretionary ownership](HYPHENATION.md).
@@ -288,9 +290,88 @@ run on the private clone. Errors publish no partial ordering list and leave
 the original resolution and materialized knots unchanged; retrying is safe
 under the existing immutable-source ownership contract.
 
-This internal stage creates orderings only. Mapping their segments to knots,
-handling generated edge material and checking inseparable box boundaries are
-still outstanding. No public freeze entry point calls it yet.
+This internal stage creates orderings only. The separate partial mapping stage
+below consumes them without changing the logical snapshot. No public freeze
+entry point calls either stage yet.
+
+### Source-Backed Knot Mapping
+
+`logicalLine.mapOrdering` in [knot_ordering.go](../knot_ordering.go) now maps
+an Ordering to indices into the materialized line's knot slice. The returned
+`knotOrdering` is deliberately not a complete visual line:
+
+- `visual` lists nonempty-source knots, including selected discretionary
+  fragments, in physical left-to-right order.
+- `unresolved` lists original zero-source items in logical order. These include
+  final fill and require separate attachment rules; they are not dropped.
+
+The mapping follows these independently testable steps:
+
+1. Flatten `Ordering.Runs` using `Segments(run.IsOpposite(LeftToRight))`.
+2. Validate nonempty, directional, line-local segments. Build a separate
+   source-sorted index and reject overlapping/duplicate segment coverage.
+3. Validate monotone, nonoverlapping knot source spans within the line. Separate
+   original zero-source material, then locate every remaining
+   knot in exactly one segment using binary search.
+4. Require whole-knot containment. Reject boundaries or source gaps through
+   a knot, including same-direction segment boundaries. Glue and kern remain
+   indivisible too; no width or cluster splitting is introduced here.
+5. Emit segment buckets in visual order, reversing the sequence of knot indices
+   within RTL buckets. Never reverse glyph arrays inside boxes.
+
+Segments without surviving knots are valid: they can represent trimmed spaces
+or source without glyphs. Every knot occurs exactly once across the two result
+lists. Failure returns no partial mapping and changes neither input. Indices
+refer to the logical line, not original Khipu indices or byte positions. Cores,
+widths, glyphs and arena records stay untouched. Complexity is
+`O(S log S + K log S)` time and `O(S + K)` temporary space.
+
+The strict whole-segment rule is an intentional limitation of this first PR.
+It does not attempt to prove that a knot crossing adjacent same-direction
+segments is safe to keep intact. Such support should be added explicitly with
+tests, rather than choosing one source anchor and hiding the boundary.
+
+[knot_ordering_test.go](../knot_ordering_test.go) covers LTR/RTL/mixed traversal,
+nested isolates, noncontiguous source intervals, empty/trimmed segments,
+source-backed glue/kern, local indices and paragraph-relative offsets, actual
+style-split RTL boxes, deferred fill, ambiguity rejection and unchanged
+glyph storage. These are mapping tests, not a complete visual-line integration.
+
+### Selected Discretionary Placement
+
+Selected fragments now use the same whole-segment containment rule as ordinary
+textboxes. Pre-break provenance must end at the logical line end; post-break
+provenance must start at the logical line start. Those roles do not dictate
+physical placement: an RTL pre-break fragment can precede other boxes visually.
+Only knot indices are permuted. Box references, fragment roles, variant IDs,
+shaping contexts, glyph sequences and widths remain unchanged.
+
+The lookup uses original source bytes, never replacement length or cluster
+coordinates. Changed spelling and inserted glyphs therefore need no special
+mapping. Empty replacement input or input producing no glyphs still participates
+if its original provenance is nonempty. Silent does not mean source-less.
+
+Genuinely zero-source fragments are explicitly **unsupported** in this stage:
+they return an error, not an unresolved or silently omitted fragment. A position
+alone does not identify a segment across a line or direction boundary. We do
+not attach to a neighboring box, infer direction from replacement characters,
+or place the fragment at a guessed physical edge. Storage accepts endpoint
+splits, but current breakpoint validation requires a strictly interior split,
+so valid materialized fragments already have nonempty provenance. Supporting
+endpoint splits in a future pipeline would also require an explicit attachment
+contract here. Cross-segment fragments and fragments covering source gaps are
+also rejected atomically, including boundaries between same-direction segments.
+
+`knot_ordering_fragments_test.go` covers mixed-direction placement, actual shaped
+LTR/RTL consecutive alternatives, silent replacements, zero-source and ambiguous
+failures, repeatability and unchanged retained data. Consecutive alternatives
+are published directly so placement tests do not depend on language-specific
+hyphenation discovery; the changed-spelling test also uses the provider path.
+
+The next PR will define generated-material attachment, particularly final fill
+placement. Zero-source fragments need their own explicit contract, not implicit
+reuse of fill placement. A subsequent integration will publish complete visual
+lines atomically and exercise both linebreakers.
 
 ### Accepted L1 Approximation
 
@@ -565,11 +646,14 @@ mutation and width allocation.
 
 ### Stage 3: Integrate Line-Local Bidi Ordering
 
-Ordering creation, clone ownership and the documented trailing-glue L1 policy
-are implemented internally. Next, map the orderings to materialized knot/box
-groups. Test visual sequences for LTR, RTL, mixed runs, isolates, trimmed spaces,
-discretionary replacements and generated edge material. Reject unsupported
-boundaries inside inseparable boxes. Do not reverse glyph arrays within boxes.
+Ordering creation, clone ownership, the trailing-glue L1 policy and partial
+source-backed knot/fragment mapping are implemented internally. Next, resolve
+generated-material attachment and assemble complete visual lines. Zero-source
+fragments remain an explicit unsupported case until their attachment is defined. Test
+visual sequences for LTR, RTL, mixed runs, isolates, trimmed spaces,
+discretionary replacements and generated edge material through both breakers.
+Reject unsupported boundaries inside inseparable boxes. Do not reverse glyph
+arrays within boxes.
 
 ### Stage 4: Fixed-Textbox, Glue-Only Freezing
 

@@ -30,6 +30,18 @@ and a shared testing package remain proposals.
   without consuming the original resolution. NBSP, internal tabs and omitted
   controls explicitly record accepted approximation limits. These tests do not
   claim full UAX#9 L1 conformance or visual knot permutation.
+- `knot_ordering_test.go` checks the partial permutation of original source-backed
+  knots: LTR/RTL/mixed segments, nested isolates, source gaps, trimmed segments,
+  style-split RTL boxes and unchanged glyph storage. It also checks local index
+  semantics, neutral source-backed knots, invalid/ambiguous spans and atomic
+  errors. Original zero-source items remain unresolved; complete visual-line
+  integration remains separate work.
+- `knot_ordering_fragments_test.go` checks selected fragment placement by source
+  provenance, mixed directions, shaped LTR/RTL consecutive alternatives, silent
+  replacements, preserved glyph/context/identity data and atomic rejection of
+  ambiguous or zero-source fragments. The provider-backed changed-spelling
+  fixture in `knot_ordering_test.go` is also placed, not deferred. No reshaping or
+  generated-fill placement is part of this stage.
 
 - `encoding_stream_test.go` and `encoding_stream_internal_test.go` cover defaults,
   configuration snapshots, repeated calls, fresh factories, retained glyphs,
