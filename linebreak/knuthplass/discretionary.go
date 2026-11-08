@@ -44,10 +44,9 @@ func (kp *linebreaker) discretionaryCandidates(khp *khipu.Khipu, at kinx) ([]khi
 	return khp.DiscretionariesAt(int(at)), nil
 }
 
-// isLineDiscardable answers the current linebreaking notion of discardability.
-// For now this remains an explicit glue/kern rule, optionally reinforced by the
-// flag plane on KnotCore. More script-sensitive trimming rules can later replace
-// this without changing the surrounding pass-2 logic.
+// isLineDiscardable delegates to the upstream flag decision. Glue and kern
+// kinds alone do not imply discardability. Script-sensitive flag assignment
+// belongs to the paragraph owner, not to discretionary discovery or trimming.
 func isLineDiscardable(k khipu.KnotCore) bool {
 	return k.IsDiscardable()
 }
@@ -118,6 +117,8 @@ func nextContentBox(khp *khipu.Khipu, at kinx) (kinx, bool) {
 
 // wantsHyphenation allows an overfull line one rescue opportunity before it is
 // retired, including lines with no shrink and tolerance set as high as 10000.
+// Pass 3 uses emergency-adjusted badness: virtual stretch may remove the need
+// for automatic discovery, but never suppresses geometrically overfull rescue.
 func (kp *linebreaker) wantsHyphenation(ev lineEvaluation) bool {
 	if kp == nil || !kp.hyphenating {
 		return false
@@ -127,7 +128,8 @@ func (kp *linebreaker) wantsHyphenation(ev lineEvaluation) bool {
 
 // hyphenationCandidateForPass2 picks the textbox to consult for one bad line:
 // loose lines ask for the next box that did not fit, tight lines ask for the
-// last box that is already on the line.
+// last box that is already on the line. Despite its historical name, it is used
+// by both hyphenating passes (2 and 3).
 func hyphenationCandidateForPass2(khp *khipu.Khipu, breakpoint kinx, ev lineEvaluation) (kinx, bool) {
 	if khp == nil || breakpoint < 0 || breakpoint >= len(khp.Kind) {
 		return noinx, false
@@ -155,7 +157,7 @@ func hyphenationCandidateForPass2(khp *khipu.Khipu, breakpoint kinx, ev lineEval
 }
 
 // requestPass2Discretionaries performs lazy candidate discovery for one local
-// pass-2 situation. It does not yet decide which discretionary to use; it only
+// situation in pass 2 or 3. It does not decide which discretionary to use; it only
 // ensures the relevant candidates are available on the Khipu for subsequent
 // evaluation.
 func (kp *linebreaker) requestPass2Discretionaries(khp *khipu.Khipu, breakpoint kinx, ev lineEvaluation) error {
@@ -313,7 +315,7 @@ func (kp *linebreaker) evaluateDiscretionaryLine(khp *khipu.Khipu, from BreakRef
 			if kp.metrics != nil {
 				kp.metrics.discretionary++
 			}
-			ev := classifyLine(segwss, linelen, kp.badnessLimit())
+			ev := classifyLine(segwss, linelen, kp.badnessLimit(), kp.emergencyStretch)
 			if !ev.accepted() {
 				continue
 			}

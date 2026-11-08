@@ -114,15 +114,18 @@ reaches a mandatory boundary, the breaker inserts a fallback with
 boundaries retire earlier origins so they cannot be skipped. Accumulated costs
 use 64 bits to accommodate repeated fallbacks. This policy keeps the paragraph
 breakable. Fallback selection is boundary-wide, deterministic and includes
-terminal hyphen extras; insertion precedes source deletion. `EmergencyStretch` is currently
-retained for the planned final emergency pass; there is no such pass yet.
-That pass is specified in [the algorithm design](khipu-algorithm.md#knuth-plass):
-add E to finite stretch for badness calculation only, leave shrink and knot
-capacities unchanged, and make that emergency pass final when enabled. Pass 2
-is currently final regardless of the reserved parameter's value. The existing
-defaults (20 BP in NewKPDefaultParameters, 50 BP in DefaultParameters) remain
-unchanged by the parameter cleanup. Freezing still rejects insufficient real
-capacity; supporting and reporting over-/underfull lines is a separate change.
+terminal hyphen extras; insertion precedes source deletion.
+Positive finite `EmergencyStretch` enables a third, final pass after two failed
+non-final passes. It adds E only to finite stretch used for badness, demerits and
+lazy discovery; shrink and knot capacities remain unchanged. For short lines
+with `Max < dimen.Fil`, the ratio is `(target-W)/(Max-W+E)` using wide arithmetic.
+Fill/saturated summaries keep the existing numerical ratio. Nonpositive E leaves
+pass 2 final; values at or above Fil are rejected before searching.
+The constructor default is now zero; the tolerant profile retains 50 BP, now
+active. The first complete pass wins without comparing costs across passes.
+Reported emergency quality is optimization quality, not physical badness.
+Freezing still rejects insufficient real capacity; supporting and reporting
+over-/underfull lines is a separate change. See [PASS3.md](PASS3.md).
 
 This is useful for robustness, but it is not a direct transcription of TeX's paragraph-breaking internals.
 

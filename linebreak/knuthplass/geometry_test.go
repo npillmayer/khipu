@@ -40,7 +40,7 @@ func TestLineClassificationAndCandidateConsistency(t *testing.T) {
 				ratio: tc.ratio, badness: tc.badness, disposition: tc.disposition,
 				stretch: absD(100 - tc.width.W),
 			}
-			if got := classifyLine(tc.width, 100, tc.tolerance); got != want {
+			if got := classifyLine(tc.width, 100, tc.tolerance, 0); got != want {
 				t.Fatalf("classification=%+v, want %+v", got, want)
 			}
 			params := NewKPDefaultParameters()

@@ -6,6 +6,12 @@ behavior, not a promise to preserve it. This concerns
 `linebreak/knuthplass`. The design it implements is described in
 [khipu-algorithm.md](khipu-algorithm.md#knuth-plass); see also [KP.md](KP.md).
 
+Reading note: the diagnosis and staged plan below preserve their original
+pre-emergency-pass perspective. Statements there that pass 2 is the final pass
+or that emergency recovery is not implemented are historical, not current
+status. Retirement and optional pass 3 are implemented; [KP.md](KP.md) is the
+current overview and [PASS3.md](PASS3.md) describes emergency recovery.
+
 ## Summary
 
 The breaker decides whether to keep an origin active by asking whether an
@@ -402,7 +408,8 @@ remain, and rejected insertion cannot revive an origin. The collector reads
 terminal costs/quality and walks preserved predecessor history. The temporary
 `ratioAvailable`/`canReach` compatibility bridge has been removed.
 
-Only pass 2 is final until the emergency pass exists. Non-final exhaustion is
+The subsequent [emergency-pass work](PASS3.md) makes pass 2 final only when
+emergency stretch is disabled; otherwise pass 3 is final. Non-final exhaustion is
 an ordinary no-solution outcome, including forced lines above tolerance.
 Fallback selection is boundary-wide and deterministic, includes terminal hyphen
 extras, and occurs before source deletion. Provider errors propagate normally.
@@ -449,7 +456,8 @@ retained-state counts are not peak activity.
   `\parshape`, where line numbers no longer matter. This requires knowing that
   `LineShape` is uniform from some line on, which the interface cannot tell
   today, and must stay compatible with `\looseness` and fitness classes.
-- **Emergency pass.** The final-pass flag prepares for it.
+- **Emergency pass.** Implemented separately using the final-pass flag; see
+  [PASS3.md](PASS3.md).
 - **Fitness classes and adjacent-line demerits.**
 - **Over-/underfull handling in freezing** and reporting.
 - **First-fit**, which has its own overfull handling.

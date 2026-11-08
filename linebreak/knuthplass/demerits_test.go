@@ -116,7 +116,7 @@ func TestFirstPassAcceptsBadnessAtPreToleranceBoundary(t *testing.T) {
 	khp.Len = append(khp.Len, 0, 0, 0)
 	khp.Flags = append(khp.Flags, 0, 0, 0) // paragraph fill is retained
 
-	breakpoints, quality, ok, err := breakParagraphPass(khp, layout, params, false)
+	breakpoints, quality, ok, err := breakParagraphPass(khp, layout, params, passConfig{id: passPreTolerance})
 	if err != nil {
 		t.Fatalf("first pass failed unexpectedly: %v", err)
 	}

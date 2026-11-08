@@ -13,21 +13,21 @@ import (
 //
 // The important distinction for the current implementation is:
 //   - PreTolerance screens the rough first pass
-//   - Tolerance screens the second pass
+//   - Tolerance screens the second and optional emergency passes
 //   - breakpoint penalties come from KnotCore.Penalty or a discretionary candidate
 //   - demerit extras such as FirstHyphenDemerits / FinalHyphenDemerits are local
 //     linebreaker adjustments on top of the base breakpoint penalty
 type Parameters struct {
-	Tolerance           merits // admissible badness for pass 2
+	Tolerance           merits // admissible badness for passes 2 and 3
 	PreTolerance        merits // admissible badness for pass 1
 	LinePenalty         merits // base cost added to every accepted line
 	FirstHyphenDemerits merits // demerits for hyphen in the first line
 	FinalHyphenDemerits merits // demerits for hyphen in the last line
-	// EmergencyStretch is retained for the planned final emergency pass, but
-	// is not read by the current two-pass implementation. That pass will add
-	// this finite amount only to stretch used in badness calculation, not to
-	// knots or shrink capacity. Zero disables the future pass. Freezing must
-	// use real capacities and separately handle/report underfull output.
+	// EmergencyStretch enables a third, final pass if the first two fail.
+	// A positive value must be finite (< dimen.Fil); nonpositive values disable
+	// the extra pass and leave pass 2 final. Virtual stretch changes badness,
+	// demerits and lazy discovery, never knot widths or shrink capacity. Freezing
+	// uses real capacities and may still reject underfull output.
 	EmergencyStretch      dimen.DU
 	ParFillSkip           khipu.KnotCore // upstream trailer dimensions; pass to khipu.Config.ParFillSkip when encoding
 	DiscretionaryProvider DiscretionaryProvider

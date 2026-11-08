@@ -24,7 +24,7 @@ func TestZeroStretchShortOriginsStayActive(t *testing.T) {
 		t.Fatal(err)
 	}
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(200 * dimen.PT)}
-	breaks, _, ok, err := breakParagraphPass(khp, layout, nil, false)
+	breaks, _, ok, err := breakParagraphPass(khp, layout, nil, passConfig{id: passPreTolerance})
 	if err != nil || !ok || !slices.Equal(breaks, []int{7}) {
 		t.Fatalf("breaks=%v ok=%v err=%v", breaks, ok, err)
 	}
@@ -51,7 +51,7 @@ func TestForcedBoundaryRescuesZeroShrinkWord(t *testing.T) {
 		khp := newKhipu(nodes)
 		khp.SetKnotFlags(1, 0) // retain the internal boundary's fill, as at paragraph end
 		layout := khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}
-		if breaks, _, ok, err := breakParagraphPass(khp, layout, params, false); err != nil || ok || len(breaks) != 0 || provider.calls != 0 {
+		if breaks, _, ok, err := breakParagraphPass(khp, layout, params, passConfig{id: passPreTolerance}); err != nil || ok || len(breaks) != 0 || provider.calls != 0 {
 			t.Fatalf("first pass must fail normally without discovery: %v %v %v", breaks, ok, err)
 		}
 		breaks, err := BreakParagraph(khp, layout, params)
@@ -73,10 +73,10 @@ func TestFallbackIsFinalPassOnly(t *testing.T) {
 			{maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 		})
 		layout := khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}
-		if breaks, _, ok, err := breakParagraphPass(khp, layout, nil, false); err != nil || ok || len(breaks) != 0 {
+		if breaks, _, ok, err := breakParagraphPass(khp, layout, nil, passConfig{id: passPreTolerance}); err != nil || ok || len(breaks) != 0 {
 			t.Fatalf("first pass: breaks=%v ok=%v err=%v", breaks, ok, err)
 		}
-		breaks, quality, ok, err := breakParagraphPass(khp, layout, nil, true)
+		breaks, quality, ok, err := breakParagraphPass(khp, layout, nil, passConfig{id: passTolerance, hyphenating: true, final: true})
 		if err != nil || !ok || !slices.Equal(breaks, []int{0, 1}) || quality.totalCost < AwfulDemerits || quality.worstBadness != 10000 {
 			t.Fatalf("final pass: breaks=%v quality=%+v ok=%v err=%v", breaks, quality, ok, err)
 		}
@@ -91,10 +91,10 @@ func TestDrainingOrdinaryBoundaryFallsBackBeforeDeletingSource(t *testing.T) {
 		{maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}
-	if _, _, ok, err := breakParagraphPass(khp, layout, nil, false); err != nil || ok {
+	if _, _, ok, err := breakParagraphPass(khp, layout, nil, passConfig{id: passPreTolerance}); err != nil || ok {
 		t.Fatalf("first pass should exhaust normally: %v %v", ok, err)
 	}
-	breaks, quality, ok, err := breakParagraphPass(khp, layout, nil, true)
+	breaks, quality, ok, err := breakParagraphPass(khp, layout, nil, passConfig{id: passTolerance, hyphenating: true, final: true})
 	if err != nil || !ok || !slices.Equal(breaks, []int{1, 3}) || quality.totalCost < AwfulDemerits {
 		t.Fatalf("fallback did not survive source deletion: %v %+v %v %v", breaks, quality, ok, err)
 	}

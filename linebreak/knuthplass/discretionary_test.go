@@ -160,7 +160,7 @@ func TestPass2RequestsDiscretionariesForScreenedOutCandidate(t *testing.T) {
 	khp.Len = append(khp.Len, 0, 0, 0)
 	khp.Flags = append(khp.Flags, 0, 0, khipu.KFDiscardable)
 
-	_, _, ok, err := breakParagraphPass(khp, layout, params, true)
+	_, _, ok, err := breakParagraphPass(khp, layout, params, passConfig{id: passTolerance, hyphenating: true, final: true})
 	if err != nil {
 		t.Fatalf("second pass failed unexpectedly: %v", err)
 	}

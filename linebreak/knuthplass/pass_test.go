@@ -9,6 +9,14 @@ import (
 	"github.com/npillmayer/khipu/linebreak"
 )
 
+// Projection convenience for fixtures interested in indices rather than variants.
+// Each fixture specifies finality independently of discretionary discovery.
+func breakParagraphPass(khp *khipu.Khipu, layout khipu.Params,
+	params *Parameters, pass passConfig) ([]kinx, pathQuality, bool, error) {
+	result, err := breakParagraphPassRefs(khp, layout, params, pass)
+	return projectBreakRefs(result.breaks), result.quality, result.complete, err
+}
+
 func TestFirstPassUsesPreTolerance(t *testing.T) {
 	params := NewKPDefaultParameters()
 	kp := newLinebreaker(DefaultLayout(nil), params)
@@ -30,7 +38,7 @@ func TestForcedBreakFallbacksKeepPositiveAccumulatedCost(t *testing.T) {
 		{w: 10, minw: 10, maxw: 10, p: InfinityMerits, kind: khipu.KTTextBox},
 		{maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
-	breaks, quality, ok, err := breakParagraphPass(khp, layout, params, true)
+	breaks, quality, ok, err := breakParagraphPass(khp, layout, params, passConfig{id: passTolerance, hyphenating: true, final: true})
 	if err != nil || !ok || !slices.Equal(breaks, []int{0, 1, 2, 3}) {
 		t.Fatalf("forced breaks=%v ok=%v err=%v", breaks, ok, err)
 	}
@@ -88,14 +96,14 @@ func TestBreakParagraphStartsSecondPassAfterFailedPreTolerancePass(t *testing.T)
 	parshape := linebreak.RectangularParShape(8000)
 	layout := khipu.Params{LineShape: parshape}
 
-	firstPassBreaks, _, ok, err := breakParagraphPass(khp, layout, params, false)
+	firstPassBreaks, _, ok, err := breakParagraphPass(khp, layout, params, passConfig{id: passPreTolerance})
 	if err != nil {
 		t.Fatalf("first pass failed unexpectedly: %v", err)
 	}
 	if ok || len(firstPassBreaks) != 0 {
 		t.Fatalf("expected ordinary first-pass failure without fallback, got ok=%v breaks=%v", ok, firstPassBreaks)
 	}
-	secondPassBreaks, _, ok, err := breakParagraphPass(khp, layout, params, true)
+	secondPassBreaks, _, ok, err := breakParagraphPass(khp, layout, params, passConfig{id: passTolerance, hyphenating: true, final: true})
 	if err != nil {
 		t.Fatalf("second pass failed unexpectedly: %v", err)
 	}

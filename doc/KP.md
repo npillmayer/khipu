@@ -1,6 +1,7 @@
 # Knuth-Plass Status And Design History
 
-Reviewed against the code on November 4, 2026; geometry and retirement updated November 8.
+Reviewed against the code on November 8, 2026, including emergency passes,
+retirement, result ownership and downstream materialization.
 
 ## Current State
 
@@ -8,6 +9,10 @@ The modern implementation in `linebreak/knuthplass` works directly on indexed
 `Khipu` data. It returns the single best breakpoint sequence as `[]kinx`
 (`kinx` is an alias for `int`) and records applied discretionary variants in
 `Khipu.SelectedDiscretionaries`.
+Here, "best" means minimum accumulated cost among the candidates explored in
+the first successful pass, not exhaustive enumeration of every possible
+hyphenation. Successful calls replace the selected variants; errors preserve
+earlier selections, although discovery may populate candidate caches.
 
 The call is now `BreakParagraph(input, layout khipu.Params, algorithmParams)`.
 Shape and side skips come exclusively from the resolved paragraph Params;
@@ -76,13 +81,13 @@ The horizon contains active `BreakRef` values. Despite its historical name,
 Each single-pass breaker owns separate reusable slices for ordinary evaluations,
 discretionary candidates and the sorted horizon snapshot. Results borrow storage
 until the next call to their producer; callers consume them before rescoring.
-The ordinary buffer survives nested discretionary evaluation in pass 2. Horizon
+The ordinary buffer survives nested discretionary evaluation in passes 2 and 3. Horizon
 membership may change while a snapshot is consumed. A completed discovery phase
 is followed by a fresh boundary snapshot, so newly discovered post-break lines
 can reach a forced boundary immediately. Retirement IDs use another scratch
 slice. No global pool or cross-paragraph sharing is used.
 
-At permitted pass-2 boundaries, `boundaryEvaluations` copies ordinary discovery
+At permitted boundaries in passes 2 and 3, `boundaryEvaluations` copies ordinary discovery
 results into separate reusable storage, indexed by full breakpoint and penalty.
 Commit reuses unchanged buckets rather than classifying them twice. A successful
 working-state insertion/replacement, width update, or retirement invalidates the
@@ -121,8 +126,11 @@ demerits outside the small penalty-sentinel range. Candidate evaluation
 separates geometric feasibility, badness screening, and ranking.
 
 Pass 1 uses `PreTolerance`. If no acceptable complete path exists, a fresh pass
-runs with `hyphenating=true` and `Tolerance`. Only that final pass may fall back
-to over-/underfull lines. The winning path records its maximum line badness.
+runs with `hyphenating=true` and `Tolerance`. With positive finite
+`EmergencyStretch`, pass 2 is non-final and failure starts a fresh emergency
+pass with the same tolerance. Otherwise pass 2 is final. Only the final pass
+may fall back to over-/underfull lines. The winning path records its maximum
+line badness under that pass's scoring assumptions.
 Shared classification rejects `MinW > target` independently of tolerance;
 short lines without stretch get badness 10000 and remain active.
 
@@ -138,21 +146,30 @@ The unused `HyphenPenalty` and `DoubleHyphenDemerits` fields and defaults have
 been removed. Candidate penalties come from upstream `PreBreak.Penalty`;
 `Params.Hyphenpenalty` (default 10) is the owner's fallback when the provider
 does not supply a nonzero penalty.
-`EmergencyStretch` is retained for the final emergency pass described in
-[the algorithm design](khipu-algorithm.md#knuth-plass), but is not yet read.
-It will augment finite stretch for badness calculation only, without changing
-knots or shrink capacity. That emergency pass is not implemented, so pass 2 is
-currently final regardless of this parameter. Freezing still needs over-/underfull output support.
+`EmergencyStretch` augments finite stretch only for emergency scoring and lazy
+discovery, without changing knots or shrink capacity. Nonpositive values disable
+pass 3; values at or above `dimen.Fil` fail validation before pass 1. The first
+complete pass wins, and only its discretionary selections are published.
+`Max >= dimen.Fil` keeps existing numerical fill/saturation behavior; exact fill
+semantics are not added. Freezing still needs over-/underfull output support.
+`NewKPDefaultParameters` now uses zero E to preserve default two-pass behavior;
+the tolerant `DefaultParameters` profile retains 50 bp, now active.
+See [PASS3.md](PASS3.md) for regression coverage and
+[TESTING.md](TESTING.md#emergency-pass-workloads) for public/isolated emergency
+benchmarks, baselines and workload limitations.
 Parameter defaults differ between `DefaultParameters` and
 `NewKPDefaultParameters`; consult the chosen initializer rather than assuming
 TeX defaults.
 
 ## Lazy Discretionaries
 
-During pass 2, candidates above `PreTolerance` and all overfull candidates
+During passes 2 and 3, candidates above `PreTolerance` and all overfull candidates
 may request local discretionary alternatives before retirement. Loose lines look
 forward for a textbox; tight lines look backward. These local scans avoid
 storing textbox identities on every path.
+Pass 3 uses emergency-adjusted badness for this threshold. Explicit markers
+request discovery independently of badness. The historical helper names
+`hyphenationCandidateForPass2` and `requestPass2Discretionaries` cover both passes.
 
 `Khipukamayuq` coordinates its `Hyphenator` and `Shaper`, measures pre-break
 and post-break fragments, assigns their penalty, and caches candidates.
@@ -176,6 +193,10 @@ See [HYPHENATION.md](HYPHENATION.md) for the implemented interfaces and limits.
 6. Implemented numerical cleanup and explicit first/second passes.
 7. Added `BreakRef`, lazy shaping roundtrips, and selection persistence.
 8. Made discardability flag-driven and shared `WSS` with modern firstfit.
+9. Added breakpoint indexing, scratch reuse, safe active-state retirement,
+   successful-empty discovery caching and boundary-local evaluation reuse.
+10. Implemented the optional emergency pass, deterministic final fallback,
+    and public-call versus isolated-pass benchmark coverage.
 
 The storage decision considered three alternatives: external discretionary
 caches, a dedicated linebreaking view, and sparse tables inside `Khipu`.
@@ -187,9 +208,14 @@ font-backed or international-script performance.
 
 ## Remaining Work
 
-- Freezing: materialize chosen lines and assign final widths; see [FREEZE.md](FREEZE.md).
+- Public freeze/result integration: logical-line materialization, line-local bidi
+  ordering, visual-line assembly, width allocation and frozen output already
+  exist internally. The public contract and entry point remain separate work;
+  see [FREEZE.md](FREEZE.md) and [FROZEN-API.md](FROZEN-API.md).
 - Script-sensitive fragment validity beyond UTF-8 and representable byte length.
-- Stronger source/glyph provenance for discretionary fragments and future shaping.
+- Future script-sensitive realization of elastic textboxes. Shaped discretionary
+  fragments already retain glyphs, positioning, shaping contexts and original
+  source splits; this provenance is not an outstanding linebreaker migration.
 - Optional fitness classes and consecutive-discretionary demerits.
 - Broader international-script integration coverage.
 
@@ -202,10 +228,34 @@ enabled tracing retains path diagnostics. Boundary-wide decisions make retiremen
 and final-pass fallback independent of horizon iteration order. Further changes should follow the measured
 baseline rather than a representation chosen only on theoretical grounds.
 
+The broader synthetic 1,000-word/150 pt measurements still report about 88 ms
+with an empty provider and 844 ms with a productive provider, with approximately
+28 MB and 99 MB allocated respectively. Halving ordinary classifications saved
+only about 7% and 3% of runtime. Discovery, seed replay, updates and retained
+history remain profiling targets. The newer emergency fixtures keep very few
+states active; their lower timings do not supersede the broader workloads.
+See [TESTING.md](TESTING.md#boundary-local-ordinary-evaluation-reuse) for recorded
+conditions and limitations; these figures are not a fresh measurement here.
+
+## Code Reading Guide
+
+Start with the package overview in [doc.go](../linebreak/knuthplass/doc.go).
+Then follow `BreakParagraph` into `selectParagraphBreaks` in `passes.go` and
+`processKnot` in `boundary.go`. The latter separates advancement, discovery and
+boundary commit. Read `path.go` for retained predecessor history, not active
+state management; retirement deletes working bookkeeping and seeds while keeping
+the history needed by collection. `geometry.go` and `evaluation_cache.go` explain
+classification and its boundary-local reuse. The graph and Pass2 helper names
+are historical; neither implies a second graph representation or a pass-2-only
+discovery path.
+
 ## Verification
 
-On November 4, 2026, `go test ./...` and `go vet ./...` pass after the SOA coverage
-migration. Tests include forced breaks, lazy discretionary selection, and the
-short and long paragraph cases from the legacy suite. The root package now passes;
-`linebreak/kp` has been removed and `go build ./...` passes. This does not establish
-complete international-script support or end-to-end typesetting readiness.
+The November 8 review passed `go test ./... -count=1 -timeout=60s`,
+`go vet ./...`, and `go test -race ./linebreak/... -count=1 -timeout=60s`.
+Package-local K&P statement coverage was 91.6%. Tests cover forced boundaries,
+trimming, lazy discretionaries, deterministic collection, retirement, cache
+invalidation and emergency-pass behavior, alongside root-package streaming
+integration. Coverage and synthetic benchmarks do not establish complete
+international-script support, real-font performance or end-to-end typesetting
+readiness.

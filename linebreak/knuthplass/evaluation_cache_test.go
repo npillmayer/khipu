@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/npillmayer/khipu"
@@ -48,7 +49,15 @@ func TestBoundaryEvaluationsScopeAndScratch(t *testing.T) {
 }
 
 func TestBoundaryEvaluationsInvalidateWorkingWrites(t *testing.T) {
+	for _, extra := range []dimen.DU{0, 10 * dimen.BP} {
+		t.Run(extra.String(), func(t *testing.T) { checkBoundaryWorkingWrites(t, extra) })
+	}
+}
+
+func checkBoundaryWorkingWrites(t *testing.T, extra dimen.DU) {
+	t.Helper()
 	kp, _ := prepareLineBreaker(khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}, nil)
+	kp.emergencyStretch = extra
 	enableWorkMetrics(kp)
 	seed := func(w dimen.DU) bookkeeping {
 		return seedBookkeepingFromKnot(khipu.KnotCore{Kind: khipu.KTTextBox, W: w, MinW: w, MaxW: w})
@@ -67,19 +76,24 @@ func TestBoundaryEvaluationsInvalidateWorkingWrites(t *testing.T) {
 		t.Fatal("losing proposal invalidated cache")
 	}
 	// A cheaper predecessor can supply different segment geometry for the same ID.
-	kp.evalNewSegmentSeed(kp.root, target, 1, cost{demerits: 5}, seed(100*dimen.BP))
-	if !kp.evaluateCandidates(target, 0)[0].accepted() || kp.metrics.ordinary != 2 {
+	kp.evalNewSegmentSeed(kp.root, target, 1, cost{demerits: 5}, seed(100*dimen.BP-extra))
+	wantBadness := merits(0)
+	if extra > 0 {
+		wantBadness = 100 // this replacement fits ONLY with virtual capacity
+	}
+	if ev := kp.evaluateCandidates(target, 0)[0]; !ev.accepted() || ev.badness != wantBadness || kp.metrics.ordinary != 2 {
 		t.Fatal("replacement retained stale overfull classification")
 	}
 	// New line counts invalidate the whole bucket, not just a known state.
-	kp.evalNewSegmentSeed(from, target, 2, cost{}, seed(100*dimen.BP))
+	kp.evalNewSegmentSeed(from, target, 2, cost{}, seed(100*dimen.BP-extra))
 	if got := kp.evaluateCandidates(target, 0); len(got) != 2 || kp.metrics.ordinary != 4 {
 		t.Fatal("new sibling missing", got)
 	}
-	kp.updatePath(target, 3, khipu.KnotCore{Kind: khipu.KTTextBox, W: 1, MinW: 1, MaxW: 1})
+	delta := extra + 1 // exceed the target by one DU in both configurations
+	kp.updatePath(target, 3, khipu.KnotCore{Kind: khipu.KTTextBox, W: delta, MinW: delta, MaxW: delta})
 	for _, ev := range kp.evaluateCandidates(target, 0) {
 		if ev.accepted() {
-			t.Fatal("width update retained exact-fit classification")
+			t.Fatal("width update retained stale accepted classification")
 		}
 	}
 	kp.retireState(origin{target, 2})
@@ -94,8 +108,16 @@ func TestBoundaryEvaluationsInvalidateWorkingWrites(t *testing.T) {
 }
 
 func TestBoundaryEvaluationsCommitReplacedAndNewSuccessors(t *testing.T) {
+	for _, extra := range []dimen.DU{0, 10 * dimen.BP} {
+		t.Run(extra.String(), func(t *testing.T) { checkBoundarySuccessors(t, extra) })
+	}
+}
+
+func checkBoundarySuccessors(t *testing.T, extra dimen.DU) {
+	t.Helper()
 	for _, initiallyPresent := range []bool{false, true} {
 		kp, _ := prepareLineBreaker(khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}, nil)
+		kp.emergencyStretch = extra
 		kp.hyphenating, kp.final, kp.prune, kp.end = true, true, true, PlainBreak(5)
 		kp.updatePath(kp.root, 0, khipu.KnotCore{Kind: khipu.KTTextBox, W: 150 * dimen.BP, MinW: 150 * dimen.BP, MaxW: 150 * dimen.BP})
 		target := BreakRef{At: 2, Variant: 1}
@@ -106,7 +128,8 @@ func TestBoundaryEvaluationsCommitReplacedAndNewSuccessors(t *testing.T) {
 		}
 		kp.boundaryEvals.begin()
 		kp.evaluateCandidates(target, 0) // caches an overfull bucket or an empty one
-		seed.segment = WSS{W: 100 * dimen.BP, Min: 100 * dimen.BP, Max: 100 * dimen.BP}
+		w := 100*dimen.BP - extra
+		seed.segment = WSS{W: w, Min: w, Max: w}
 		kp.activateDiscretionary(kp.root, breakCandidate{
 			eval: lineEvaluation{line: 0, demerits: 5}, target: target, seed: seed, initial: seed,
 		})
@@ -114,7 +137,11 @@ func TestBoundaryEvaluationsCommitReplacedAndNewSuccessors(t *testing.T) {
 			t.Fatal("forced boundary failed to score discovered successor")
 		}
 		pred, ok := kp.Pred(kp.end, 2)
-		if !ok || pred.from != target || kp.paths[kp.end][2].worstbadness != 0 {
+		wantBadness := merits(0)
+		if extra > 0 {
+			wantBadness = 100
+		}
+		if !ok || pred.from != target || kp.paths[kp.end][2].worstbadness != wantBadness {
 			t.Fatal("stale classification caused fallback or lost successor", pred)
 		}
 		kp.boundaryEvals.end()
@@ -142,12 +169,12 @@ func TestBoundaryEvaluationReuseMatchesUncached(t *testing.T) {
 		linebreak.RectangularParShape(5 * dimen.PT), // final fallback, not just feasible paths
 	} {
 		for _, forced := range []bool{false, true} {
-			for _, mode := range []string{"first", "empty", "productive"} {
+			for _, mode := range []string{"first", "empty", "productive", "emergency-empty", "emergency-productive"} {
 				var breakers [2]*linebreaker
 				var paragraphs [2]*khipu.Khipu
 				for i := range breakers {
 					config := khipu.Config{Hyphenator: &decliningHyphenator{}}
-					if mode == "productive" {
+					if strings.HasSuffix(mode, "productive") {
 						config.Hyphenator = &loremHyphenator{}
 					}
 					owner := khipu.NewKhipukamayuq(config)
@@ -167,6 +194,9 @@ func TestBoundaryEvaluationReuseMatchesUncached(t *testing.T) {
 						t.Fatal(err)
 					}
 					kp.hyphenating, kp.final = mode != "first", mode != "first"
+					if strings.HasPrefix(mode, "emergency-") {
+						kp.emergencyStretch = 30 * dimen.PT
+					}
 					kp.boundaryEvals.disabled = i == 0
 					kp.end = PlainBreak(len(khp.Kind) - 1)
 					kp.prepareRetirement(khp)
@@ -179,7 +209,8 @@ func TestBoundaryEvaluationReuseMatchesUncached(t *testing.T) {
 					liveCached, errCached := cached.processKnot(paragraphs[1], at)
 					if err != nil || errCached != nil || live != liveCached || cached.boundaryEvals.active ||
 						!reflect.DeepEqual(ref.paths, cached.paths) || !reflect.DeepEqual(ref.preds, cached.preds) ||
-						!reflect.DeepEqual(ref.seeds, cached.seeds) || !reflect.DeepEqual(ref.retired, cached.retired) || !reflect.DeepEqual(ref.horizon, cached.horizon) {
+						!reflect.DeepEqual(ref.seeds, cached.seeds) || !reflect.DeepEqual(ref.retired, cached.retired) || !reflect.DeepEqual(ref.horizon, cached.horizon) ||
+						!reflect.DeepEqual(paragraphs[0].DiscretionaryCandidates, paragraphs[1].DiscretionaryCandidates) {
 						t.Fatalf("mode=%s shape=%T forced=%v knot=%d: cached/uncached state differs (%v/%v)", mode, shape, forced, at, err, errCached)
 					}
 					if !live {
@@ -195,6 +226,9 @@ func TestBoundaryEvaluationReuseMatchesUncached(t *testing.T) {
 				}
 				if mode == "first" && cached.boundaryEvals.index != nil {
 					t.Fatal("first pass allocated an unused boundary cache")
+				}
+				if mode != "first" && (!gok || cached.metrics.ordinaryReused == 0) {
+					t.Fatalf("mode=%s shape=%T forced=%v: fixture did not complete with reused evaluations", mode, shape, forced)
 				}
 			}
 		}

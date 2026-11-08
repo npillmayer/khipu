@@ -766,12 +766,20 @@ Known deviations from this design in `linebreak/knuthplass`:
   [RETIREMENT.md](RETIREMENT.md).
 - **Pass failure is normal control flow.** No acceptable first-pass path starts
   a fresh second pass. Forced boundaries also enforce the active tolerance.
-- **No emergency pass.** `EmergencyStretch` is retained for the final pass
-  designed above, but is still unused. Its
-  defaults also differ: 20 bp in `NewKPDefaultParameters`, 50 bp in
-  `DefaultParameters` (plain TeX uses 0, i.e. off).
-- **Fallbacks are final-pass-only.** Pass 2 is currently final, regardless of
-  `EmergencyStretch`, until an emergency pass exists. Fallbacks are selected
+- **Emergency pass implemented.** Positive finite `EmergencyStretch` starts
+  pass 3 only after two failed non-final passes. Nonpositive values disable it;
+  values at or above Fil fail validation before pass 1. The constructor default
+  is now zero, preserving nil-parameter behavior; the tolerant profile retains
+  50 bp, now active. Emergency-adjusted badness drives lazy discovery as well as
+  scoring; fill/saturated summaries retain their numerical behavior. Internal
+  results retain pass identity and scoring quality, without a new public API.
+  Regression coverage includes cross-pass discovery caches, explicit markers,
+  cached/uncached equivalence and repeated-run determinism. Public/isolated
+  emergency benchmarks cover recovery, productive/declining discovery and
+  unavoidable fallback; see [PASS3.md](PASS3.md) and
+  [TESTING.md](TESTING.md#emergency-pass-workloads) for scope and baselines.
+- **Fallbacks are final-pass-only.** Pass 2 is final when emergency stretch is
+  disabled; otherwise pass 3 is final. Fallbacks are selected
   deterministically before their source is deleted. Newly discovered post-break
   remainders are evaluated through the same forced boundary before retirement.
 - The unused `DoubleHyphenDemerits` and `HyphenPenalty` fields and their defaults
@@ -833,6 +841,6 @@ replacement material belongs to the script-sensitive discretionary provider.
 A future minimum-length policy needs to define both the constrained fragment
 and the unit of measurement before exposing a parameter.
 
-`EmergencyStretch` is deliberately retained as the exception: the planned
-emergency pass above defines its purpose. This cleanup does not implement that
-pass, change its existing defaults, or add over-/underfull freezing support.
+`EmergencyStretch` was retained and subsequently activated by the emergency-pass
+work above, with zero as the constructor default and 50 bp in the tolerant
+profile. Over-/underfull freezing support remains separate work.

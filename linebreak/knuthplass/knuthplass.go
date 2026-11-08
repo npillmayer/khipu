@@ -24,17 +24,20 @@ type linebreaker struct {
 	seeds       map[origin]bookkeeping              // immutable seed state for rescanning a segment
 	params      *Parameters                         // typesetting parameters relevant for line-breaking
 	layout      khipu.Params                        // resolved geometry, shared with freezing
-	hyphenating bool                                // second pass may relax limits and use discretionaries
+	hyphenating bool                                // passes 2 and 3 use Tolerance and discretionaries
 	final       bool                                // only the final pass may use fallback transitions
 	retired     map[origin]struct{}                 // tombstones prevent retroactive resurrection
 	prune       bool                                // original/cached widths permit monotone retirement
 	minimumSum  int64                               // bound for minimum-width accumulation before trimming
 	root        BreakRef                            // "break" at start of paragraph
 	end         BreakRef                            // "break" at end of paragraph
+	// emergencyStretch is scoring-only and constant for a pass. Only pass 3
+	// supplies virtual capacity; real knot and fragment widths never change.
+	emergencyStretch dimen.DU
 
 	// Scratch storage is owned by this single-pass breaker, never pooled or
 	// shared across paragraphs. Each result survives until the next call to
-	// its producer. Pass 2 consumes ordinary evaluations while requesting
+	// its producer. Passes 2 and 3 consume ordinary evaluations while requesting
 	// discretionaries, so those buffers must be independent. Elements contain
 	// no references to paragraph storage and need no clearing when shortened.
 	evaluationScratch    []lineEvaluation
@@ -82,7 +85,8 @@ func newLinebreaker(layout khipu.Params, params *Parameters) *linebreaker {
 }
 
 // NewKPDefaultParameters creates line-breaking parameters similar to
-// (but not identical) to TeX's.
+// (but not identical) to TeX's. Emergency recovery is opt-in; nil parameters
+// retain the two-pass policy with final fallback in pass 2.
 func NewKPDefaultParameters() *Parameters {
 	return &Parameters{
 		Tolerance:           200,
@@ -90,7 +94,7 @@ func NewKPDefaultParameters() *Parameters {
 		LinePenalty:         10,
 		FirstHyphenDemerits: 0,
 		FinalHyphenDemerits: 10000,
-		EmergencyStretch:    dimen.DU(dimen.BP * 20),
+		EmergencyStretch:    0,
 		ParFillSkip:         glue(0, 0, dimen.Fill),
 	}
 }
@@ -222,8 +226,8 @@ func (kp *linebreaker) updatePath(bp BreakRef, idx kinx, k khipu.KnotCore) {
 }
 
 // badnessLimit returns the active screening threshold for the current pass.
-// Pass 1 uses PreTolerance; pass 2 relaxes this to Tolerance once discretionary
-// breaking is enabled.
+// Pass 1 uses PreTolerance; passes 2 and 3 use Tolerance with discretionary
+// breaking enabled.
 func (kp *linebreaker) badnessLimit() merits {
 	if kp != nil && kp.hyphenating {
 		return kp.params.Tolerance
@@ -435,7 +439,7 @@ func (kp *linebreaker) evaluateCandidates(bp BreakRef, penalty khipu.Penalty) []
 		if debug {
 			trace.Debugf("    +---%.2f--->    | %.2f", segwss.W.Points(), linelen.Points())
 		}
-		ev := classifyLine(segwss, linelen, kp.badnessLimit())
+		ev := classifyLine(segwss, linelen, kp.badnessLimit(), kp.emergencyStretch)
 		ev.bp, ev.line = bp, line
 		if ev.accepted() {
 			ev.demerits = calcDemerits(ev.badness, penalty, kp.params)
@@ -524,76 +528,33 @@ func calcDemerits(badness merits, penalty khipu.Penalty, params *Parameters) mer
 
 type pathQuality struct {
 	totalCost    merits // sum of demerits along the winning path
-	worstBadness merits // highest local line badness on the winning path
+	worstBadness merits // highest local badness under this pass's scoring assumptions
 }
 
 // --- Main API ---------------------------------------------------------
 
-// BreakParagraph determines optimal linebreaks for a paragraph, depending on
-// a given set of linebreaking parameters and the desired shape of the paragraph.
-//
-// Paragraphs may be broken with different line counts. Only one of these will be
-// optimal, and BreakParagraph will return that.
+// BreakParagraph returns the minimum-cost complete path among the candidates
+// explored in the first successful pass. Equal-cost terminal states prefer
+// fewer lines; costs from different passes are not compared.
 //
 // Results are zero-based indices of line-ending knots, including the final
-// trailer. SelectedDiscretionaries is replaced on each run. Nil params selects
+// trailer. SelectedDiscretionaries is replaced only on success. Errors preserve
+// earlier selections, although discovery may have populated candidate caches.
+// Nil params selects
 // NewKPDefaultParameters. Only the single best path is returned; alternative
 // line-count solutions are not enumerated. Layout must be resolved explicitly
 // (for example with DefaultLayout) and reused unchanged for freezing.
-func BreakParagraph(khipu *khipu.Khipu, layout khipu.Params, params *Parameters) (
+// Positive finite EmergencyStretch enables a third pass after two unsuccessful
+// non-final passes. Its virtual capacity affects scoring, not physical widths:
+// an emergency result can still exceed the real capacity available for freezing.
+func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 	[]kinx, error) {
-	//
-	if params == nil {
-		params = NewKPDefaultParameters()
-	}
-	breakrefs, quality, ok, err := breakParagraphPassRefs(khipu, layout, params, false)
+	result, err := selectParagraphBreaks(khp, layout, params)
 	if err != nil {
 		return nil, err
 	}
-	if ok && len(breakrefs) > 0 &&
-		quality.worstBadness <= params.PreTolerance {
-		recordSelectedDiscretionaries(khipu, breakrefs)
-		return projectBreakRefs(breakrefs), nil
-	}
-	if ok && quality.worstBadness > params.PreTolerance {
-		tracer().Debugf("K&P: first-pass best path exceeds PreTolerance (%d > %d)",
-			quality.worstBadness, params.PreTolerance)
-	} else if !ok {
-		tracer().Debugf("K&P: first pass found no acceptable path, retrying with hyphenation enabled")
-	}
-	breakrefs, _, ok, err = breakParagraphPassRefs(khipu, layout, params, true)
-	if err != nil {
-		return nil, err
-	}
-	if !ok || len(breakrefs) == 0 {
-		return nil, ErrNoBreakpoints
-	}
-	recordSelectedDiscretionaries(khipu, breakrefs)
-	return projectBreakRefs(breakrefs), nil
-}
-
-func breakParagraphPass(khp *khipu.Khipu, layout khipu.Params,
-	params *Parameters, hyphenating bool) ([]kinx, pathQuality, bool, error) {
-	breakrefs, quality, ok, err := breakParagraphPassRefs(khp, layout, params, hyphenating)
-	return projectBreakRefs(breakrefs), quality, ok, err
-}
-
-func breakParagraphPassRefs(khp *khipu.Khipu, layout khipu.Params,
-	params *Parameters, hyphenating bool) ([]BreakRef, pathQuality, bool, error) {
-	kp, err := prepareLineBreaker(layout, params)
-	if err != nil {
-		return nil, pathQuality{}, false, err
-	}
-	kp.hyphenating = hyphenating
-	// Until an emergency pass exists, pass 2 is the final pass regardless of
-	// the reserved EmergencyStretch parameter.
-	kp.final = hyphenating
-	if err := kp.constructBreakpointGraph(khp); err != nil {
-		tracer().Errorf("K&P: %w", err)
-		return nil, pathQuality{}, false, err
-	}
-	breakrefs, quality, ok := kp.collectOptimalBreakRefs(kp.end)
-	return breakrefs, quality, ok, nil
+	recordSelectedDiscretionaries(khp, result.breaks)
+	return projectBreakRefs(result.breaks), nil
 }
 
 // snapshotHorizon returns a sorted snapshot, valid until its next call. The

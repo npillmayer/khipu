@@ -7,6 +7,7 @@ import "github.com/npillmayer/khipu"
 // commit needs the same local result to admit, retire or rank fallback origins.
 // Costs accumulated before the line are deliberately not cached: commit reads
 // those from the current working state.
+// Layout, tolerance and emergency stretch must remain constant for the pass.
 //
 // Successful writes invalidate the entire target bucket, including unchanged
 // sibling line counts. This conservative rule avoids per-state revisions and

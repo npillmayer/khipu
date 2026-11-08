@@ -312,11 +312,21 @@ penalty hints from the shaper.
 
 Pass 1 runs without discretionary lookup. If the first result is unacceptable
 or unavailable, pass 2 uses `Tolerance` and permits local lookup.
+If positive finite `EmergencyStretch` is configured, pass 2 cannot use fallback;
+failure starts a fresh final pass 3 with the same tolerance and provider.
+Otherwise pass 2 remains final. Only the first complete pass publishes selected
+discretionaries, and provider errors stop the sequence rather than triggering
+another pass.
 
 During pass 2, evaluations with `badness > PreTolerance` can trigger lookup,
 including candidates which still pass `Tolerance`. Overfull evaluations also
 get a rescue attempt before retirement, even without shrink capacity. This is
 a badness/geometric gate, not a demerit threshold.
+Pass 3 uses the same gate with emergency-adjusted badness. Virtual stretch may
+therefore suppress additional automatic discovery, but overfull rescue and
+explicit-marker requests remain independent of that threshold. Paragraph-owned
+positive/empty caches survive passes, and newly reached textboxes can still
+require new provider calls. See [PASS3.md](PASS3.md).
 Loose lines scan forward for a textbox; tight lines scan backward, skipping
 flagged discardables and stopping at other retained material.
 At forced glue/kern boundaries, last-box discovery starts before that marker;

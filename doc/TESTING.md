@@ -23,7 +23,9 @@ and a shared testing package remain proposals.
   successors and error cleanup. Cached and uncached runs agree after every knot
   on working tables, seeds, horizon, retirement and predecessor history, as well
   as final paths/quality, across provider modes, variable shapes and forced or
-  overlong lines. Pass 1 allocates no evaluation cache.
+  overlong lines. The matrix includes active emergency stretch; replacement and
+  new-successor fixtures include lines accepted only through virtual capacity.
+  Pass 1 allocates no evaluation cache.
 - `discretionary_cache_test.go` checks successful empty automatic/explicit and
   filtered responses, paragraph/knot isolation, owner validation, manual
   overrides, release, disabled/manual requests, and retry after policy,
@@ -35,6 +37,30 @@ and a shared testing package remain proposals.
   and badness saturation, including overfull lines hidden by cubic rounding.
   Lookahead and seed-replay scoring agree, ranking extras stay separate, and
   local classification does not retire working states; boundary commit does.
+- `linebreak/knuthplass/emergency_geometry_test.go` checks virtual finite stretch,
+  wide arithmetic, unchanged fill/saturation and shrink behavior, nonpositive-E
+  equivalence, ordinary/discretionary agreement and cached scoring. It verifies
+  that virtual capacity does not enter knots, fragments or seeds, and that
+  only explicit pass configuration activates virtual capacity.
+- `linebreak/knuthplass/emergency_pass_test.go` checks pass policy/defaults,
+  validation before search, disabled/negative E, loose emergency recovery,
+  unavoidable fallback, first-success ordering and internal quality context.
+  It verifies new pass-3 discovery, provider-error propagation without retries,
+  winner-only publication and unchanged real width planes.
+- `linebreak/knuthplass/emergency_discovery_test.go` checks positive/empty owner
+  cache reuse from pass 2 into pass 3 for automatic and explicit requests,
+  including policy and shaping-stream counts. It covers emergency-adjusted
+  discovery thresholds, explicit requests independent of automatic lookup,
+  warm-run quality/path stability and final selection ownership.
+- `linebreak/knuthplass/emergency_stability_test.go` checks equal-cost variant
+  ordering over fresh and warm runs, unchanged knot/candidate storage, and
+  physical-only post-break seeds during emergency retroactive rescans with and
+  without evaluation caching.
+- `linebreak/knuthplass/emergency_benchmark_test.go` asserts that its workloads
+  require pass 3, distinguish successful recovery from unavoidable fallback,
+  and exercise productive or cached empty discovery as intended. Instrumented
+  diagnostics match the production coordinator; timed public/isolated calls
+  verify results and provider work. See the emergency workload baseline below.
 - `linebreak/knuthplass/boundary_test.go` covers zero-capacity lines, rescue at
   terminal/internal forced boundaries, final-pass-only fallback, normal pass
   failure versus provider errors, per-line retirement, rejected resurrection,
@@ -848,6 +874,101 @@ disable switch exists only for diagnostic uncached comparisons, not as a public
 configuration option. Focused tests also check that warm cache storage incurs
 no allocations and that newly discovered or replaced successors can still reach
 the current forced boundary without stale classification or fallback.
+
+### Emergency Pass Workloads
+
+`BenchmarkEmergencyWorkloads` measures the complete public breaker call and an
+isolated emergency pass, with 16/128/512 repeated words. Synthetic shaping uses
+5 pt glyph cells. The line target is 17 pt, with zero side skips, E=6 pt and the
+default PreTolerance/Tolerance (100/200). Ordinary spaces retain default elasticity.
+All fixtures have `2*words+1` knots, including the final retained fill.
+
+| Workload | Input/policy | Required outcome |
+| --- | --- | --- |
+| `loose-none` | Repeated `ab `, no provider | 10 pt words cannot share a line; E admits loose lines without fallback |
+| `loose-declining` | Same text, provider returns no alternatives | Same recovery, with successful-empty caching and new pass-3 policy calls |
+| `split-productive` | Repeated `abcd `, midpoint alternatives | 20 pt words split into 15/10 pt shaped fragments; one selected variant per word, no fallback |
+| `overfull-declining` | Repeated `abcd `, provider declines | Each 20 pt word exceeds the hard 17 pt minimum-width bound; every word needs fallback |
+
+The normal `TestEmergencyBenchmarkWorkloads` requires passes 1/2 to fail and
+pass 3 to complete, and checks the expected fallback/discovery behavior. It
+also compares the instrumented diagnostic with the uninstrumented production
+coordinator. No elapsed-time assertions are used.
+
+Timing and counter scopes:
+
+- **Public:** `BreakParagraph`, including validation, all three fresh breakers,
+  lazy fragment shaping, collection and selected-discretionary publication.
+- **Isolated:** `breakParagraphPassRefs` for pass 3, including breaker setup and
+  collection but excluding publication. The actual first two passes execute
+  outside timing on that iteration's paragraph, retaining their discovery caches.
+- **Both:** owner construction and paragraph encoding are fresh and untimed in
+  every iteration. Encoding is not included in `ns/op`, `B/op` or `allocs/op`;
+  lazy shaping performed during the timed scope is included. Neither scope freezes.
+- **Counters:** collected in a separate untimed diagnostic, not by instrumenting
+  the timed calls. Every timed result and provider/policy call delta is checked
+  against it. Public counters sum work across passes, with maximum (not summed)
+  `peak-active-states`; isolated counters exclude prelude work. `passes/op` is
+  3 versus 1, while `selected-pass` is 3 in both. Public output also reports
+  `p1-state-evals/op`, `p2-state-evals/op` and `p3-state-evals/op`. Verbose fixture
+  tests show all per-pass counters. These counts are per operation, not totals
+  over `b.N`. The lightweight provider-request counter is active in timed calls.
+
+```sh
+go test ./linebreak/knuthplass -run '^TestEmergencyBenchmarkWorkloads$' -v -count=1
+go test ./linebreak/knuthplass -run '^$' -bench '^BenchmarkEmergencyWorkloads$' -benchtime=3x -count=3 -benchmem -timeout=120s
+go test ./linebreak/knuthplass -run '^$' -bench '^BenchmarkEmergencyWorkloads$/^512$/^split-productive$' -benchtime=20x -count=5 -benchmem -timeout=120s
+```
+
+Initial baseline: November 8, 2026, Go 1.25.6, darwin/arm64, Apple M1. Medians
+of three unprofiled runs of three timed iterations each, info/debug logging
+disabled. Small samples, especially sub-millisecond cases, are noisy; these are
+diagnostic baselines, not a throughput guarantee or a before/after speedup claim.
+
+| Words | Workload | Public ms | Isolated pass-3 ms |
+| --- | --- | ---: | ---: |
+| 16 | loose-none | 0.064 | 0.046 |
+| 16 | loose-declining | 0.082 | 0.065 |
+| 16 | split-productive | 0.256 | 0.215 |
+| 16 | overfull-declining | 0.051 | 0.048 |
+| 128 | loose-none | 0.220 | 0.200 |
+| 128 | loose-declining | 0.401 | 0.389 |
+| 128 | split-productive | 1.844 | 1.760 |
+| 128 | overfull-declining | 0.399 | 0.365 |
+| 512 | loose-none | 0.856 | 0.810 |
+| 512 | loose-declining | 1.664 | 1.654 |
+| 512 | split-productive | 7.731 | 7.361 |
+| 512 | overfull-declining | 1.686 | 1.600 |
+
+For the 512-word public cases, ranges were 0.833-1.444, 1.647-1.712,
+7.328-7.947 and 1.683-1.702 ms respectively. Differences between independently
+timed public and isolated cases should not be treated as precise prelude costs.
+
+512-word work and allocation baseline (P = public; E = isolated emergency pass):
+
+| Workload | State evaluations P/E | Peak P/E | Provider requests P/E | Policy calls P/E | Bytes/op P/E | Allocs/op P/E |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| loose-none | 1027/1023 | 3/3 | 0/0 | 0/0 | 637472/626896 | 1134/1094 |
+| loose-declining | 1027/1023 | 3/3 | 1024/1022 | 511/510 | 1364992/1352888 | 12771/12708 |
+| split-productive | 4095/4092 | 4/4 | 1535/1534 | 512/511 | 5906810/5618122 | 36491/36364 |
+| overfull-declining | 514/512 | 2/2 | 513/512 | 512/511 | 1367288/1355189 | 12880/12817 |
+
+The loose cases perform 1027 ordinary classifications and reuse 1025; the
+productive case performs 1537 ordinary plus 2558 discretionary classifications
+and reuses 1536 ordinary results. The overfull case performs 514 ordinary
+classifications and reuses 513. Actual state-evaluation totals exclude reuse.
+Productive recovery yields 1024 lines and 512 chosen variants; other cases yield
+512 lines. Only the overfull workload uses fallback (512 selected transitions).
+Recovered paths have worst badness 158 under virtual stretch, versus 10000 for
+the overfull path. These are optimization scores, not physical freezing quality.
+
+Passes 1/2 exhaust after two ordinary evaluations each for loose inputs, and
+one each for overfull inputs (plus one rejected discretionary in the productive
+pass 2). Pass 3 therefore dominates this baseline. The peak remains 2-4 and
+evaluation work scales linearly for these fixtures; neither observation establishes
+general K&P complexity. Late pass-2 exhaustion, broad active sets, large variant
+fan-out and real font shaping require separate workloads. Freezing insufficient
+real capacities remains outside this measurement and implementation.
 
 ## Validation and Next Work
 
