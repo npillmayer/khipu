@@ -85,15 +85,19 @@ The current implementation does not yet model fitness classes.
 
 Discretionary evaluation reads `PreBreak.Penalty`, assigned upstream by
 `Khipukamayuq`, and passes it into the ordinary squared-penalty calculation.
-It does not inject a glyph or read the linebreaker's `HyphenPenalty` field.
-The modern parameter set has no separate `ExHyphenPenalty`.
+It does not inject a glyph. The unused linebreaker `HyphenPenalty` field and
+its conflicting default of 50 have been removed. The provider's nonzero penalty
+takes precedence; otherwise `khipu.Params.Hyphenpenalty` supplies the fallback
+(default 10). The modern parameter set has no separate `ExHyphenPenalty`.
 
 `FirstHyphenDemerits` is added when a discretionary line starts at the root.
 `FinalHyphenDemerits` is added when a terminal transition starts at a
 discretionary breakpoint, penalizing the break before the final line.
 These are additive demerits, not increments to the squared penalty.
 
-`DoubleHyphenDemerits` is reserved and unused; implementing it remains optional.
+Consecutive-discretionary demerits remain optional future work. The unused
+`DoubleHyphenDemerits` field and its defaults have been removed; a parameter
+should return only with an implementation.
 The existing predecessor `BreakRef` already identifies whether the preceding
 break was discretionary. That fact alone does not require the extra fitness
 state discussed below.
@@ -105,7 +109,13 @@ infeasible, the breaker inserts a fallback path with `AwfulDemerits`. Mandatory
 boundaries retire earlier origins so they cannot be skipped. Accumulated costs
 use 64 bits to accommodate repeated fallbacks. This policy keeps the paragraph
 breakable and interacts with the pass-2 trigger. `EmergencyStretch` is currently
-reserved; there is no emergency-stretch pass.
+retained for the planned final emergency pass; there is no such pass yet.
+That pass is specified in [the algorithm design](khipu-algorithm.md#knuth-plass):
+add E to finite stretch for badness calculation only, leave shrink and knot
+capacities unchanged, and restrict fallbacks to the final pass. The existing
+defaults (20 BP in NewKPDefaultParameters, 50 BP in DefaultParameters) remain
+unchanged by the parameter cleanup. Freezing still rejects insufficient real
+capacity; supporting and reporting over-/underfull lines is a separate change.
 
 This is useful for robustness, but it is not a direct transcription of TeX's paragraph-breaking internals.
 

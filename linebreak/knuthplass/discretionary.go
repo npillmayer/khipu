@@ -197,10 +197,12 @@ func (kp *linebreaker) appendActualKnots(book *bookkeeping, khp *khipu.Khipu, fr
 // PreBreak knot, while the first-line extra remains a linebreaker-local policy
 // decision.
 //
-// Note that DoubleHyphenDemerits is intentionally not applied here yet.
+// Consecutive-discretionary demerits are intentionally not implemented; there
+// is no public parameter for them until that policy is introduced.
 // Consecutive discretionary penalties are path-dependent: they need to know
 // whether the previous chosen line also ended at a discretionary breakpoint.
-// The current implementation does not carry that extra predecessor state.
+// The predecessor BreakRef already identifies that condition. A future policy
+// can use it here; introducing fitness classes is a separate state-design task.
 func (kp *linebreaker) discretionaryDemerits(badness merits, penalty khipu.Penalty, from BreakRef) merits {
 	d := calcDemerits(badness, penalty, kp.params)
 	if kp != nil && kp.params != nil && from == kp.root {

@@ -10,7 +10,6 @@ import (
 )
 
 const DefaultInitialKhipuCapa = 20
-const MaxInitialKhipuCapa = 1024
 
 type KnotFlags uint8
 
@@ -65,9 +64,12 @@ type Khipu struct {
 	SelectedDiscretionaries map[int]DiscretionarySelection
 }
 
+// allocKhipu assigns ownership at construction and reserves the known knot
+// count. Zero selects the small default; larger paragraphs are not capped back
+// to that default. Slice append handles subsequent growth without an isFull test.
 func (kq *Khipukamayuq) allocKhipu(capacity int) *Khipu {
 	assert(kq != nil, "nil-Khipukamayuq cannot allocate a khipu")
-	if capacity == 0 || capacity > MaxInitialKhipuCapa {
+	if capacity == 0 {
 		capacity = DefaultInitialKhipuCapa
 	}
 	khipu := Khipu{
@@ -119,10 +121,6 @@ func (khipu Khipu) KnotByIndex(index int) KnotCore {
 		Len:     khipu.Len[index],
 		Flags:   khipu.flagsAt(index),
 	}
-}
-
-func (khipu *Khipu) isFull() bool {
-	return len(khipu.Kind) == cap(khipu.Kind)
 }
 
 func (khipu *Khipu) appendKnot(k KnotCore) *Khipu {
@@ -184,16 +182,6 @@ func (khipu *Khipu) Discardable(index int) (int, bool) {
 		discarded = true
 	}
 	return 0, discarded
-}
-
-// acquire is called by Khipukamayuq to take ownership of a khipu.
-func (kq *Khipukamayuq) acquire(khipu *Khipu) {
-	assert(kq != nil, "nil-Khipukamayuq cannot acquire khipu")
-	assert(khipu != nil, "nil-Khipu cannot be acquired")
-	if khipu.owner == nil {
-		khipu.owner = kq
-	}
-	assert(khipu.owner == kq, "Another Khipukamayuq already owns this Khipu")
 }
 
 func (khipu *Khipu) String() string {

@@ -1,6 +1,7 @@
 package knuthplass
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/npillmayer/schuko/tracing/gotestingadapter"
@@ -89,23 +90,70 @@ func TestPathTablePrefersCheaperPredecessor(t *testing.T) {
 	}
 }
 
-func TestPathTableKeepsStablePredecessorOnTie(t *testing.T) {
+func TestPathTableCanonicalPredecessorOnTie(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "khipu.linebreak")
 	defer teardown()
 	//
-	pt := newPathTable()
-	if !pt.SetPred(PlainBreak(1), PlainBreak(5), 100, 100, 2) {
-		t.Fatalf("expected first predecessor to be stored")
+	for _, pair := range [][2]BreakRef{
+		{PlainBreak(1), PlainBreak(3)},
+		{{At: 1, Variant: 1}, {At: 1, Variant: 2}},
+	} {
+		for _, reverse := range []bool{false, true} {
+			pt := newPathTable()
+			order := pair
+			if reverse {
+				order[0], order[1] = order[1], order[0]
+			}
+			for _, from := range order {
+				pt.SetPred(from, PlainBreak(5), 100, 100, 2)
+			}
+			pred, ok := pt.Pred(PlainBreak(5), 2)
+			if !ok || pred.from != pair[0] || pred.total != 100 {
+				t.Fatalf("order %v: unexpected predecessor %+v", order, pred)
+			}
+			if pt.SetPred(pair[0], PlainBreak(5), 100, 100, 2) {
+				t.Fatal("identical predecessor should not replace itself")
+			}
+		}
 	}
-	if pt.SetPred(PlainBreak(3), PlainBreak(5), 90, 100, 2) {
-		t.Fatalf("expected equal-cost predecessor not to replace existing state")
+}
+
+func TestCollectOptimalBreakRefsCostThenLineCount(t *testing.T) {
+	for _, longCost := range []merits{10, 9} {
+		kp := newLinebreaker(DefaultLayout(nil), NewKPDefaultParameters())
+		kp.root = PlainBreak(-1)
+		mid, end := PlainBreak(4), PlainBreak(9)
+		kp.pathTable.SetPred(kp.root, end, 10, 10, 1)
+		kp.pathTable.SetPred(kp.root, mid, 5, 5, 1)
+		kp.pathTable.SetPred(mid, end, longCost-5, longCost, 2)
+		kp.paths[origin{end, 1}] = bookkeeping{totalcost: 10, worstbadness: 30}
+		kp.paths[origin{end, 2}] = bookkeeping{totalcost: longCost, worstbadness: 20}
+		want, worst := []BreakRef{end}, merits(30)
+		if longCost < 10 {
+			want, worst = []BreakRef{mid, end}, 20
+		}
+		for range 100 {
+			got, quality, ok := kp.collectOptimalBreakRefs(end)
+			if !ok || !slices.Equal(got, want) || quality.totalCost != longCost || quality.worstBadness != worst {
+				t.Fatalf("cost %d: breaks %v, quality %+v, ok %v", longCost, got, quality, ok)
+			}
+		}
 	}
-	pred, ok := pt.Pred(PlainBreak(5), 2)
-	if !ok {
-		t.Fatalf("expected predecessor for state (to=5,line=2)")
-	}
-	if pred.from != PlainBreak(1) || pred.total != 100 {
-		t.Fatalf("expected original predecessor to remain on tie, got %+v", pred)
+}
+
+func TestCanonicalTieReplacesLivePathAndSeed(t *testing.T) {
+	kp := newLinebreaker(DefaultLayout(nil), NewKPDefaultParameters())
+	low, high, end := PlainBreak(1), PlainBreak(3), PlainBreak(5)
+	kp.paths[origin{low, 1}] = bookkeeping{totalcost: 10, worstbadness: 20}
+	kp.paths[origin{high, 1}] = bookkeeping{totalcost: 10, worstbadness: 40}
+	seed := bookkeeping{segment: WSS{W: 7}, seenContent: true}
+	kp.evalNewSegmentSeed(high, end, 2, cost{demerits: 5, badness: 10}, bookkeeping{})
+	kp.evalNewSegmentSeed(low, end, 2, cost{demerits: 5, badness: 10}, seed)
+	pred, ok := kp.pathTable.Pred(end, 2)
+	path := kp.paths[origin{end, 2}]
+	if !ok || pred.from != low || path.totalcost != 15 || path.worstbadness != 20 ||
+		path.segment != seed.segment || kp.seeds[origin{end, 2}] != seed {
+		t.Fatalf("canonical tie left inconsistent state: pred %+v, path %+v, seed %+v", pred, path, kp.seeds[origin{end, 2}])
 	}
 }
 

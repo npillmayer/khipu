@@ -126,14 +126,14 @@ func (pt *pathTable) Pred(to BreakRef, line lineNo) (predecessor, bool) {
 }
 
 // SetPred stores the best known predecessor for a reachable (to,line) state.
-// If a predecessor already exists, it is only replaced when the new total cost is cheaper.
-// Ties are left stable because choosing either predecessor is acceptable.
+// Equal total costs prefer the lower predecessor knot index, then variant.
+// This canonical ordering is independent of map iteration and arrival order.
 func (pt *pathTable) SetPred(from, to BreakRef, cost, total merits, line lineNo) bool {
 	if pt.Breakpoint(to) == NoBreakRef {
 		pt.AddBP(to)
 	}
 	st := pathState{to: to, line: line}
-	if pred, ok := pt.preds[st]; ok && pred.total <= total {
+	if pred, ok := pt.preds[st]; ok && !betterPredecessor(from, total, pred) {
 		return false
 	}
 	pt.preds[st] = predecessor{
@@ -142,4 +142,10 @@ func (pt *pathTable) SetPred(from, to BreakRef, cost, total merits, line lineNo)
 		total: total,
 	}
 	return true
+}
+
+// betterPredecessor is shared by table updates and live path bookkeeping so
+// they retain the same winner, including equal-cost discretionary alternatives.
+func betterPredecessor(from BreakRef, total merits, old predecessor) bool {
+	return total < old.total || (total == old.total && compareBreakRef(from, old.from) < 0)
 }

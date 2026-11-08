@@ -18,6 +18,28 @@ func (h *testhyphenator) Discretionaries(word string, params *Params) ([]Hyphena
 	return h.want, nil
 }
 
+func TestDiscretionaryPenaltyAuthority(t *testing.T) {
+	defaults := DefaultParams()
+	for _, tc := range []struct {
+		name     string
+		params   *Params
+		provider Penalty
+		want     Penalty
+	}{
+		{"default fallback", &defaults, 0, 10},
+		{"configured fallback", &Params{Hyphenpenalty: 37}, 0, 37},
+		{"zero fallback", &Params{}, 0, 0},
+		{"provider override", &defaults, 23, 23},
+		{"provider merit", &defaults, -23, -23},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := discretionaryPenalty(HyphenationFragment{Penalty: tc.provider}, tc.params); got != tc.want {
+				t.Fatalf("penalty = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestKhipuStoresKnotFlags(t *testing.T) {
 	k := &Khipu{
 		W:       make([]dimen.DU, 0, 4),

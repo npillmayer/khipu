@@ -4,12 +4,14 @@ different line-breaking algorithms.
 */
 package linebreak
 
-import "github.com/npillmayer/khipu/dimen"
+import (
+	"github.com/npillmayer/khipu"
+	"github.com/npillmayer/khipu/dimen"
+)
 
-// ParShape returns the target line length for a given line number.
-type ParShape interface {
-	LineLength(int32) dimen.DU
-}
+// ParShape is the historical name for the shared paragraph shape contract.
+// Line numbers are one-based and widths include both physical side skips.
+type ParShape = khipu.LineShape
 
 type rectParShape dimen.DU
 

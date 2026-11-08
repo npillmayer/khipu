@@ -2,6 +2,7 @@ package khipu_test
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -9,7 +10,18 @@ import (
 	"github.com/npillmayer/khipu/contracts"
 	"github.com/npillmayer/khipu/dimen"
 	"github.com/npillmayer/khipu/helpers"
+	"github.com/npillmayer/khipu/linebreak"
 )
+
+func TestParShapeAliasesLineShape(t *testing.T) {
+	if reflect.TypeFor[linebreak.ParShape]() != reflect.TypeFor[khipu.LineShape]() {
+		t.Fatal("ParShape must retain LineShape type identity")
+	}
+	var shape khipu.LineShape = linebreak.RectangularParShape(100 * dimen.PT)
+	if got := shape.LineLength(1); got != 100*dimen.PT {
+		t.Fatalf("rectangular shape width: %v", got)
+	}
+}
 
 // Exercise old constructor/type names across the new package boundaries. In
 // particular, aliases must retain the concrete face identity checked by shaping.

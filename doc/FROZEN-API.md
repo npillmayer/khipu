@@ -35,9 +35,8 @@ func (kq *Khipukamayuq) Freeze(ctx context.Context, input *Khipu,
     breakpoints []int, params Params) (*FrozenKhipu, error)
 ```
 
-`linebreak.ParShape` already satisfies this local structural interface. There
-is no import from the base package into its linebreaker clients and no need to
-move their interface in this change. LineShape is still an interface because
+`linebreak.ParShape` is a compatibility alias for `khipu.LineShape`. The base
+package does not import its linebreaker clients. LineShape remains an interface because
 line lengths can vary, but is supplied through the existing Params rather than
 a separate options object. KnotCore appears in paragraph configuration, never
 in frozen output. There is no additional FreezeOptions type.

@@ -65,60 +65,24 @@ func streamCandidateParagraph(ctx context.Context, para *styled.Paragraph, resol
 	if err != nil {
 		return nil, err
 	}
-	output := shaper.Glyphs()
-	if output == nil {
-		return nil, fmt.Errorf("%w: nil glyph channel", contracts.ErrIllegalArguments)
-	}
-	ctx, cancel := context.WithCancel(ctx)
-	done := make(chan error, 1)
-	go func() { done <- produceNoBreakRuns(ctx, para, runs, maps, shaper, options) }()
-	// A separate joined flag avoids racing producer completion against output
-	// closure and preserves the consumer's original error when cancellation
-	// subsequently makes Shape fail.
-	joined := false
-	defer func() {
-		cancel()
-		if !joined {
-			<-done
-		}
-	}()
-	completion := done
 	inputRun := 0
-	for output != nil || completion != nil {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case err := <-completion:
-			joined = true
-			completion = nil
-			if err != nil {
-				return nil, err
-			}
-			// Success does not imply that buffered glyphs have been consumed.
-		case glyph, ok := <-output:
-			if !ok {
-				output = nil
-				continue
-			}
-			glyph, err = restoreNoBreakAnchor(glyph, runs, maps, &inputRun)
-			if err != nil {
-				return nil, err
-			}
-			cluster, err := assembler.push(glyph)
-			if err != nil {
-				return nil, err
-			}
-			if cluster != nil {
-				if err := accumulator.push(cluster); err != nil {
-					return nil, err
-				}
-			}
+	err = consumeShaper(ctx, shaper, func(ctx context.Context) error {
+		return produceNoBreakRuns(ctx, para, runs, maps, shaper, options)
+	}, func(glyph contracts.ShapedGlyph) error {
+		glyph, err := restoreNoBreakAnchor(glyph, runs, maps, &inputRun)
+		if err != nil {
+			return err
 		}
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if err := shaper.Err(); err != nil {
+		cluster, err := assembler.push(glyph)
+		if err != nil {
+			return err
+		}
+		if cluster != nil {
+			return accumulator.push(cluster)
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	last, err := assembler.finish()

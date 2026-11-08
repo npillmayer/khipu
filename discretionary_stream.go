@@ -87,65 +87,31 @@ func streamReplacement(ctx context.Context, input replacementInput, params runPa
 	if err != nil {
 		return shapedReplacement{}, err
 	}
-	if nilRunService(shaper) || shaper.Glyphs() == nil {
-		return shapedReplacement{}, fmt.Errorf("%w: missing fragment shaper or output", contracts.ErrIllegalArguments)
-	}
-	output := shaper.Glyphs()
-	ctx, cancel := context.WithCancel(ctx)
-	done := make(chan error, 1)
-	go func() {
-		if err := shaper.SetInitialCluster(0); err != nil {
-			done <- err
-			return
-		}
-		if err := shaper.Shape(ctx, params.shaping, strings.NewReader(input.text), options); err != nil {
-			done <- err
-			return
-		}
-		if err := ctx.Err(); err != nil {
-			done <- err
-			return
-		}
-		done <- shaper.Finish()
-	}()
-	joined := false
-	defer func() {
-		cancel()
-		if !joined {
-			<-done
-		}
-	}()
-	completion := done
 	result := shapedReplacement{input: input, params: params}
 	var width candidateWidth
-	for output != nil || completion != nil {
-		select {
-		case <-ctx.Done():
-			return shapedReplacement{}, ctx.Err()
-		case err := <-completion:
-			joined, completion = true, nil
-			if err != nil {
-				return shapedReplacement{}, err
-			}
-		case glyph, ok := <-output:
-			if !ok {
-				output = nil
-				continue
-			}
-			if uint64(glyph.Cluster) >= input.scalarCount ||
-				(len(result.glyphs) > 0 && glyph.Cluster < result.glyphs[len(result.glyphs)-1].Cluster) {
-				return shapedReplacement{}, fmt.Errorf("%w: invalid replacement cluster anchor", contracts.ErrIllegalArguments)
-			}
-			if err := width.add([]contracts.ShapedGlyph{glyph}, params.scale); err != nil {
-				return shapedReplacement{}, err
-			}
-			result.glyphs = append(result.glyphs, glyph)
+	err = consumeShaper(ctx, shaper, func(ctx context.Context) error {
+		if err := shaper.SetInitialCluster(0); err != nil {
+			return err
 		}
-	}
-	if err := ctx.Err(); err != nil {
-		return shapedReplacement{}, err
-	}
-	if err := shaper.Err(); err != nil {
+		if err := shaper.Shape(ctx, params.shaping, strings.NewReader(input.text), options); err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return shaper.Finish()
+	}, func(glyph contracts.ShapedGlyph) error {
+		if uint64(glyph.Cluster) >= input.scalarCount ||
+			(len(result.glyphs) > 0 && glyph.Cluster < result.glyphs[len(result.glyphs)-1].Cluster) {
+			return fmt.Errorf("%w: invalid replacement cluster anchor", contracts.ErrIllegalArguments)
+		}
+		if err := width.add([]contracts.ShapedGlyph{glyph}, params.scale); err != nil {
+			return err
+		}
+		result.glyphs = append(result.glyphs, glyph)
+		return nil
+	})
+	if err != nil {
 		return shapedReplacement{}, err
 	}
 	result.widths, err = width.finish(candidateText, contracts.SpacingFixed, Params{})

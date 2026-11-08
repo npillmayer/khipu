@@ -326,7 +326,14 @@ fragment and seeds the next line with the post-break fragment.
 Local cost uses `PreBreak.Penalty`. `FirstHyphenDemerits` adds cost when the
 discretionary line starts at the root. `FinalHyphenDemerits` adds cost on the
 terminal transition if the break starting the final line is discretionary.
-Both are implemented. `DoubleHyphenDemerits` remains reserved and unused.
+Both are implemented. Consecutive-discretionary demerits remain deferred; the
+unused `DoubleHyphenDemerits` parameter has been removed.
+
+The unused `Params.Hyphenchar` and `Params.Minhyphenlength` fields have also
+been removed. Replacement text remains the provider's script-sensitive decision,
+not a universal injected character. A future minimum-length policy needs an
+explicit definition of which fragments it constrains and how length is measured;
+no generic count threshold is currently imposed by these parameters.
 
 ## Firstfit Integration
 

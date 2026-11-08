@@ -18,14 +18,17 @@ import (
 //   - demerit extras such as FirstHyphenDemerits / FinalHyphenDemerits are local
 //     linebreaker adjustments on top of the base breakpoint penalty
 type Parameters struct {
-	Tolerance             merits         // admissible badness for pass 2
-	PreTolerance          merits         // admissible badness for pass 1
-	LinePenalty           merits         // base cost added to every accepted line
-	HyphenPenalty         merits         // reserved; candidates supply PreBreak.Penalty
-	FirstHyphenDemerits   merits         // demerits for hyphen in the first line
-	DoubleHyphenDemerits  merits         // demerits for consecutive hyphens; currently reserved, not yet applied
-	FinalHyphenDemerits   merits         // demerits for hyphen in the last line
-	EmergencyStretch      dimen.DU       // reserved; no emergency-stretch pass is implemented
+	Tolerance           merits // admissible badness for pass 2
+	PreTolerance        merits // admissible badness for pass 1
+	LinePenalty         merits // base cost added to every accepted line
+	FirstHyphenDemerits merits // demerits for hyphen in the first line
+	FinalHyphenDemerits merits // demerits for hyphen in the last line
+	// EmergencyStretch is retained for the planned final emergency pass, but
+	// is not read by the current two-pass implementation. That pass will add
+	// this finite amount only to stretch used in badness calculation, not to
+	// knots or shrink capacity. Zero disables the future pass. Freezing must
+	// use real capacities and separately handle/report underfull output.
+	EmergencyStretch      dimen.DU
 	ParFillSkip           khipu.KnotCore // upstream trailer dimensions; pass to khipu.Config.ParFillSkip when encoding
 	DiscretionaryProvider DiscretionaryProvider
 }
@@ -34,15 +37,13 @@ type Parameters struct {
 // They promote a tolerant configuration, suitable for almost always finding an
 // acceptable set of linebreaks.
 var DefaultParameters = &Parameters{
-	Tolerance:            5000,
-	PreTolerance:         100,
-	LinePenalty:          10,
-	HyphenPenalty:        50,
-	FirstHyphenDemerits:  0,
-	DoubleHyphenDemerits: 0,
-	FinalHyphenDemerits:  50,
-	EmergencyStretch:     dimen.DU(dimen.BP * 50),
-	ParFillSkip:          glue(0, 0, dimen.Fill),
+	Tolerance:           5000,
+	PreTolerance:        100,
+	LinePenalty:         10,
+	FirstHyphenDemerits: 0,
+	FinalHyphenDemerits: 50,
+	EmergencyStretch:    dimen.DU(dimen.BP * 50),
+	ParFillSkip:         glue(0, 0, dimen.Fill),
 }
 
 func glue(w, wmin int, wmax dimen.DU) khipu.KnotCore {

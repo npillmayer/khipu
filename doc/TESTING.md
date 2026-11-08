@@ -17,6 +17,14 @@ and a shared testing package remain proposals.
 
 ## Existing Guarantees and Evidence
 
+- `stream_shaper_test.go` checks the shared paragraph/replacement lifecycle:
+  buffered output draining, producer and terminal errors, cancellation, joining
+  on consumer failure, and rejection before producer launch. The existing
+  paragraph and discretionary integration tests exercise both callers.
+- `linebreak/knuthplass/path_test.go` checks canonical equal-cost predecessor
+  replacement, synchronized live seeds, and terminal selection by cost then
+  line count. `compat_test.go` checks the ParShape/LineShape alias identity;
+  `khipu_test.go` checks allocation sizing and slice growth beyond capacity.
 - `layout_params_test.go` checks complete independent default profiles, shared
   Params across breaking/freezing, explicit zero-skip overrides, firstfit's fil
   ragged-right behavior, finite shrink, terminal fill precedence and physical

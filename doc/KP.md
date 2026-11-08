@@ -28,7 +28,7 @@ breaker is not promised.
 
 - `khipu` owns paragraph storage, shaping coordination, flags, discretionaries,
   and shared paragraph geometry in Params/LineShape.
-- `linebreak` owns shared `ParShape`, rectangular shapes, and `WSS`.
+- `linebreak` owns rectangular shapes and `WSS`; `ParShape` aliases `khipu.LineShape`.
 - `linebreak/knuthplass` owns dynamic programming, costs, passes, and its parameters.
 - `linebreak/firstfit` owns a greedy indexed breaker and its parameters.
 
@@ -59,13 +59,15 @@ finite text or skips.
 `path.go` implements Candidate B from [GRAPH.md](GRAPH.md):
 a breakpoint set and predecessor table keyed by `(BreakRef, line)`.
 A strictly cheaper transition replaces the existing predecessor; equal costs
-retain the existing entry. Distinct variants at the same knot remain distinct.
+prefer the lower predecessor knot index, then variant, regardless of arrival
+order. Distinct variants at the same knot remain distinct.
 
 `kp.paths` holds accumulated costs, worst line badness, and segment bookkeeping.
 The horizon contains active `BreakRef` values. Despite its historical name,
 `constructBreakpointGraph` now builds predecessor states, not a general graph.
 
-`collectOptimalBreakRefs` chooses the cheapest terminal state over line counts,
+`collectOptimalBreakRefs` chooses the cheapest terminal state over line counts
+(preferring fewer lines on equal cost),
 follows direct `Pred` lookups back to the root, and reverses the sequence.
 The public result projects references to knot indices; selected variants are
 recorded separately. Enumerating every solution is intentionally out of scope.
@@ -101,11 +103,17 @@ penalties. Earlier active origins are retired at every forced break, preventing
 later lines from bypassing it. Infeasible forced lines retain a fallback path;
 64-bit costs prevent repeated fallback demerits from wrapping negative.
 First-line discretionary extras and terminal-transition extras are
-implemented. Fitness classes and `DoubleHyphenDemerits` remain deferred.
+implemented. Fitness classes and consecutive-discretionary demerits remain deferred.
 See [DEMERITS.md](DEMERITS.md) for formulas and future fitness-state design.
-`HyphenPenalty` and `EmergencyStretch` are reserved fields and are not read by
-the algorithm. Candidate penalties come from upstream `PreBreak.Penalty`; there
-is no emergency-stretch pass.
+The unused `HyphenPenalty` and `DoubleHyphenDemerits` fields and defaults have
+been removed. Candidate penalties come from upstream `PreBreak.Penalty`;
+`Params.Hyphenpenalty` (default 10) is the owner's fallback when the provider
+does not supply a nonzero penalty.
+`EmergencyStretch` is retained for the final emergency pass described in
+[the algorithm design](khipu-algorithm.md#knuth-plass), but is not yet read.
+It will augment finite stretch for badness calculation only, without changing
+knots or shrink capacity. Neither that pass nor final-pass-only fallbacks are
+implemented, and freezing still needs over-/underfull output support.
 Parameter defaults differ between `DefaultParameters` and
 `NewKPDefaultParameters`; consult the chosen initializer rather than assuming
 TeX defaults.

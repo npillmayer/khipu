@@ -59,15 +59,13 @@ func newLinebreaker(layout khipu.Params, params *Parameters) *linebreaker {
 // (but not identical) to TeX's.
 func NewKPDefaultParameters() *Parameters {
 	return &Parameters{
-		Tolerance:            200,
-		PreTolerance:         100,
-		LinePenalty:          10,
-		HyphenPenalty:        50,
-		FirstHyphenDemerits:  0,
-		DoubleHyphenDemerits: 2000,
-		FinalHyphenDemerits:  10000,
-		EmergencyStretch:     dimen.DU(dimen.BP * 20),
-		ParFillSkip:          glue(0, 0, dimen.Fill),
+		Tolerance:           200,
+		PreTolerance:        100,
+		LinePenalty:         10,
+		FirstHyphenDemerits: 0,
+		FinalHyphenDemerits: 10000,
+		EmergencyStretch:    dimen.DU(dimen.BP * 20),
+		ParFillSkip:         glue(0, 0, dimen.Fill),
 	}
 }
 
@@ -235,9 +233,9 @@ func (kp *linebreaker) evalNewSegmentSeed(from, to BreakRef, line lineNo, c cost
 	path := seed.segmentState() // `path` will be the new path, if cheaper than `seg`
 	if !hasPred {
 		assert(!ok, "K&P internal error: path with non-existent predecessor state exists")
-	} else if pred.total <= evalCost {
+	} else if !betterPredecessor(from, evalCost, pred) {
 		assert(ok, "K&P internal error: path for predecessor state does not exist")
-		return // existing path is cheaper => do nothing
+		return // existing path is cheaper or wins the canonical tie
 	} else {
 		tracer().Debugf("K&P remove sub-optimal seg %v", origin{to, line})
 		delete(kp.paths, origin{to, line}) // remove `seg` from paths
@@ -681,6 +679,7 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu) error {
 
 // collectOptimalBreakRefs walks the predecessor table backwards from the
 // paragraph terminus and returns the single cheapest breakpoint sequence.
+// Equal total costs prefer fewer lines, independent of map iteration order.
 func (kp *linebreaker) collectOptimalBreakRefs(end BreakRef) ([]BreakRef, pathQuality, bool) {
 	bestLine := lineNo(0)
 	bestQuality := pathQuality{}
@@ -689,7 +688,8 @@ func (kp *linebreaker) collectOptimalBreakRefs(end BreakRef) ([]BreakRef, pathQu
 		if st.from != end {
 			continue
 		}
-		if !found || path.totalcost < bestQuality.totalCost {
+		if !found || path.totalcost < bestQuality.totalCost ||
+			(path.totalcost == bestQuality.totalCost && st.line < bestLine) {
 			bestLine = st.line
 			bestQuality = pathQuality{
 				totalCost:    path.totalcost,

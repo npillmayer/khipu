@@ -25,7 +25,9 @@ Here `to` is now a `BreakRef{At, Variant}`, not a raw knot index.
 `origin.from`, `pathState.to`, `predecessor.from`, the breakpoint set, and
 the horizon all use `BreakRef`. Ordinary breaks use variant zero; multiple
 discretionary variants at one textbox occupy distinct states.
-`SetPred` keeps the existing predecessor on equal total costs.
+`SetPred` resolves equal total costs by the lower predecessor knot index, then
+variant, rather than arrival order. Live path and seed replacement use the same
+rule. Complete terminal paths with equal costs prefer fewer lines.
 
 `collectOptimalBreakRefs` uses direct `Pred(to, line)` lookups. Logical
 replacement is an overwrite; a separate edge-delete operation is unnecessary.
