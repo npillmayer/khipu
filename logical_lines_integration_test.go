@@ -65,6 +65,10 @@ func TestLogicalLinesFromBothBreakers(t *testing.T) {
 				if err != nil {
 					t.Fatal(breaks, err)
 				}
+				visual, err := khipu.MaterializeVisualLinesForTest(owner, k, breaks)
+				if err != nil || !reflect.DeepEqual(lines, visual) {
+					t.Fatal("LTR visual integration changed content", visual, err)
+				}
 				wantWidths := tc.widths
 				if engine == "knuthplass" && tc.text == "  aa  bb  " {
 					// Current K&P may choose the initial space opportunity as an

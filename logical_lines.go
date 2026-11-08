@@ -43,12 +43,13 @@ const (
 // Both replacement halves identify the original knot and selected variant;
 // their glyph coordinates belong to their stored replacement input instead.
 type logicalKnot struct {
-	core     KnotCore
-	source   runSourceRange
-	box      shapedBoxID
-	origin   int
-	variant  uint16
-	fragment logicalFragment
+	core          KnotCore
+	source        runSourceRange
+	box           shapedBoxID
+	origin        int
+	variant       uint16
+	fragment      logicalFragment
+	paragraphFill bool // identity of the validated generated trailer, not inferred from dimensions
 }
 
 // materializeLogicalLines resolves a complete result from either breaker. It
@@ -139,6 +140,7 @@ func (kq *Khipukamayuq) materializeLogicalLines(k *Khipu, breakpoints []int) (*l
 				return bad()
 			}
 			item := logicalKnot{core: k.KnotByIndex(i), source: k.shaping.sources[i].source, box: k.boxRefs[i], origin: i}
+			item.paragraphFill = i == n-1
 			if err := k.validateLogicalKnot(item); err != nil {
 				return nil, err
 			}

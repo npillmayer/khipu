@@ -34,14 +34,29 @@ and a shared testing package remain proposals.
   knots: LTR/RTL/mixed segments, nested isolates, source gaps, trimmed segments,
   style-split RTL boxes and unchanged glyph storage. It also checks local index
   semantics, neutral source-backed knots, invalid/ambiguous spans and atomic
-  errors. Original zero-source items remain unresolved; complete visual-line
-  integration remains separate work.
+  errors. Original zero-source items remain unresolved at this mapping stage;
+  generated placement and visual construction are tested separately.
 - `knot_ordering_fragments_test.go` checks selected fragment placement by source
   provenance, mixed directions, shaped LTR/RTL consecutive alternatives, silent
   replacements, preserved glyph/context/identity data and atomic rejection of
   ambiguous or zero-source fragments. The provider-backed changed-spelling
   fixture in `knot_ordering_test.go` is also placed, not deferred. No reshaping or
   generated-fill placement is part of this stage.
+- `generated_placement_test.go` completes partial mappings with the explicitly
+  marked final fill at the paragraph's trailing physical edge. It checks both
+  directions, contrary-direction text runs, empty/all-space and wrapped lines,
+  discretionary carry, finite custom fill, invalid mappings and unchanged input.
+  Paragraph direction is passed explicitly; side skips and public visual-line
+  construction are not implemented by these tests.
+- `visual_lines_test.go` checks the integrated internal constructor: authoritative
+  `ParagraphDirection()`, nested isolates, empty/all-space input, independent knot
+  slices, retained arena lifetime, retry safety and no partial result on later-line
+  failure. `visual_lines_integration_test.go` asserts visual sequences through
+  both breakers, including mixed directions and forced RTL line breaks. Existing
+  logical integration cases also run through visual construction for trimming and
+  automatic/explicit choices; fragment tests exercise silent and consecutive
+  alternatives through the complete pipeline. Width allocation and side skips
+  remain out of scope.
 
 - `encoding_stream_test.go` and `encoding_stream_internal_test.go` cover defaults,
   configuration snapshots, repeated calls, fresh factories, retained glyphs,

@@ -8,8 +8,9 @@ For now, the working term will be **freezing the khipu**.
 Status updated November 8, 2026: internal logical-line materialization and
 line-local bidi ordering creation are implemented. An internal partial knot
 permutation now maps source-backed knots, including selected discretionary
-fragments. Zero-source attachment, complete visual lines and final width
-assignment remain planned. No `FrozenKhipu`
+fragments. Final ParFillSkip placement is implemented as a separate internal
+step. Atomic internal visual-line construction now connects these stages.
+Side-skip integration and final width assignment remain planned. No `FrozenKhipu`
 type or public freeze entry point exists. Both modern
 linebreakers already return breakpoints and retain chosen discretionary
 variants, providing the inputs for this next stage.
@@ -21,7 +22,7 @@ automatic discretionaries retain shaped replacement fragments and their original
 source split. `BreakpointPositions` maps chosen breaks to paragraph-relative
 UTF-8 byte endpoints. The metric-only shaping path has been removed.
 
-The next work is completing visual-line placement and assigning final widths, not
+The next work is carrying line geometry/side skips and assigning final widths, not
 another encoder migration. See
 [the overall algorithm](khipu-algorithm.md#line-local-bidi-ordering) and
 [discretionary ownership](HYPHENATION.md).
@@ -40,7 +41,9 @@ Each `logicalLine` retains its ending knot index, original paragraph-relative
 byte interval, a trailing-glue L1 interval, materialized knots and natural width. Width excludes external
 left/right skips. Knot cores retain their elasticity; this is not frozen output.
 Each knot records its original index, source span, arena box reference and,
-for replacements, the selected variant and pre-/post-break role.
+for replacements, the selected variant and pre-/post-break role. Materialization
+explicitly marks the validated final trailer as paragraph fill; dimensions or
+source position alone do not establish that identity.
 
 Selected pre-break material ends one line and post-break material seeds the
 next. No hyphenator or shaper is called. Empty/silent stored replacements remain
@@ -303,7 +306,8 @@ an Ordering to indices into the materialized line's knot slice. The returned
 - `visual` lists nonempty-source knots, including selected discretionary
   fragments, in physical left-to-right order.
 - `unresolved` lists original zero-source items in logical order. These include
-  final fill and require separate attachment rules; they are not dropped.
+  final fill and are passed to the generated-material placement step; they are
+  not dropped.
 
 The mapping follows these independently testable steps:
 
@@ -368,10 +372,81 @@ failures, repeatability and unchanged retained data. Consecutive alternatives
 are published directly so placement tests do not depend on language-specific
 hyphenation discovery; the changed-spelling test also uses the provider path.
 
-The next PR will define generated-material attachment, particularly final fill
-placement. Zero-source fragments need their own explicit contract, not implicit
-reuse of fill placement. A subsequent integration will publish complete visual
-lines atomically and exercise both linebreakers.
+### Generated-Material Placement
+
+`logicalLine.placeGenerated` in `generated_placement.go` completes the partial
+mapping into a new slice of visual-order knot indices. It recognizes only the
+explicitly marked, validated final ParFillSkip. It does not classify arbitrary
+zero-source glue as fill or infer identity from a stretch sentinel.
+
+Fill goes at the paragraph's trailing physical edge: after content for LTR,
+before content for RTL. The final run's direction does not change this policy.
+An empty or all-space paragraph still retains its fill; intermediate lines get
+no new fill. The fill's natural width and elasticity remain unchanged, including
+custom finite or zero capacities. Numeric distribution is a later stage.
+
+The helper takes the **paragraph embedding direction explicitly**. The integrated
+constructor now supplies it from `paragraph.BidiLevels().ParagraphDirection()`.
+This read-only upstream accessor preserves paragraph direction independently of
+text runs and across clone/split/L1/reordering operations. No inference from
+`DirectionAt` or independently configured `Params.BidiDir` is needed. Clients do
+not need to supply a second direction parameter.
+
+The partial mapping must account for every knot exactly once. Missing,
+out-of-range or duplicate indices, already-mapped source-less material, an
+invalid marked trailer and unknown unresolved items fail with no partial result
+or input mutation. A successful result owns its index slice. It does not yet
+construct or publish a visual-line object.
+
+LeftSkip and RightSkip are external linebreaker parameters, not knots in the
+materialized snapshot. They are neither synthesized nor placed here. Future
+integration must carry those exact inputs and attach them to their physical
+edges, counting their widths once. Unknown source-less kern/glue and zero-source
+fragments still need separate contracts; fill placement is not their fallback.
+
+`generated_placement_test.go` covers LTR/RTL and opposite-direction text,
+isolates, empty/all-space paragraphs, wrapped lines, selected replacements,
+custom finite fill, invalid mappings, retry safety and unchanged glyphs/widths.
+
+### Integrated Visual-Line Construction
+
+`Khipukamayuq.materializeVisualLines` in `visual_lines.go` accepts the same complete
+breaker decision as the logical materializer. It first constructs the logical
+snapshot, then calls `logicalParagraph.visualLines` to:
+
+1. Create line-local orderings on a private bidi clone.
+2. Read authoritative paragraph direction through `ParagraphDirection()`.
+3. Map each line's source-backed knots and selected fragments.
+4. Complete each permutation with generated final-fill placement.
+5. Copy whole knot records into new physical-left-to-right line slices.
+6. Return a `visualParagraph` only after all lines succeed.
+
+`visualLine` is a distinct internal type so its reordered knots cannot be
+accidentally passed back to logical trimming/mapping. It preserves the original
+line source interval, ending breakpoint and natural width. All knot cores,
+elastic bounds, box references, fragment roles and variant identities survive
+unchanged. No glyph arrays are reversed or reshaped. The visual paragraph retains
+the immutable arena and source under the same lifetime contract as the logical
+snapshot; it owns its line and knot slices independently.
+
+Even an error on a later line returns no partial result, leaves logical input
+and retained bidi resolution untouched, and permits a retry. Unsupported
+source/segment boundaries, the accepted approximate L1 policy and rejection of
+unknown source-less material remain unchanged; integration does not widen those
+contracts. Output is elastic visual content, not `FrozenKhipu` or renderer boxes.
+
+`visual_lines_test.go` checks direction ownership, nested isolates, empty/all-space
+paragraphs, slice independence, retained arena lifetime and later-line failures.
+`visual_lines_integration_test.go` verifies actual visual sequences through both
+breakers, including mixed directions and forced RTL line breaks. Existing breaker
+integration cases also exercise the visual constructor for trimming and selected
+automatic/explicit alternatives; fragment tests cover silent and consecutive
+replacements through the combined pipeline. Only `export_test.go` exposes value
+snapshots to external tests; the production API remains internal.
+
+Next, carry the same target widths and physical left/right skips used by the
+breaker, define their accounting, then implement width allocation. Neither side
+skips nor target widths are included in these visual snapshots yet.
 
 ### Accepted L1 Approximation
 
@@ -647,8 +722,9 @@ mutation and width allocation.
 ### Stage 3: Integrate Line-Local Bidi Ordering
 
 Ordering creation, clone ownership, the trailing-glue L1 policy and partial
-source-backed knot/fragment mapping are implemented internally. Next, resolve
-generated-material attachment and assemble complete visual lines. Zero-source
+source-backed knot/fragment mapping and final-fill placement are implemented
+internally and connected by atomic visual-line construction using
+`ParagraphDirection()`. Side skips and target widths still need integration. Zero-source
 fragments remain an explicit unsupported case until their attachment is defined. Test
 visual sequences for LTR, RTL, mixed runs, isolates, trimmed spaces,
 discretionary replacements and generated edge material through both breakers.

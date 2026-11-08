@@ -112,6 +112,14 @@ func TestKnotOrderingSilentFragments(t *testing.T) {
 			t.Fatal("lost silent fragment", got, err)
 		}
 	}
+	visual, err := p.visualLines()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if visual.lines[0].knots[0].box != c.preBox || visual.lines[1].knots[0].box != c.postBox ||
+		visual.lines[0].naturalWidth != 0 || visual.lines[1].naturalWidth != 0 {
+		t.Fatal("visual construction lost silent replacement", visual.lines)
+	}
 }
 
 func TestKnotOrderingConsecutiveFragments(t *testing.T) {
@@ -173,6 +181,10 @@ func TestKnotOrderingConsecutiveFragments(t *testing.T) {
 			glyphs := slices.Clone(p.arena.glyphs)
 			contexts := slices.Clone(p.arena.contexts)
 			boxes := slices.Clone(p.arena.boxes)
+			visual, err := p.visualLines()
+			if err != nil {
+				t.Fatal(err)
+			}
 			for i, line := range p.lines {
 				knots := slices.Clone(line.knots)
 				got, err := line.mapOrdering(orders[i])
@@ -189,6 +201,18 @@ func TestKnotOrderingConsecutiveFragments(t *testing.T) {
 				if !slices.Equal(got.visual, want) || (i < 2 && len(got.unresolved) != 0) ||
 					(i == 2 && !slices.Equal(got.unresolved, []int{1})) {
 					t.Fatal("incorrect fragment placement", i, got)
+				}
+				complete := slices.Clone(want)
+				if i == 2 { // these fixtures use LTR paragraph embedding
+					complete = append(complete, 1)
+				}
+				if len(visual.lines[i].knots) != len(complete) || visual.lines[i].naturalWidth != line.naturalWidth {
+					t.Fatal("visual line lost material or width", i)
+				}
+				for j, at := range complete {
+					if visual.lines[i].knots[j] != line.knots[at] {
+						t.Fatal("visual construction changed fragment", i, j)
+					}
 				}
 				again, err := line.mapOrdering(orders[i])
 				if err != nil || !reflect.DeepEqual(got, again) || !reflect.DeepEqual(knots, line.knots) {
