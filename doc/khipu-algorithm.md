@@ -778,8 +778,9 @@ Known deviations from this design in `linebreak/knuthplass`:
   competing breaker default.
 - **Performance.** Working states are indexed by breakpoint and line number;
   width updates and ordinary/discretionary scoring visit only the requested
-  breakpoint's bucket. Retired working states are still retained, and active-set
-  growth and candidate allocation remain optimization targets.
+  breakpoint's bucket. Ordinary/discretionary evaluation results and sorted
+  horizon snapshots reuse separate per-breaker scratch buffers. Retired working
+  states are still retained, and active-set growth remains an optimization target.
   Expensive debug arguments and final info dumps are now guarded
   before formatting; full debug tracing remains intentionally expensive.
   Separate encoding/breaking/first-pass benchmarks and initial measurements

@@ -3,7 +3,6 @@ package knuthplass
 import (
 	"cmp"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
 
@@ -27,6 +26,15 @@ type linebreaker struct {
 	hyphenating bool                                // second pass may relax limits and use discretionaries
 	root        BreakRef                            // "break" at start of paragraph
 	end         BreakRef                            // "break" at end of paragraph
+
+	// Scratch storage is owned by this single-pass breaker, never pooled or
+	// shared across paragraphs. Each result survives until the next call to
+	// its producer. Pass 2 consumes ordinary evaluations while requesting
+	// discretionaries, so those buffers must be independent. Elements contain
+	// no references to paragraph storage and need no clearing when shortened.
+	evaluationScratch    []lineEvaluation
+	discretionaryScratch []breakCandidate
+	horizonScratch       []BreakRef
 }
 
 func pathsAsString(paths map[BreakRef]map[lineNo]bookkeeping) string {
@@ -379,12 +387,16 @@ func (bc breakCandidate) lineCost() lineCost {
 //
 // This separation matters because pass 2 hyphenation hooks into screened-out
 // but still geometrically meaningful candidates.
+//
+// The returned slice borrows breaker-owned storage until the next call to
+// evaluateCandidates. Scoring completes before callers mutate path state;
+// discretionary evaluation uses separate storage and does not invalidate it.
 func (kp *linebreaker) evaluateCandidates(bp BreakRef, penalty khipu.Penalty) ([]lineEvaluation, bool) {
 	canReach := false
 	trace := tracer()
 	debug := trace.GetTraceLevel() >= tracing.LevelDebug
 	// find all paths ending at `bp`
-	var result []lineEvaluation
+	result := kp.evaluationScratch[:0]
 	for line, path := range kp.paths[bp] {
 		linelen := kp.layout.LineShape.LineLength(int32(line + 1))
 		segwss := path.effectiveWidth(kp.layout)
@@ -412,6 +424,7 @@ func (kp *linebreaker) evaluateCandidates(bp BreakRef, penalty khipu.Penalty) ([
 		}
 		result = append(result, ev)
 	}
+	kp.evaluationScratch = result
 	return result, canReach
 }
 
@@ -565,6 +578,19 @@ func breakParagraphPassRefs(khp *khipu.Khipu, layout khipu.Params,
 	return breakrefs, quality, ok, nil
 }
 
+// snapshotHorizon returns a sorted snapshot, valid until its next call. The
+// live horizon can change while processing a knot, but newly added breakpoints
+// must not be visited until the next knot. Reuse capacity without losing that
+// evaluate-then-mutate boundary.
+func (kp *linebreaker) snapshotHorizon() []BreakRef {
+	kp.horizonScratch = kp.horizonScratch[:0]
+	for bp := range kp.horizon {
+		kp.horizonScratch = append(kp.horizonScratch, bp)
+	}
+	slices.SortFunc(kp.horizonScratch, compareBreakRef)
+	return kp.horizonScratch
+}
+
 // constructBreakpointGraph scans SOA knot indices and maintains a horizon of
 // active BreakRefs. For each permitted boundary, it evaluates transitions from
 // active origins and records the cheapest predecessor for each line count.
@@ -598,8 +624,7 @@ func (kp *linebreaker) constructBreakpointGraph(khipu *khipu.Khipu) error {
 			trace.Debugf("horizon: %v", elements(kp.horizon))
 		}
 		// --- main loop over active breakpoints in horizon ------------
-		horizon := slices.Collect(maps.Keys(kp.horizon))
-		slices.SortFunc(horizon, compareBreakRef)
+		horizon := kp.snapshotHorizon()
 		if debug {
 			trace.Debugf("horizon: %v", horizon)
 		}

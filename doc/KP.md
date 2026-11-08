@@ -71,6 +71,13 @@ is unchanged. Retired working states are still retained, not pruned.
 The horizon contains active `BreakRef` values. Despite its historical name,
 `constructBreakpointGraph` now builds predecessor states, not a general graph.
 
+Each single-pass breaker owns separate reusable slices for ordinary evaluations,
+discretionary candidates and the sorted horizon snapshot. Results borrow storage
+until the next call to their producer; callers consume them before rescoring.
+The ordinary buffer survives nested discretionary evaluation in pass 2. Horizon
+membership may change while a snapshot is consumed, but the next snapshot is
+not built until the next knot. No global pool or cross-paragraph sharing is used.
+
 `collectOptimalBreakRefs` chooses the cheapest state in the terminal bucket over line counts
 (preferring fewer lines on equal cost),
 follows direct `Pred` lookups back to the root, and reverses the sequence.
@@ -166,7 +173,8 @@ font-backed or international-script performance.
 - Broader international-script integration coverage.
 
 Path bookkeeping is now indexed by breakpoint rather than repeatedly scanning
-the entire state table. Candidate allocation and retained-state growth remain.
+the entire state table. Candidate-result and horizon-snapshot buffers now reuse
+capacity within a pass. Active/retained-state growth remains an optimization target.
 Expensive debug arguments and final info dumps are now guarded before formatting;
 enabled tracing retains the existing detail. No retirement, candidate eligibility,
 tie-breaking or pruning policy changed. Further performance changes should follow the measured

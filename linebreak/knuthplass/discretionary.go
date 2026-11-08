@@ -222,8 +222,17 @@ func (kp *linebreaker) discretionaryDemerits(badness merits, penalty khipu.Penal
 //
 // Each accepted candidate becomes a BreakRef{At, Variant} plus seed state for
 // the successor line starting with the post-break fragment.
+//
+// Results borrow breaker-owned storage until the next call to this function.
+// They must be consumed before requesting another discretionary evaluation.
+// Ordinary evaluations remain valid during this call: pass 2 nests this work
+// inside its loop over those results, so the two scratch buffers are separate.
 func (kp *linebreaker) evaluateDiscretionaryCandidates(khp *khipu.Khipu, from BreakRef, breakpoint, candidate kinx) []breakCandidate {
-	if kp == nil || khp == nil || candidate < 0 || candidate >= len(khp.Kind) {
+	if kp == nil {
+		return nil
+	}
+	kp.discretionaryScratch = kp.discretionaryScratch[:0]
+	if khp == nil || candidate < 0 || candidate >= len(khp.Kind) {
 		return nil
 	}
 	if khp.Kind[candidate] != khipu.KTTextBox {
@@ -236,7 +245,7 @@ func (kp *linebreaker) evaluateDiscretionaryCandidates(khp *khipu.Khipu, from Br
 	targetBreak := func(v uint16) BreakRef {
 		return BreakRef{At: candidate, Variant: v}
 	}
-	results := make([]breakCandidate, 0, len(cands))
+	results := kp.discretionaryScratch
 	for line, path := range kp.paths[from] {
 		linelen := kp.layout.LineShape.LineLength(int32(line + 1))
 		for _, cand := range cands {
@@ -283,5 +292,6 @@ func (kp *linebreaker) evaluateDiscretionaryCandidates(khp *khipu.Khipu, from Br
 			})
 		}
 	}
+	kp.discretionaryScratch = results
 	return results
 }

@@ -17,6 +17,12 @@ and a shared testing package remain proposals.
 
 ## Existing Guarantees and Evidence
 
+- `linebreak/knuthplass/scratch_test.go` checks buffer reuse, growth, smaller and
+  empty results, independence across breakers, and nested pass-2 candidate
+  processing without overwriting outstanding ordinary evaluations. Horizon
+  snapshots stay sorted and independent of live membership changes. Fixed
+  fixtures verify zero steady-state allocations for scoring and snapshots
+  after warmup with diagnostic logging disabled.
 - `linebreak/knuthplass/index_test.go` checks breakpoint-bucket isolation,
   multiple line counts, distinct discretionary variants, line-specific rescan
   seeds, missing buckets, and replacement without altering sibling states.
@@ -508,6 +514,35 @@ guarantees for real font-backed paragraphs.
 
 Three unprofiled public-breaker runs (`BenchmarkBreakLorem`, `-benchtime=1x`)
 measured 25-36 ms, 156-158 ms and 1.013-1.026 s for the three sizes respectively.
+
+### Scratch-Buffer Reuse
+
+Ordinary evaluations, discretionary evaluations and sorted horizon snapshots
+now use three independent, per-breaker scratch slices. Capacity grows only as
+needed; each result is borrowed until the next invocation of its producer.
+Ordinary results remain live across nested discretionary processing. Snapshot
+reuse preserves the boundary between evaluating existing states and adding new
+ones. There is no pooling, retirement or scoring-policy change.
+
+First-pass cumulative allocations, using the same profiled benchmark:
+
+| Words | Indexed B/op | With reuse B/op | Allocations/op with reuse |
+| --- | ---: | ---: | ---: |
+| 250 | 26.4 MB | 1.55 MB | 984 |
+| 500 | 193.9 MB | 5.19 MB | 2,790 |
+| 1,000 | 1.534 GB | 18.03 MB | 7,445 |
+
+All reported costs, line counts, worst badness, predecessor counts and retained
+state counts match the earlier baselines. Three unprofiled public-breaker runs
+measured 20-31 ms, 124-130 ms and 0.825-0.831 s respectively. The clearest gain
+is allocation reduction; runtime improvements are more modest and smaller-case
+timings remain noisy. The first-pass profiled times were 0.032, 0.126 and 0.824 s.
+
+The allocation profile no longer shows evaluation or horizon slices as major
+sources. It now includes a large proportion of untimed encoding/setup work;
+within the breaker, growing path/seed/predecessor maps remain. Profile totals
+must not be confused with B/op, which excludes fixture setup. Active-state
+growth and safe retirement remain separate algorithmic work.
 
 ## Validation and Next Work
 
