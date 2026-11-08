@@ -125,6 +125,11 @@ func (kp *linebreaker) activateDiscretionary(from BreakRef, cand breakCandidate)
 // by descendants and the collector. Tombstones also cover root/forced-barrier
 // retirement, preventing a later retroactive discovery from reviving the state.
 func (kp *linebreaker) retireState(o origin) {
+	if kp.metrics != nil {
+		if _, live := kp.paths[o.from][o.line]; live {
+			kp.metrics.live--
+		}
+	}
 	delete(kp.paths[o.from], o.line)
 	delete(kp.seeds, o)
 	kp.retired[o] = struct{}{}

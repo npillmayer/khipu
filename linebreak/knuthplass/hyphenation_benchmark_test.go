@@ -79,10 +79,12 @@ func BenchmarkSecondPassHyphenatingLorem(b *testing.B) {
 			b.StopTimer()
 			for range b.N {
 				khp, kp, provider, policy := hyphenatingLorem(b, words)
+				enableWorkMetrics(kp)
 				b.StartTimer()
 				err := kp.constructBreakpointGraph(khp)
 				breaks, quality, ok := kp.collectOptimalBreakRefs(kp.end)
 				b.StopTimer()
+				reportWorkMetrics(b, kp)
 				if err != nil || !ok || len(breaks) == 0 || breaks[len(breaks)-1] != kp.end {
 					b.Fatalf("incomplete second-pass result: %v, %v", breaks, err)
 				}
@@ -99,7 +101,7 @@ func BenchmarkSecondPassHyphenatingLorem(b *testing.B) {
 					b.Fatal("fixture did not exercise discovery, cached requests and discretionary paths")
 				}
 				// Deterministic workload counts from the last iteration, not sums
-				// over b.N. State counts are retained totals, not peak horizon size.
+				// over b.N. Retained totals are separate from peak-active-states.
 				b.ReportMetric(float64(len(khp.Kind)), "knots")
 				b.ReportMetric(float64(provider.requests), "provider-requests/op")
 				b.ReportMetric(float64(policy.calls), "hyphenator-calls/op")

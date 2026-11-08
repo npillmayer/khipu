@@ -17,6 +17,7 @@ import (
 // predecessor table retains the history needed for reconstruction.
 // A full BreakRef is the key so discretionary variants never share a bucket.
 type linebreaker struct {
+	metrics *workMetrics // optional diagnostics; nil in public breaking calls
 	*pathTable
 	horizon     map[BreakRef]struct{}               // horizon of possible linebreaks
 	paths       map[BreakRef]map[lineNo]bookkeeping // working states grouped by breakpoint
@@ -291,6 +292,10 @@ func (kp *linebreaker) evalNewSegmentSeed(from, to BreakRef, line lineNo, c cost
 		kp.paths[to] = lines
 	}
 	lines[line] = path
+	if kp.metrics != nil && !ok {
+		kp.metrics.live++
+		kp.metrics.peak = max(kp.metrics.peak, kp.metrics.live)
+	}
 	kp.seeds[origin{to, line}] = seed.segmentState()
 	// Debugf cannot defer argument evaluation. In particular, sorting and
 	// formatting the entire state table must never happen with debug disabled.
@@ -411,6 +416,9 @@ func (kp *linebreaker) evaluateCandidates(bp BreakRef, penalty khipu.Penalty) []
 	// find all paths ending at `bp`
 	result := kp.evaluationScratch[:0]
 	for line, path := range kp.paths[bp] {
+		if kp.metrics != nil {
+			kp.metrics.ordinary++
+		}
 		linelen := kp.layout.LineShape.LineLength(int32(line + 1))
 		segwss := path.effectiveWidth(kp.layout)
 		if debug {

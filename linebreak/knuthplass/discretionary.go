@@ -310,6 +310,9 @@ func (kp *linebreaker) evaluateDiscretionaryLine(khp *khipu.Khipu, from BreakRef
 				kp.appendActualKnots(&nextSeed, khp, candidate+1, breakpoint)
 			}
 			segwss := lineBook.effectiveWidth(kp.layout)
+			if kp.metrics != nil {
+				kp.metrics.discretionary++
+			}
 			ev := classifyLine(segwss, linelen, kp.badnessLimit())
 			if !ev.accepted() {
 				continue

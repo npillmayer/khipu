@@ -420,9 +420,19 @@ unpruned reference using the same scoring rules, both with and without a lazy
 hyphenator, while reducing peak live working states. The original 50-word
 regression breakpoints, total costs and worst badness remain unchanged.
 
-Initial timing evidence is recorded in [TESTING.md](TESTING.md#boundary-processing-and-retirement).
-Broader workload profiling and dedicated peak/evaluation benchmark counters
-remain follow-up work; terminal retained-state counts are not peak activity.
+Change 3 is complete for the bounded synthetic investigation. Optional private
+counters report peak live `(BreakRef, line number)` states and ordinary versus
+discretionary local classifications. They include rejected/repeated evaluations
+but exclude history and provider requests. Tests verify lifecycle accounting
+and unchanged results with instrumentation enabled; public calls leave it off.
+
+The 45-case workload matrix covers three paragraph sizes, narrow/standard/wide
+and alternating shapes, internal forced breaks, and disabled/empty/productive
+hyphenation. Three repeats per case and representative CPU/allocation profiles
+are recorded in [TESTING.md](TESTING.md#work-counters-and-workload-matrix).
+The evidence identifies repeated empty discovery and duplicate ordinary scoring
+as follow-ups. Neither is changed here. Font-backed/script-specific profiling
+remains future work; terminal retained-state counts are not peak activity.
 
 ## Out of Scope
 

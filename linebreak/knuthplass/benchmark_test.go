@@ -91,8 +91,8 @@ func BenchmarkBreakLorem(b *testing.B) {
 }
 
 // This diagnostic benchmark times precisely one first pass, including collection.
-// Counts describe final retained state, NOT peak active state: the terminal
-// forced break has already reduced the horizon to its final endpoint.
+// Retained states describe the terminal working set; the optional work counters
+// separately capture peak activity and all local classifications in the pass.
 func BenchmarkFirstPassLorem(b *testing.B) {
 	benchmarkLorem(b, func(b *testing.B, words int) {
 		khp := encodedLorem(b, words)
@@ -109,6 +109,7 @@ func BenchmarkFirstPassLorem(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
+			enableWorkMetrics(kp)
 			if err = kp.constructBreakpointGraph(khp); err != nil {
 				b.Fatal(err)
 			}
@@ -119,6 +120,7 @@ func BenchmarkFirstPassLorem(b *testing.B) {
 			}
 		}
 		b.StopTimer()
+		reportWorkMetrics(b, kp)
 		b.ReportMetric(float64(len(khp.Kind)), "knots")
 		retained := 0
 		for _, lines := range kp.paths {

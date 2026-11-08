@@ -584,8 +584,9 @@ and report historical discretionary predecessors alongside retained states, line
 count, cost and worst badness. Successful lookups are cached, but declined
 lookups currently are not: short words can cause repeated policy calls. Neither
 counter measures rescanned knots; use CPU profiling to attribute that work.
-State counts are final retained totals, not peak active counts, and custom
-metrics describe the last iteration rather than accumulating over `b.N`.
+Retained-state counts are final totals, distinct from the subsequently added
+`peak-active-states` metric. Custom metrics describe the last iteration rather
+than accumulating over `b.N`.
 
 Start small and use explicit iteration counts; the 250-word case is much more
 expensive than its ordinary counterpart. Anchor each sub-benchmark expression
@@ -649,9 +650,116 @@ working bucket survives the terminal forced boundary.
 These are initial measurements, not an isolated speedup estimate: they combine
 retirement, geometric/pass-policy corrections, state-local rescue evaluation,
 and rescan-seed bookkeeping fixes. Earlier profile-enabled timings and current
-unprofiled timings also have different instrumentation. Broader profiling and
-dedicated peak-active/state-evaluation counters remain follow-up work. Empty
-hyphenator responses are still not cached.
+unprofiled timings also have different instrumentation. The bounded workload
+investigation below adds peak/evaluation counters. Empty hyphenator responses
+are still not cached.
+
+### Work Counters and Workload Matrix
+
+Private, optional `workMetrics` instrumentation measures one breaker pass. Public
+calls leave it disabled; only nil checks remain on the hot paths. There are no
+callbacks, atomics, or recurring table scans. Benchmarks attach the counters
+before processing and include the initialized root in the live count.
+
+- `peak-active-states`: maximum live `(BreakRef, line number)` working states,
+  including newly inserted successors before retirement. Replacing a predecessor
+  does not add a state. Historical predecessors and tombstones do not count.
+- `ordinary-evals/op`: ordinary local classifications, accepted or rejected.
+  Discovery screening and subsequent boundary scoring can evaluate a state twice;
+  both count because both incur work.
+- `discretionary-evals/op`: local classifications of individual variants for an
+  origin. Invalid candidates, filtered origins and missing replay seeds do not
+  reach classification and do not count. Rejected geometric fits do count.
+- `state-evals/op`: sum of those classifications, not unique states visited.
+  Provider calls, replayed knots, updates and fallback ranking are separate work.
+
+Counts describe the last deterministic iteration, not totals over `b.N`.
+`metrics_test.go` checks insertion/replacement/retirement/resurrection accounting,
+accepted and rejected variants, repeated evaluations, per-knot agreement with
+actual working tables, and identical results/history with instrumentation off/on.
+
+`BenchmarkRetirementWorkloads` covers 50/250/1,000 words, 100/150/300 pt widths,
+alternating widths, and forced internal boundaries. Each uses ordinary breaking,
+a provider declining all requests, or the synthetic midpoint hyphenator. Every
+case runs one final pass with admission tolerance 200; ordinary mode disables
+discovery, while provider modes retain the default discovery trigger of 100.
+This controlled diagnostic is not public two-pass latency. Encoding, owner and
+breaker setup are untimed and fresh each iteration. Forced cases mark every
+twentieth interword space mandatory without adding fill; fallback is permitted.
+
+```sh
+go test ./linebreak/knuthplass -run '^$' -bench '^BenchmarkRetirementWorkloads$' -benchtime=1x -count=3 -benchmem -timeout=120s
+go test ./linebreak/knuthplass -run '^$' -bench '^BenchmarkRetirementWorkloads$/^1000$/^standard$/^productive$' -benchtime=3x -benchmem -cpuprofile=/tmp/khipu-retirement.cpu -memprofile=/tmp/khipu-retirement.mem -o /tmp/khipu-retirement.test
+go tool pprof -top -cum /tmp/khipu-retirement.test /tmp/khipu-retirement.cpu
+go tool pprof -alloc_space -top -cum /tmp/khipu-retirement.test /tmp/khipu-retirement.mem
+```
+
+CPU and allocation profiles are process-wide and include untimed fixture
+encoding. B/op and ns/op exclude that setup; do not interpret profile totals as
+breaker-only costs. These synthetic ASCII workloads do not measure dictionary
+quality, real font shaping, or international-script behavior.
+
+November 8 measurements on Apple M1, Go 1.25.6: all 45 cases completed three
+single-iteration runs (135 observations). Custom workload counts were identical
+across repeats. Selected results, with time ranges and approximate allocated
+bytes per operation (decimal MB, not resident memory):
+
+| Words | Layout | Provider | Time (ms) | MB/op | Peak states | State evaluations |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| 50 | 150 pt | productive | 1.88-1.95 | 0.80 | 74 | 4,523 |
+| 250 | 150 pt | productive | 47.36-48.24 | 15.67 | 492 | 144,374 |
+| 1,000 | 150 pt | none | 67.02-68.78 | 26.36 | 733 | 284,965 |
+| 1,000 | 150 pt | empty | 559.54-564.35 | 275.27 | 733 | 569,930 |
+| 1,000 | 150 pt | productive | 1,124.76-1,128.74 | 241.23 | 2,172 | 2,450,514 |
+| 1,000 | 100 pt | productive | 2,824.23-2,888.82 | 415.52 | 4,316 | 4,374,191 |
+| 1,000 | 300 pt | productive | 404.27-406.51 | 110.08 | 801 | 1,067,405 |
+| 1,000 | alternating | productive | 1,374.37-1,384.09 | 258.77 | 2,600 | 2,810,668 |
+| 1,000 | internal forced | productive | 347.28-350.05 | 94.97 | 1,074 | 885,322 |
+
+The ordinary row uses tolerance 200 for this comparison. It is not a regression
+against the earlier first-pass default of 100. The separate first-pass benchmark
+still uses defaults: at 1,000 words its peak is 369 states and its evaluations
+are 143,799; the three instrumented runs took 32.85-34.17 ms. Narrow lines and
+hyphenation widen the live band considerably; neither the original estimate of
+270 states nor terminal retained totals are general bounds.
+
+Findings and bounded follow-up recommendations:
+
+1. **Cache successful empty discovery results, with explicit lifetime rules.**
+   At 1,000 words/150 pt the empty provider made 183,440 policy calls and no
+   discretionary classifications. The productive provider still made 106,594
+   policy calls from 503,783 provider requests; declined short words are retried.
+   Source extraction and policy preparation repeat, not just a cheap map lookup.
+   A cache must distinguish unqueried from successfully empty, must not hide
+   errors, and must respect paragraph/provider configuration ownership.
+2. **Consider reusing unchanged ordinary evaluations within a boundary.** Empty
+   discovery exactly doubles ordinary classifications here (284,965 to 569,930)
+   without changing peak states, predecessor count or selected quality. Rescue
+   discovery and final boundary admission currently score separately. Reuse must
+   not skip new successors or replacements introduced by productive discovery.
+3. **Continue measuring state growth, not just retirement.** Productive narrow
+   lines retain 343,701 historical predecessors versus 4,316 peak live states.
+   Multiple line counts and variants remain legitimate work; no new dominance
+   rule or history deletion is justified by these measurements alone.
+
+Separate CPU/allocation profiles covered the 1,000-word/150 pt cases: ten timed
+ordinary iterations and three each for empty/productive, plus Go's calibration
+iterations. In the empty profile, `streamingDiscretionaryCandidates` accounts for
+25.1% cumulative sampled CPU and 56.0% of allocated bytes; `io.ReadAll` accounts
+for 38.4% of bytes, with bounded cord reader/iterator work also visible. These
+overlapping percentages support investigating repeated extraction, not charging
+all cost to the hyphenator itself. In the productive allocation profile the
+provider subtree accounts for 39.7% and `evalNewSegmentSeed` for 24.1%.
+Productive CPU samples include substantial runtime scheduling/wakeup activity;
+`evaluateDiscretionaryLine` is 10.9% cumulative and `appendActualKnots` 2.4%,
+so replay no longer dominates as it did before retirement. The ordinary profile
+includes much untimed encoding; within breaking, state insertion/history maps
+remain allocation sources. Process-wide percentages are attribution clues, not
+isolated speedup estimates or sums to add together.
+
+The bounded synthetic investigation is complete. Negative-result caching,
+evaluation reuse, real fonts/dictionaries and wider script coverage are separate
+follow-ups, not changes made by this instrumentation PR.
 
 ## Validation and Next Work
 
