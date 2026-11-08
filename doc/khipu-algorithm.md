@@ -380,7 +380,9 @@ then compute an `Ordering` separately for each line.
 The following operation describes the eventual complete mapping immediately
 before freezing. Its source-backed knot/fragment permutation and explicit final
 fill placement are connected by internal atomic visual-line construction;
-side skips and width allocation remain planned. We choose
+the subsequent geometry stage attaches physical side skips and snapshots targets.
+Numeric width planning and internal frozen publication are implemented for
+fixed non-glue content and adjustable glue. We choose
 left-to-right physical traversal, independently of the paragraph's base direction.
 
 ```
@@ -392,7 +394,10 @@ left-to-right physical traversal, independently of the paragraph's base directio
             [ Preserve the glyph sequence within each box and its direction metadata ]
     [ Place marked final ParFillSkip at the paragraph's trailing physical edge ]
     [ Reject unsupported source-less material rather than guessing attachment ]
-    [ In the future integration, attach supplied left/right skips to physical edges ]
+    [ Prepare geometry with the same paragraph shape and side skips used by the breaker ]
+    [ Attach supplied left/right skips in explicit physical edge slots ]
+    [ Snapshot `LineLength(lineNumber)` once per line, starting at line number 1 ]
+    [ Compute natural width including both skips and delta to the target ]
 ```
 
 **Implementation remarks**:
@@ -402,7 +407,7 @@ left-to-right physical traversal, independently of the paragraph's base directio
 - Source coverage and the L1 glue suffix are recorded before trimming. Discarded source spaces still participate in the bidi line boundary calculation, even though their knots will not be emitted. The approximation combines adjacent original-source glue, clips it to the line, ignores only the validated source-less final fill and stops at source gaps or non-glue material. It does not inspect characters again.
 - The glue heuristic is not full UAX#9 L1: non-WS glue (for example NBSP) or suppressed soft hyphens in glue provenance can be over-reset; omitted controls, whitespace embedded in text clusters and internal separators can be missed. These trade-offs are accepted for now; see [FREEZE.md](FREEZE.md#accepted-l1-approximation). Future exactness should use upstream eligibility metadata.
 - Boxes must be compatible with directional segment boundaries. A segment may cover multiple boxes, which need directional ordering, but glyph arrays inside boxes are not reversed here. Later placement must still honor their direction because the streaming shaper emits logical shaping order.
-- Selected fragments with nonempty original provenance, even silent ones, are mapped as indivisible boxes. Genuinely zero-source fragments fail explicitly until an attachment contract exists. `placeGenerated` completes a partial mapping with the marked final fill: right for LTR paragraphs, left for RTL paragraphs. Unknown source-less material fails. Side skips remain external inputs for future integration.
+- Selected fragments with nonempty original provenance, even silent ones, are mapped as indivisible boxes. Genuinely zero-source fragments fail explicitly until an attachment contract exists. `placeGenerated` completes a partial mapping with the marked final fill: right for LTR paragraphs, left for RTL paragraphs. Unknown source-less material fails. `materializeLineGeometry` then retains supplied side skips in physical edge slots, separate from source content, and snapshots one-based target widths. The target includes both skips; paragraph fill is already counted in content. This does not allocate widths or check adjustment capacity.
 - Final-fill placement receives authoritative direction from `paragraph.BidiLevels().ParagraphDirection()` in the integrated constructor; text-run direction and independent owner defaults are not substitutes. Visual lines preserve original source coverage, elastic widths and retained glyph/context associations without mutating logical input. See [FREEZE.md](FREEZE.md#integrated-visual-line-construction).
 - `Split`, `ApplyL1` and `Reorder` mutate backing state. `Clone()` makes a private deep copy once per ordering attempt, preserving the retained paragraph resolution for retries. No partial ordering list is returned on error.
 - The sibling `uax/bidi` split fixes now preserve paragraph embedding direction and partition isolates. Khipu tests exercise successive splits inside an isolate, but ordering preparation alone does not establish complete visual layout or full L1 conformance.
@@ -461,6 +466,19 @@ and
         [ For each elastic knot: calculate the elasticity ratio `s` ]
         [ Distribute delta between knots proportional to their `s` ]
 ```
+
+The pure allocator now implements positive fill precedence and finite
+stretch/shrink numerically. It floors proportional shares and assigns residual
+DU by largest remainder, ties in physical left-to-right order. Equal-order fills
+have equal adjustment weights. Negative fill sentinels in this rough sketch
+remain unsupported: current MinW bounds are finite. The allocator ignores knot
+kind, but a textbox width is only a proposal until matching glyph data can be
+produced. `geometryLine.planWidths` returns separate numeric widths without
+modifying any knot or glyph. Internal frozen publication applies the plan only
+when all non-glue content is fixed; it creates separate final-width planes and
+retains immutable shaping/provenance without elastic cores or penalty tables.
+Script-sensitive realization and a public freeze API remain future work.
+See [FREEZE.md](FREEZE.md#frozen-publication).
 
 
 ## Create Visual Representation

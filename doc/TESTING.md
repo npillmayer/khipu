@@ -57,6 +57,28 @@ and a shared testing package remain proposals.
   automatic/explicit choices; fragment tests exercise silent and consecutive
   alternatives through the complete pipeline. Width allocation and side skips
   remain out of scope.
+- `line_geometry_test.go` covers the subsequent elastic geometry stage: one-based
+  target snapshots, exact skip values and physical edge slots, signed delta,
+  final-fill accounting, negative finite skips, malformed widths, overflow,
+  input independence and later-line failure/retry. `line_geometry_integration_test.go`
+  uses both breakers with varying targets and nonzero skips; existing logical
+  integration fixtures also verify geometry for empty, trimmed and discretionary
+  lines. This geometry stage does not allocate widths or check capacity.
+- `width_allocation_test.go` covers the pure allocator's exact conservation,
+  proportional quotas, deterministic remainder ties, symbolic fill precedence,
+  finite shrink, signed widths, capacity errors and near-limit arithmetic. A
+  deterministic randomized suite checks 2,000 feasible finite cases. Kind
+  independence includes hypothetical textboxes without implying glyph realization.
+  `width_plan_test.go` checks geometry adaptation, side skips, LTR/RTL final fill,
+  competing fills, stale geometry and unchanged glyphs. Target-width reshaping
+  remains unimplemented; numeric textbox proposals are not glyph realization.
+- `frozen_test.go` checks final SOA alignment, exact target conservation, finite
+  glue stretch/shrink, side skips/fill, unchanged metadata/glyphs, independent
+  output planes, retained arena lifetime, selected changed-spelling and silent
+  fragments, empty/trimmed input, unsupported non-glue elasticity, and later-line
+  failure/retry without partial publication. `frozen_integration_test.go` covers
+  both breakers, varying targets, nonzero skips and LTR/RTL final-fill placement.
+  Construction is internal, with only a test bridge for external integration.
 
 - `encoding_stream_test.go` and `encoding_stream_internal_test.go` cover defaults,
   configuration snapshots, repeated calls, fresh factories, retained glyphs,
@@ -313,9 +335,9 @@ leave control-only gaps even though encoded paragraph spans preserve the source.
 
 Firstfit and Knuth-Plass should satisfy shared structural invariants, but they
 need not choose the same breaks. Use algorithm-specific expected results where
-their policies differ. Future freeze tests should separately check line
-materialization and conservation of assigned width; these are not current
-capabilities.
+their policies differ. Freeze tests separately check line materialization and
+conservation of assigned width; script-sensitive glyph realization still needs
+its own future backend contracts and coverage.
 
 ### Real-Backend Integration
 
@@ -385,5 +407,6 @@ git diff --check
 
 The helper extraction, streaming integration and metric retirement are complete.
 Next testing infrastructure work is an adapter conformance suite and reusable
-scripted fixtures, not another encoding backend. Font-backed proofs, freezing
-and downstream bidi/materialization tests follow when those integrations exist.
+scripted fixtures, not another encoding backend. Internal bidi/materialization
+and glue-only freezing now have synthetic coverage. Font-backed proofs and
+target-width shaping tests follow when those integrations exist.

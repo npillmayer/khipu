@@ -10,10 +10,13 @@ line-local bidi ordering creation are implemented. An internal partial knot
 permutation now maps source-backed knots, including selected discretionary
 fragments. Final ParFillSkip placement is implemented as a separate internal
 step. Atomic internal visual-line construction now connects these stages.
-Side-skip integration and final width assignment remain planned. No `FrozenKhipu`
-type or public freeze entry point exists. Both modern
-linebreakers already return breakpoints and retain chosen discretionary
-variants, providing the inputs for this next stage.
+Elastic line geometry now snapshots target widths and physical side skips.
+The pure allocator now produces numeric width plans, without changing knots or
+glyphs. Internal frozen-output construction now applies these plans for fixed
+textboxes and adjustable glue. The separate `frozenParagraph` has final-width
+SOA planes, retained shaping/provenance and no elastic knot cores. No public
+`FrozenKhipu` type or freeze entry point exists yet. Both modern linebreakers
+provide the breakpoints and retained selected variants consumed by this pipeline.
 
 The upstream rewrite is complete for the supported knotting and linebreaking
 contracts. `EncodeParagraph(ctx, para)` is the sole encoder. Textboxes retain
@@ -22,8 +25,8 @@ automatic discretionaries retain shaped replacement fragments and their original
 source split. `BreakpointPositions` maps chosen breaks to paragraph-relative
 UTF-8 byte endpoints. The metric-only shaping path has been removed.
 
-The next work is carrying line geometry/side skips and assigning final widths, not
-another encoder migration. See
+The next decisions concern a public freeze/result contract and future
+script-sensitive realization, not another encoder migration. See
 [the overall algorithm](khipu-algorithm.md#line-local-bidi-ordering) and
 [discretionary ownership](HYPHENATION.md).
 
@@ -226,14 +229,15 @@ replacement input and shaping contexts. `SourceSplit` describes original input,
 not replacement-string length. The sketch above omits the glyph/context and
 provenance associations that a usable frozen representation must preserve.
 
-Decide whether frozen data owns copies or retains immutable arena storage with
-an explicit lifetime guarantee. Bare owner-local IDs without their arena are
+The internal implementation owns its final planes and provenance records and
+retains immutable shaping storage with the existing lifetime guarantee.
+Bare owner-local IDs without their arena are
 not sufficient. Freezing must not rediscover alternatives or reshape an already
 selected fragment merely to recover its stored glyphs. Manual metric-only
 fixtures remain useful for arithmetic tests, but cannot supply missing glyph
 or source provenance for general line materialization.
 
-The exact shape is open, but the main point is stable:
+The public shape remains open, but the main point is stable:
 
 - freezing should produce a new final structure
 - not destroy the elastic one
@@ -399,9 +403,9 @@ or input mutation. A successful result owns its index slice. It does not yet
 construct or publish a visual-line object.
 
 LeftSkip and RightSkip are external linebreaker parameters, not knots in the
-materialized snapshot. They are neither synthesized nor placed here. Future
-integration must carry those exact inputs and attach them to their physical
-edges, counting their widths once. Unknown source-less kern/glue and zero-source
+materialized snapshot. They are neither synthesized nor placed here. The later
+elastic geometry stage carries those exact inputs in physical edge slots,
+counting their widths once. Unknown source-less kern/glue and zero-source
 fragments still need separate contracts; fill placement is not their fallback.
 
 `generated_placement_test.go` covers LTR/RTL and opposite-direction text,
@@ -444,9 +448,160 @@ automatic/explicit alternatives; fragment tests cover silent and consecutive
 replacements through the combined pipeline. Only `export_test.go` exposes value
 snapshots to external tests; the production API remains internal.
 
-Next, carry the same target widths and physical left/right skips used by the
-breaker, define their accounting, then implement width allocation. Neither side
-skips nor target widths are included in these visual snapshots yet.
+The next, implemented geometry stage carries target widths and side skips.
+Visual snapshots themselves remain content-only; this prevents repeated
+preparation from adding skips twice.
+
+### Elastic Line Geometry
+
+`Khipukamayuq.materializeLineGeometry` in `line_geometry.go` connects the complete
+breaker decision to visual construction and `visualParagraph.prepareGeometry`.
+It requires the same paragraph shape and exact left/right skip values used by
+the breaker. There are no implicit defaults and no dependency on package
+`linebreak`: the local `lineShape` interface declares `LineLength(int32)`, which
+existing `linebreak.ParShape` implementations satisfy structurally.
+
+The result is an internal `geometryParagraph` with one `geometryLine` per line.
+Its physical sequence is represented explicitly as:
+
+```text
+leftSkip | content.knots in visual order | rightSkip
+```
+
+The two edge slots hold the supplied `KnotCore` values unchanged, including their
+individual elasticity. They do not invent source positions or arena references.
+Their role defines edge glue; incidental Kind/Flags/Penalty values do not make
+them textboxes, discardable content, or break opportunities. They are not trimmed
+or bidi-reordered. Left means physical left even for RTL, while the already
+placed final ParFillSkip stays within content and is counted only once.
+
+The shape is sampled once per line, using one-based logical line numbers. Target
+width includes both side skips, matching both breakers' bookkeeping:
+
+```text
+naturalWidth = leftSkip.W + content.naturalWidth + rightSkip.W
+delta = targetWidth - naturalWidth
+```
+
+Targets, skips and copied visual content are snapshotted; the result retains no
+shape object or mutable line/knot slices from its input. Source/arena records
+remain shared under the immutable ownership contract. Shape values must be
+stable between breaking and preparation. The breakpoint list cannot detect a
+different but structurally valid shape or parameter set. Shape queries should
+be side-effect free; queries already made cannot be undone if a later line fails.
+
+Preparation validates ordered width bounds, finite natural widths and targets,
+cached content totals, and checked sums. Finite signed skip widths are allowed
+provided total natural width stays nonnegative. Positive `Fil`, `Fill` and
+`Filll` maxima remain per-item symbols; they are not summed into numeric
+capacities. `Infinity`, infinite natural widths and infinite minimum bounds
+have no supported geometry contract. Targets and total natural widths must be
+below `Fil`. Invalid input yields no partial geometry and changes no input.
+
+This stage does not adjust any W, require fixed textboxes, judge available
+stretch/shrink, or declare the line feasible. Both positive and negative delta
+are retained, even if the requested adjustment will later prove impossible.
+Frozen construction is a subsequent internal stage; no public entry point exists.
+
+`line_geometry_test.go` covers one-based snapshots, signed delta, finite negative
+skips, immutable inputs, empty/all-space and RTL lines, final-fill accounting,
+invalid widths/targets, overflow and later-line failure. Integration tests use
+both breakers with varying targets and nonzero skips; existing breaker tests
+also pass trimming and explicit/automatic discretionary results through geometry
+preparation. The pure allocator described below consumes this geometry without
+changing it.
+
+### Numeric Width Allocation
+
+`allocateWidths` in `width_allocation.go` is a pure, kind-independent operation
+over `KnotCore` width triples and a finite target. It returns a new width slice
+and never changes input knots. Kind, flags, penalties and glyph information do
+not influence the arithmetic. `geometryLine.planWidths` adapts the physical
+sequence left skip, visual content, right skip to this operation and returns a
+`lineWidthPlan` with separate edge widths and content widths. It validates cached
+geometry totals and delta before planning; no shape is queried again.
+
+The allocation policy is:
+
+- Exact natural fit preserves every W, after validating the input.
+- Positive adjustment uses only the highest available fill order:
+  `Filll > Fill > Fil > finite`. Equal-order fill items receive equal shares of
+  the adjustment; their original W values remain distinct. The current data
+  model has no separate fill weights. All lower-order items stay at W.
+- Without fill, positive adjustment is proportional to `MaxW - W`.
+- Negative adjustment is proportional to finite `W - MinW`, even for items
+  whose MaxW is a fill sentinel. Infinite shrink remains unsupported by the
+  geometry contract. The rough negative-fill pseudocode is future scope.
+- Integer quotas are floored; remaining DU are assigned by descending fractional
+  remainder, ties in physical left-to-right order. This also applies to shrink
+  magnitudes. Each eligible item receives at most one rounding-residue DU.
+
+The resulting sum is exactly the target and each width respects its bounds.
+Calculations use checked widened sums and bounded integer products rather than
+floating point or saturation. Signed finite widths remain supported. If a fill
+assignment would reach a reserved sentinel (for example when large negative
+fixed widths offset it), allocation fails instead of publishing nonfinite W.
+Insufficient finite capacity returns `errInsufficientCapacity`, distinguishable
+with `errors.Is`; malformed/nonrepresentable geometry wraps `ErrIllegalArguments`.
+Every failure returns no partial assignment. Complexity is `O(N log N)` time and
+`O(N)` storage because of remainder ordering.
+
+**Allocation is not realization.** The same numeric rules apply to a future
+elastic textbox, but its proposed width does not update glyphs or positions.
+Current encoding produces fixed textboxes; this stage neither discovers textbox
+capacity nor calls the shaper. The internal freeze orchestrator restricts its
+supported inputs to fixed textboxes rather than silently applying numeric proposals
+to glyph-backed elastic text. Later support needs trustworthy upstream capacities
+and a shaping contract that realizes requested widths or reports achieved widths
+for redistribution. The internal frozen representation implements the fixed-text
+subset; no public freeze API exists yet.
+
+`width_allocation_test.go` covers finite stretch/shrink, fill precedence, ties,
+exhaustion, signed widths, near-limit arithmetic, kind independence and 2,000
+deterministic finite-capacity property cases. `width_plan_test.go` exercises real
+geometry, side skips, LTR/RTL final fill, competing fill orders, stale snapshots,
+and hypothetical textbox proposals without changing glyphs. It does not claim
+typographic realization or paragraph-wide frozen publication.
+
+### Frozen Publication
+
+`Khipukamayuq.freezeParagraph` in `frozen.go` internally connects materialization,
+visual ordering, geometry and allocation. It uses the same shape and skip values
+as the completed breaker run. `geometryParagraph.freeze` publishes only after
+every line succeeds; a failure returns nil, with line context and the underlying
+error preserved. The elastic input and its selected decisions are unchanged.
+
+The supported realization is deliberately **glue-only**. Every non-glue content
+knot must have `MinW == W == MaxW`, including selected discretionary fragments.
+Elastic textboxes, kerns and custom material return `errUnsupportedAdjustment`,
+even on exact-fit lines or when a dominant fill would absorb all adjustment.
+Fixed non-glue material is retained. Physical side skips are glue by role,
+irrespective of their incidental Kind. No shaper/hyphenator is called, and glyph
+sequences and positions within boxes remain unchanged.
+
+The internal `frozenParagraph` stores aligned final `w`, `pos`, `len`, `kind`,
+`flags` and provenance planes. Lines index half-open ranges in that visual knot
+stream and retain inclusive final width, physical side-skip widths and untrimmed
+original byte coverage. There are no `KnotCore` values, `MinW`/`MaxW` planes,
+penalty planes, or candidate/selection maps. Paragraph fill remains a content
+knot at its visual edge, with its assigned finite width; side skips are separate
+numeric slots, counted exactly once.
+
+Provenance retains original ranges, box IDs, selected variant/fragment roles and
+the explicit paragraph-fill identity. `frozenShaping` retains only immutable
+boxes, glyphs, clusters and contexts, not the arena's boundary/penalty tables.
+Box IDs therefore remain meaningful after the elastic input is unwired. Unused
+arena records may remain reachable; they are not applied output and compaction
+is deferred. Source/styles/font services and published shaping records must
+remain immutable. Final planes and line/provenance records are independently
+owned. No conversion back to elastic input is offered.
+
+`frozen_test.go` covers finite glue stretch/shrink, exact fit, side skips, final
+fill, fixed/unsupported non-glue material, later-line failures and retry,
+independent planes, selected changed-spelling and silent replacements, source
+coverage, empty/trimmed input and retained arena lifetime. End-to-end tests in
+`frozen_integration_test.go` consume both breakers with varying targets, nonzero
+skips and LTR/RTL paragraphs. The test-only export bridge adds no public API.
 
 ### Accepted L1 Approximation
 
@@ -625,15 +780,15 @@ survived linebreaking:
 So the final-line result should fall out of ordinary width distribution, not a
 special freeze policy.
 
-The numeric representation still needs a concrete rule: `dimen.Fill` and
-`dimen.Filll` are special dimension values, not an implemented freeze
-allocator. Ordinary finite stretch alone does not guarantee that only the
-paragraph fill stretches. Define and test fill precedence before claiming
-ragged final-line behavior. The terminal fill must remain non-discardable.
+The numeric allocator implements symbolic fill precedence and leaves finite
+spacing unchanged when higher-order paragraph fill absorbs the adjustment.
+Side skips of equal order share the adjustment, and higher-order side skips
+override paragraph fill. Frozen publication uses the same allocator and stores
+the resulting finite widths. The terminal fill must remain non-discardable.
 
-## First Implementation Slice
+## Original First Slice
 
-The implemented first slice establishes logical line materialization only:
+The original first slice established logical line materialization only:
 
 1. derive line-local knot lists from breakpoints
 2. materialize selected discretionaries
@@ -647,10 +802,11 @@ This establishes:
 - the ownership requirements for the eventual frozen result type
 - the line materialization rules
 
-Follow with bidi ordering and fixed-textbox/glue-only allocation. An initial
-end-to-end subset may be explicitly limited to simple LTR input; it must not
-silently emit logical-order lines as a fully ordered result for mixed-direction
-text. Textbox adjustment such as Arabic kashida comes later.
+Subsequent slices added bidi ordering and fixed-textbox/glue-only freezing.
+The internal end-to-end pipeline supports the existing bidi mapping contract,
+not only simple LTR input; unsupported boundaries are rejected rather than
+silently emitting logical-order lines. Textbox adjustment such as Arabic
+kashida comes later.
 
 ## Responsibility Split
 
@@ -675,11 +831,11 @@ The most realistic path looks incremental.
 
 ### Stage 1: Define Representation And Ownership
 
-Intermediate `logicalParagraph`, `logicalLine` and `logicalKnot` types now
-establish snapshot and arena-lifetime rules. The final frozen representation
-remains open; these internal types deliberately retain elastic KnotCore values.
-
-Introduce a new data structure for frozen khipus.
+Intermediate `logicalParagraph`, `logicalLine` and `logicalKnot` types establish
+snapshot and arena-lifetime rules and deliberately retain elastic KnotCore
+values. A separate internal `frozenParagraph` now implements final-width SOA
+storage and retained immutable shaping associations. Public API design remains
+open.
 
 Goals:
 
@@ -690,8 +846,7 @@ Goals:
 - preserve glyph/context references and original/replacement source provenance
 - distinguish intermediate logical lines from successfully frozen output
 
-This stage is about data shape only. No real width distribution logic needs to
-exist yet.
+The internal representation is now connected to width allocation by Stage 4.
 
 ### Stage 2: Materialize Logical Lines
 
@@ -724,7 +879,8 @@ mutation and width allocation.
 Ordering creation, clone ownership, the trailing-glue L1 policy and partial
 source-backed knot/fragment mapping and final-fill placement are implemented
 internally and connected by atomic visual-line construction using
-`ParagraphDirection()`. Side skips and target widths still need integration. Zero-source
+`ParagraphDirection()`. Target widths and physical side skips are now captured by
+the separate elastic line-geometry stage. Zero-source
 fragments remain an explicit unsupported case until their attachment is defined. Test
 visual sequences for LTR, RTL, mixed runs, isolates, trimmed spaces,
 discretionary replacements and generated edge material through both breakers.
@@ -733,33 +889,34 @@ arrays within boxes.
 
 ### Stage 4: Fixed-Textbox, Glue-Only Freezing
 
-Implement the first actual width distribution pass for the simplest case:
+Implemented internally: the numeric allocator and geometry adapter feed atomic
+frozen publication for the simplest realizable case:
 
 - glue absorbs stretch and shrink
 - textboxes keep their natural width
 
-This stage should:
+This stage now:
 
-- compute line delta from natural width to target width
-- distribute the delta over adjustable glue knots
-- write final `W`
-- drop `MinW`, `MaxW`, and `Penalty` from the frozen result
+- computes line delta from natural width to target width
+- distributes the delta over adjustable glue knots
+- writes final widths
+- omits `MinW`, `MaxW`, and `Penalty` from the frozen result
 
 This establishes the freeze stage end to end without yet solving non-Western
 adjustment.
 
-Restrict this first slice to inputs whose textboxes are fixed upstream.
-Do not silently ignore textbox capacity used by the linebreaker; report an
-unsupported adjustment if realizing it requires an unavailable shaper service.
+This first slice requires all non-glue content to be fixed upstream. It reports
+declared non-glue elasticity as unsupported rather than silently ignoring it,
+even when the current allocation would not exercise that capacity.
 
-Before implementation, settle deterministic dimension rounding, behavior when
-capacity is insufficient, and fill precedence. Tests should cover exact fit,
-stretch, shrink, exhaustion, skips, discretionary boundaries, and conservation
-of total assigned width. An impossible target must be reported rather than
+Remainder rounding, insufficient-capacity errors and fill precedence are now
+implemented in the pure allocator. Frozen tests cover exact fit, stretch, shrink,
+exhaustion, skips, discretionary boundaries, and conservation of total assigned
+width. An impossible target is reported rather than
 hidden by widths outside the advertised bounds.
 
 Treat fill sentinels as ordered capacities, not ordinary numeric dimensions.
-Count left/right skips exactly once and define whether the target includes them.
+Consume the geometry stage's inclusive target and count its side skips once.
 Distribute integer rounding residue deterministically without exceeding bounds.
 Publish frozen output only after every line succeeds; errors must leave the
 elastic input and its selected decisions intact.

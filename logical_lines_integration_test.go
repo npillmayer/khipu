@@ -44,9 +44,11 @@ func TestLogicalLinesFromBothBreakers(t *testing.T) {
 				}
 				shape := linebreak.RectangularParShape(width)
 				var breaks []int
+				var leftSkip, rightSkip khipu.KnotCore
 				if engine == "firstfit" {
 					params := *firstfit.DefaultParameters
 					params.DiscretionaryProvider = owner
+					leftSkip, rightSkip = params.LeftSkip, params.RightSkip
 					breaks, err = firstfit.BreakParagraph(k, shape, &params)
 				} else {
 					params := knuthplass.NewKPDefaultParameters()
@@ -55,6 +57,7 @@ func TestLogicalLinesFromBothBreakers(t *testing.T) {
 						params.RightSkip = khipu.KnotCore{MaxW: dimen.PT}
 						params.EmergencyStretch = 0
 					}
+					leftSkip, rightSkip = params.LeftSkip, params.RightSkip
 					breaks, err = knuthplass.BreakParagraph(k, shape, params)
 				}
 				if err != nil {
@@ -68,6 +71,16 @@ func TestLogicalLinesFromBothBreakers(t *testing.T) {
 				visual, err := khipu.MaterializeVisualLinesForTest(owner, k, breaks)
 				if err != nil || !reflect.DeepEqual(lines, visual) {
 					t.Fatal("LTR visual integration changed content", visual, err)
+				}
+				geometry, err := khipu.MaterializeLineGeometryForTest(owner, k, breaks, shape, leftSkip, rightSkip)
+				if err != nil || len(geometry) != len(visual) {
+					t.Fatal(geometry, err)
+				}
+				for i, line := range geometry {
+					natural := visual[i].NaturalWidth + leftSkip.W + rightSkip.W
+					if !reflect.DeepEqual(line.Content, visual[i]) || line.NaturalWidth != natural || line.TargetWidth != width || line.Delta != width-natural || line.LeftSkip != leftSkip || line.RightSkip != rightSkip {
+						t.Fatal("geometry changed selected/trimmed content", line)
+					}
 				}
 				wantWidths := tc.widths
 				if engine == "knuthplass" && tc.text == "  aa  bb  " {
