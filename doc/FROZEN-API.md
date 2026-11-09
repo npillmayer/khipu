@@ -1,8 +1,10 @@
 # Frozen Result Contract
 
-Design draft, November 8, 2026. Shared geometry through Params is implemented;
-the public frozen-result API below is still proposed. The internal glue-only constructor in `frozen.go` is the
-starting point. See [FREEZE.md](FREEZE.md) for allocation and ownership details.
+Result contract implemented in `frozen_result.go`; construction API remains a
+proposal. Shared geometry, internal glue-only freezing and allocation outcomes
+are implemented. `FrozenKhipu` is opaque and its queries are public, but clients
+cannot yet construct a populated result through a public Freeze entry point.
+See [FREEZE.md](FREEZE.md) for allocation and ownership details.
 
 ## Scope And Recommendation
 
@@ -156,10 +158,20 @@ type SourceRange struct {
 }
 type FrozenLine struct {
     FirstKnot, KnotCount int
-    Width dimen.DU
+    Width, TargetWidth, Residual dimen.DU
     LeftSkip, RightSkip dimen.DU
     Source ByteRange
+    Fit FrozenFit
+    Ratio float64
+    Badness int
+    FillOrder dimen.DU
 }
+type FrozenFit uint8
+const (
+    FitWithinCapacity FrozenFit = iota
+    FitUnderfull
+    FitOverfull
+)
 type FrozenKnot struct {
     W dimen.DU
     Kind KnotType
@@ -181,7 +193,8 @@ one-based argument. Knot indices are global to this result, not indices in the
 elastic input. Lines are in paragraph sequence; each line's contiguous knot
 range is in physical left-to-right order, independently of base direction.
 Queries return false for invalid indices, with no panic. Nil/zero results have
-zero counts and unsuccessful lookups; only Freeze produces a populated result.
+zero counts and unsuccessful lookups. Currently only internal freezing produces
+a populated result; the proposed public Freeze will be the client entry point.
 
 Records are detached values. Changing a returned record does not alter the
 result. No MinW, MaxW, Penalty, candidates or arena references are exposed.
@@ -194,6 +207,14 @@ a content knot with its assigned finite width and an explicit material role.
 Widths can be signed for supported signed input geometry; the line's inclusive
 width is finite and nonnegative. Frozen flags are preserved metadata, not an
 instruction to trim or reorder the already finalized line again.
+
+`Residual = TargetWidth - Width`. Its sign describes trailing slack or protrusion.
+`FitUnderfull` also covers finite overstretch that reaches the target exactly.
+`Ratio` is the requested signed finite adjustment divided by capacity, with signed
+infinity for absent capacity. Fill uses ratio/badness zero and a nonzero FillOrder
+(`dimen.Fil`, `Fill`, or `Filll`). Exact natural fits have zero diagnostics.
+Finite badness is rounded `100*abs(Ratio)^3`, capped at 10000; overfull lines
+always report 10000. These are physical diagnostics, not breaker demerits.
 
 Source ranges are half-open and paragraph-relative. Lines cover untrimmed input;
 knot ranges describe original provenance, including for changed-spelling
@@ -306,13 +327,13 @@ reused. Frozen output is not a persistent/portable font serialization format.
    right skip set to fil. Tests cover explicit zero overrides, shared geometry,
    ragged-right interword spacing, finite shrink, fill precedence, RTL physical
    edges, invalid configuration, parameter snapshots and existing break paths.
-2. Introduce the opaque public result, final line/knot value records and query
+2. **Implemented:** opaque public result, final line/knot value records and query
    methods. Map existing storage without exporting its planes. Add tests for
    index conventions, empty/silent material, detached values and exact widths.
-3. Add CopyText and source access. Test snapshot independence, replacement
+3. **Implemented:** CopyText and source access. Tests cover snapshot independence, replacement
    coordinates, feature/context preservation, rebased cluster glyph ranges,
    retained lifetime, bounded cord reads and concurrent read-only access.
-4. Expose Freeze consuming resolved Params, promote error sentinels and thread
+4. **Next:** expose Freeze consuming resolved Params, promote error sentinels and thread
    cancellation checks through
    internal stages. Move test-only integration bridges to public API tests for
    both breakers, including failure/retry and input preservation.

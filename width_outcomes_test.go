@@ -85,6 +85,14 @@ func TestFrozenOutcomesAcrossDirections(t *testing.T) {
 				t.Fatal(err)
 			}
 			line := f.lines[0]
+			public, ok := f.Line(0)
+			wantFit := FitUnderfull
+			if target == 20*dimen.PT {
+				wantFit = FitOverfull
+			}
+			if !ok || public.Fit != wantFit || public.Width != line.width || public.TargetWidth != target || public.Residual != line.adjustment.residual || public.Badness != line.adjustment.badness || public.Ratio != line.adjustment.ratio {
+				t.Fatal("lost public outcome", public)
+			}
 			sum := line.leftSkip + line.rightSkip
 			for i, w := range f.w {
 				sum += w

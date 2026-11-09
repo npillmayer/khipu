@@ -13,7 +13,7 @@ step. Atomic internal visual-line construction now connects these stages.
 Elastic line geometry now snapshots target widths and physical side skips.
 The pure allocator now produces numeric width plans, without changing knots or
 glyphs. Internal frozen-output construction now applies these plans for fixed
-textboxes and adjustable glue. The separate `frozenParagraph` has final-width
+textboxes and adjustable glue. The separate `FrozenKhipu` has final-width
 SOA planes, retained shaping/provenance and no elastic knot cores. No public
 `FrozenKhipu` type or freeze entry point exists yet. Both modern linebreakers
 provide the breakpoints and retained selected variants consumed by this pipeline.
@@ -577,6 +577,12 @@ typographic realization or paragraph-wide frozen publication.
 
 ### Frozen Publication
 
+The result contract is now implemented: `FrozenKhipu` exposes detached line/knot
+records, physical allocation diagnostics, copy-on-request shaping snapshots and
+bounded source readers. Its planes and arena IDs stay private. See
+[FROZEN-API.md](FROZEN-API.md) for coordinates and lifetime rules. Public
+construction through `Freeze`, including cancellation, is still the next step.
+
 `Khipukamayuq.freezeParagraph` in `frozen.go` internally connects materialization,
 visual ordering, geometry and allocation. It uses the same shape and skip values
 as the completed breaker run. `geometryParagraph.freeze` publishes only after
@@ -591,7 +597,7 @@ Fixed non-glue material is retained. Physical side skips are glue by role,
 irrespective of their incidental Kind. No shaper/hyphenator is called, and glyph
 sequences and positions within boxes remain unchanged.
 
-The internal `frozenParagraph` stores aligned final `w`, `pos`, `len`, `kind`,
+The opaque `FrozenKhipu` stores aligned final `w`, `pos`, `len`, `kind`,
 `flags` and provenance planes. Lines index half-open ranges in that visual knot
 stream and retain inclusive final width, physical side-skip widths and untrimmed
 original byte coverage. There are no `KnotCore` values, `MinW`/`MaxW` planes,
@@ -857,7 +863,7 @@ The most realistic path looks incremental.
 
 Intermediate `logicalParagraph`, `logicalLine` and `logicalKnot` types establish
 snapshot and arena-lifetime rules and deliberately retain elastic KnotCore
-values. A separate internal `frozenParagraph` now implements final-width SOA
+values. A separate opaque `FrozenKhipu` now implements final-width SOA
 storage and retained immutable shaping associations. Public API design remains
 open.
 

@@ -134,8 +134,9 @@ The default backend uses `helpers.SyntheticFont` at 10 pt,
 fragment. Ordinary cells are 5 pt and spaces are elastic. It requires no installed
 fonts, rejects application-defined styles, and is not real font shaping.
 Glyph/source provenance is retained. Logical/visual line materialization and
-glue-only freezing exist internally; the public freezing result contract remains
-future work. See the [testing guide](doc/TESTING.md) for helper policies.
+glue-only freezing exist internally. Opaque `FrozenKhipu` result queries are
+implemented; the public `Freeze` construction entry point remains future work.
+See the [result contract](doc/FROZEN-API.md) and [testing guide](doc/TESTING.md).
 
 The metric encoder, `Config.Shaper`, `FixedWidthShaper` and `KnotStyler` have
 been removed. The sole encoding entry point is `EncodeParagraph(ctx, para)`;

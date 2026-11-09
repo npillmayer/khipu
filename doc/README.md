@@ -27,8 +27,9 @@ separate parameters and policies. Neither materializes or renders final lines.
 - [Overall algorithm](KHIPU_ALGORITHM.md): architectural pseudocode, including
   implemented streaming shaping and future freezing and rendering.
 - [Freezing](FREEZE.md): internal line materialization, bidi ordering and glue-only
-  width allocation exist; the public result contract and over-/underfull handling
-  remain design work.
+  width allocation and over-/underfull outcomes exist. The opaque
+  [frozen result contract](FROZEN-API.md) is implemented; public construction
+  through `Freeze` and cancellation remain design work.
 - [Knuth–Plass paper](knuthplass.pdf): reference material used by the cost-design
   notes, not an implementation or a claim of full TeX parity.
 

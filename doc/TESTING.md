@@ -17,6 +17,10 @@ conformance suites, visual proofs and a shared testing package are proposals
 
 ## Existing Guarantees and Evidence
 
+- `frozen_result_test.go` checks nil/zero queries, detached records, allocation
+  metadata, glyph/cluster/feature copy independence, replacement-local coordinates,
+  silent material, captured source offsets, bounded readers and concurrent queries
+  after elastic-input release. Public construction/cancellation remain future work.
 - `linebreak/firstfit/cleanup_test.go` checks disabled debug/info guards,
   unchanged results across logging levels, forced-textbox exclusion from rescue,
   and paragraph-level kern flag/interior/carry semantics. Benchmark workload

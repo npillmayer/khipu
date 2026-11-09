@@ -14,7 +14,7 @@ import (
 
 // Check the publication boundary, not merely the allocator: all planes must
 // align, metadata must survive, and the final physical line must conserve width.
-func checkFrozenGeometry(t *testing.T, got *frozenParagraph, geometry *geometryParagraph) {
+func checkFrozenGeometry(t *testing.T, got *FrozenKhipu, geometry *geometryParagraph) {
 	t.Helper()
 	n := len(got.w)
 	if len(got.pos) != n || len(got.len) != n || len(got.kind) != n || len(got.flags) != n || len(got.origins) != n || len(got.lines) != len(geometry.lines) {

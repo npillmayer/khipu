@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/npillmayer/cords/btree"
+	"github.com/npillmayer/cords/cordext"
 	"github.com/npillmayer/cords/styled"
 	"github.com/npillmayer/khipu/contracts"
 	"github.com/npillmayer/khipu/dimen"
@@ -11,7 +13,7 @@ import (
 
 var errUnsupportedAdjustment = errors.New("khipu: unsupported non-glue width adjustment")
 
-// frozenParagraph is the internal final-width representation. Its aligned SOA
+// FrozenKhipu is an opaque, immutable final-width result. Its private aligned SOA
 // planes concatenate lines in paragraph order, and knots in physical visual
 // order within each line. It is deliberately NOT a Khipu: no elastic cores,
 // MinW/MaxW, penalties, candidate tables, or operation for unfreezing survive.
@@ -21,17 +23,21 @@ var errUnsupportedAdjustment = errors.New("khipu: unsupported non-glue width adj
 // after publication. Source text/styles, font services and published shaping
 // records are shared under their existing immutable-lifetime contracts. There
 // is no dependency on the input's mutable selections or slice headers. This
-// internal type does not yet establish a public freeze or renderer API.
-type frozenParagraph struct {
-	paragraph *styled.Paragraph
-	shaping   frozenShaping
-	w         []dimen.DU
-	pos       []uint64
-	len       []uint16
-	kind      []KnotType
-	flags     []KnotFlags
-	origins   []frozenOrigin
-	lines     []frozenLine
+// type offers read-only queries; it is not a renderer API. Nil and zero values
+// are empty. Concurrent reads are safe while retained source and external font
+// services obey their immutable-lifetime contracts. No unfreeze is provided.
+type FrozenKhipu struct {
+	paragraph    *styled.Paragraph
+	source       cordext.CordEx[btree.NO_EXT]
+	sourceOffset uint64
+	shaping      frozenShaping
+	w            []dimen.DU
+	pos          []uint64
+	len          []uint16
+	kind         []KnotType
+	flags        []KnotFlags
+	origins      []frozenOrigin
+	lines        []frozenLine
 }
 
 // frozenLine indexes a half-open range in the paragraph's content planes.
@@ -79,7 +85,7 @@ type frozenShaping struct {
 // selected fragments and orders knots; geometry snapshots inclusive targets.
 // No shaper or hyphenator is consulted. Failure publishes no partial paragraph
 // and leaves the elastic input and its decisions unchanged.
-func (kq *Khipukamayuq) freezeParagraph(k *Khipu, breaks []int, params Params) (*frozenParagraph, error) {
+func (kq *Khipukamayuq) freezeParagraph(k *Khipu, breaks []int, params Params) (*FrozenKhipu, error) {
 	p, err := kq.materializeLineGeometry(k, breaks, params)
 	if err != nil {
 		return nil, err
@@ -98,11 +104,12 @@ func (kq *Khipukamayuq) freezeParagraph(k *Khipu, breaks []int, params Params) (
 // Each line uses the allocator's exact integer assignment (including fill
 // precedence and bounded shrink). All output remains private until every line
 // succeeds. Geometry and immutable shaping storage are never modified.
-func (p *geometryParagraph) freeze() (*frozenParagraph, error) {
+func (p *geometryParagraph) freeze() (*FrozenKhipu, error) {
 	if p == nil || p.paragraph == nil || len(p.lines) == 0 {
 		return nil, fmt.Errorf("%w: freeze requires prepared geometry", ErrIllegalArguments)
 	}
-	result := &frozenParagraph{paragraph: p.paragraph,
+	result := &FrozenKhipu{paragraph: p.paragraph,
+		source: p.paragraph.Raw(), sourceOffset: p.paragraph.Offset,
 		shaping: frozenShaping{p.arena.boxes, p.arena.glyphs, p.arena.clusters, p.arena.contexts},
 		lines:   make([]frozenLine, len(p.lines))}
 	for i, line := range p.lines {

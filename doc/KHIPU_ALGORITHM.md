@@ -735,7 +735,7 @@ to TeX.
 | Knotting | Implemented: `Khipukamayuq.EncodeParagraph`. |
 | Line breaking | Implemented: `linebreak/firstfit` and `linebreak/knuthplass`, with lazy explicit and automatic discretionaries. Known deviations listed below. |
 | Bidi ordering | Implemented internally; no public API. |
-| Freezing | Internal glue-only implementation; no public API. Over-/underfull outcomes retain actual widths, residuals and physical quality diagnostics. |
+| Freezing | Internal glue-only construction; opaque `FrozenKhipu` queries are public, but public `Freeze` is pending. Over-/underfull outcomes retain actual widths, residuals and physical quality diagnostics. |
 | Visual representation | Out of scope. |
 
 `Config{}` provides a synthetic streaming backend for unstyled text; this is
@@ -763,7 +763,7 @@ defaults. There is no metric-only encoding path. See
 | Bidi ordering | `lineOrderings`, `trailingGlueL1` (`line_ordering.go`), `mapOrdering` (`knot_ordering.go`), `placeGenerated` (`generated_placement.go`), `materializeVisualLines` (`visual_lines.go`) |
 | Line geometry | `materializeLineGeometry`, `prepareGeometry` (`line_geometry.go`) |
 | Width distribution | `planWidths`, `allocateWidths` (`width_allocation.go`) |
-| Freezing | `freezeParagraph`, `frozenParagraph` (`frozen.go`) |
+| Freezing | `freezeParagraph`, `FrozenKhipu` (`frozen.go`), result queries (`frozen_result.go`) |
 
 ### Knotting
 
