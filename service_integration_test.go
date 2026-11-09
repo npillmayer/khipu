@@ -23,53 +23,52 @@ func TestParShapeAliasesLineShape(t *testing.T) {
 	}
 }
 
-// Exercise old constructor/type names across the new package boundaries. In
-// particular, aliases must retain the concrete face identity checked by shaping.
-func TestCompatibilityAcrossServicePackages(t *testing.T) {
-	var face *helpers.SyntheticFont = khipu.NewSyntheticFont()
-	var resolver *helpers.DefaultStyleResolver = khipu.NewDefaultStyleResolver()
-	style, err := resolver.ResolveStyle(nil, khipu.ResolvedRunStyle{
-		Font: face, EmSize: 10 * dimen.PT, Spacing: khipu.SpacingFixed,
+// Exercise canonical service contracts and helpers through paragraph encoding.
+func TestIntegrationAcrossServicePackages(t *testing.T) {
+	var face *helpers.SyntheticFont = helpers.NewSyntheticFont()
+	var resolver *helpers.DefaultStyleResolver = helpers.NewDefaultStyleResolver()
+	style, err := resolver.ResolveStyle(nil, contracts.ResolvedRunStyle{
+		Font: face, EmSize: 10 * dimen.PT, Spacing: contracts.SpacingFixed,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var metrics contracts.FontMetrics
-	metrics, err = (khipu.FontFace)(face).Metrics()
+	metrics, err = (contracts.FontFace)(face).Metrics()
 	if err != nil || metrics.UnitsPerEm != 1000 {
-		t.Fatalf("font alias does not preserve the contract: %+v, %v", metrics, err)
+		t.Fatalf("font does not satisfy the contract: %+v, %v", metrics, err)
 	}
-	stream, err := khipu.NewSyntheticStreamingShaper(1)
+	stream, err := helpers.NewSyntheticStreamingShaper(1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var shaper contracts.StreamingShaper = stream
-	if err := shaper.Shape(t.Context(), khipu.ShapeParams{Font: style.Font},
-		strings.NewReader("é"), khipu.ShapeBufferOptions{Flush: khipu.ShapeFlushCluster}); err != nil {
+	if err := shaper.Shape(t.Context(), contracts.ShapeParams{Font: style.Font},
+		strings.NewReader("é"), contracts.ShapeBufferOptions{Flush: contracts.ShapeFlushCluster}); err != nil {
 		t.Fatal(err)
 	}
 	if err := shaper.Finish(); err != nil {
 		t.Fatal(err)
 	}
-	var glyph khipu.ShapedGlyph = <-shaper.Glyphs()
+	var glyph contracts.ShapedGlyph = <-shaper.Glyphs()
 	if glyph.GlyphID != uint32('é')+1 || glyph.XAdvance != 500 {
-		t.Fatalf("unexpected glyph through compatibility names: %+v", glyph)
+		t.Fatalf("unexpected shaped glyph: %+v", glyph)
 	}
-	if err := shaper.SetInitialCluster(0); !errors.Is(err, khipu.ErrShaperClosed) {
+	if err := shaper.SetInitialCluster(0); !errors.Is(err, helpers.ErrShaperClosed) {
 		t.Fatalf("closed error identity changed: %v", err)
 	}
-	if khipu.ErrShaperBusy != helpers.ErrShaperBusy || khipu.ErrShaperClosed != helpers.ErrShaperClosed || khipu.ErrIllegalArguments != contracts.ErrIllegalArguments {
+	if khipu.ErrIllegalArguments != contracts.ErrIllegalArguments {
 		t.Fatal("error identities changed across packages")
 	}
 	if _, err := helpers.NewSyntheticStreamingShaper(-1); !errors.Is(err, khipu.ErrIllegalArguments) {
 		t.Fatalf("helper errors no longer match the root sentinel: %v", err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{Streaming: &khipu.StreamingConfig{
-		NewShaper: func() (khipu.StreamingShaper, error) { return khipu.NewSyntheticStreamingShaper(0) },
-		Resolver:  resolver, Defaults: khipu.ResolvedRunStyle{Font: face, EmSize: 14 * dimen.PT},
+		NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(0) },
+		Resolver:  resolver, Defaults: contracts.ResolvedRunStyle{Font: face, EmSize: 14 * dimen.PT},
 	}})
 	paragraph, err := owner.EncodeParagraph(t.Context(), encodingParagraph(t, "abc"))
 	if err != nil || paragraph.KnotByIndex(0).W != 21*dimen.PT {
-		t.Fatalf("streaming helper compatibility failed: %v, %v", paragraph, err)
+		t.Fatalf("streaming helper integration failed: %v, %v", paragraph, err)
 	}
 }

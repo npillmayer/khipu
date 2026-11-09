@@ -109,10 +109,9 @@ definitions without importing paragraph storage or default implementations.
 use `errors.Is(err, contracts.ErrIllegalArguments)` when checking it. Other
 failures follow the relevant service contract and implementation documentation.
 
-Root names such as `khipu.FontFace` and `khipu.ShapeParams` remain type aliases.
-`khipu.ErrIllegalArguments` retains the same sentinel identity. Prefer the
-canonical `contracts` names in new adapters. See
-[compatibility declarations](../compat.go) and the [integration guide](../README.md#integration-and-ownership).
+Import service types and constants directly from `contracts`; the root package
+does not re-export them. `khipu.ErrIllegalArguments` retains the same sentinel
+identity. See the [integration guide](../README.md#integration-and-ownership).
 
 For concrete usage, see the [helper guide](../helpers/ReadMe.md), the
 [encoding example](../helpers_example_test.go), and the

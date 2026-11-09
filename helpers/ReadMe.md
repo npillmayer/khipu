@@ -243,9 +243,9 @@ engine. Focused helper tests use these two packages. Examples that combine
 helpers with paragraph encoding live in external root tests. Future fixtures
 that inspect whole paragraphs belong in a separate testing package.
 
-Existing root type names and constructors remain available through
-[compatibility declarations](../compat.go); new code should import `helpers`
-directly. For the broader plan and coverage, see [TESTING.md](../doc/TESTING.md).
+Import helper types, constructors and shaper lifecycle errors from `helpers`
+directly; the root package does not re-export them. For the broader plan and
+coverage, see [TESTING.md](../doc/TESTING.md).
 Run the existing examples from the repository root with:
 
 ```sh

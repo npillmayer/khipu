@@ -191,9 +191,9 @@ Neither subpackage imports the root engine, and `contracts` does not import
 implementations. New adapters can depend on `contracts` without importing
 paragraph storage or default implementations.
 
-The original root names remain as type aliases and forwarding constructors in
-[compat.go](compat.go), including the original error identities. Prefer
-`contracts` and `helpers` in new code. Metric-specific aliases were removed.
+Import service types and constants from `contracts`, and synthetic implementations,
+constructors and shaper lifecycle errors from `helpers`. The root package does
+not re-export these APIs. `khipu.ErrIllegalArguments` shares the contract sentinel.
 
 ## Development And Release
 
