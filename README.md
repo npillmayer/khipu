@@ -133,13 +133,48 @@ The default backend uses `helpers.SyntheticFont` at 10 pt,
 `DefaultStyleResolver`, and a fresh `SyntheticStreamingShaper` per paragraph or
 fragment. Ordinary cells are 5 pt and spaces are elastic. It requires no installed
 fonts, rejects application-defined styles, and is not real font shaping.
-Glyph/source provenance is retained; final line materialization and freezing
-remain future work. See the [testing guide](doc/TESTING.md) for helper policies.
+Glyph/source provenance is retained. Logical/visual line materialization and
+glue-only freezing exist internally; the public freezing result contract remains
+future work. See the [testing guide](doc/TESTING.md) for helper policies.
 
 The metric encoder, `Config.Shaper`, `FixedWidthShaper` and `KnotStyler` have
 been removed. The sole encoding entry point is `EncodeParagraph(ctx, para)`;
-there is no width-adaptation replacement hook. See
-[the migration guide](doc/MIGRATION.md).
+there is no width-adaptation replacement hook.
+
+### Integration And Ownership
+
+Supply a complete `Config.Streaming` for an application backend. Its factory must
+return a fresh stream for every encoding or reshaping request; missing services
+or invalid defaults fail rather than silently falling back. The resolver maps
+styles to font, size, script, language, features and spacing. Defaults apply
+independently to original style spans before clipping to bidi intersections.
+See [service contracts](contracts/ReadMe.md) for scalar anchors, glyph ordering,
+font-unit conversion and stream lifecycle requirements.
+
+Configuration feature storage, Params and ParFillSkip are copied; collaborator
+instances and factories are retained. Serialize owner operations and keep source
+text/styles and services stable while paragraphs may be reshaped. Nil Params
+selects defaults, while supplied values preserve explicit zeros. Nil ParFillSkip
+selects zero natural/minimum width and infinite maximum width; supplied values
+preserve explicit zero widths.
+
+Encoding preserves original UTF-8 source bytes. Normalize before establishing
+styled ranges if desired. Paragraph-wide UAX#14/UAX#29 boundaries and logical
+bidi/style intersections feed the streaming shaper. Cluster boundaries alone do
+not authorize line breaks. Textboxes retain glyphs, shaping contexts and source
+spans; glue retains metrics and source metadata, not glyphs. Invalid UTF-8,
+anchors, width overflow or backend failures return no partial paragraph.
+Unsupported mandatory breaks fail explicitly. Every paragraph, including empty
+input, ends with a non-discardable fill carrying a forced-break penalty.
+
+U+00AD is suppressed before shaping while its source position is retained.
+Discretionary alternatives are shaped lazily through the owner, using retained
+run parameters, and published transactionally. Breakers return knot indices and
+publish selected variants only on success; failed runs preserve prior selections.
+`BreakpointPositions` maps decisions to original paragraph-relative byte endpoints,
+including whitespace and glyphless gaps. Selected variants require `SourceSplit`,
+independent of replacement spelling. Manual knots without retained provenance
+cannot be mapped; Pos/Len is not a fallback. See [hyphenation](doc/HYPHENATION.md).
 
 ## Package Structure
 
@@ -160,7 +195,7 @@ The original root names remain as type aliases and forwarding constructors in
 [compat.go](compat.go), including the original error identities. Prefer
 `contracts` and `helpers` in new code. Metric-specific aliases were removed.
 
-## Development And Migration
+## Development And Release
 
 The module declares Go 1.25.6 and currently replaces `cords` and `uax` with sibling
 checkouts (`../cords`, `../uax`). Validation uses those local dependencies:
@@ -173,6 +208,6 @@ go mod tidy -diff
 ```
 
 SOA is the only paragraph model. The legacy AOS APIs and `linebreak/kp` have been
-removed. See [the migration guide](doc/MIGRATION.md) for API changes and release
+removed. See the [testing guide](doc/TESTING.md#dependency-release-checks) for release
 limitations, and [the documentation index](doc/README.md) for implemented
 contracts, design history, and future work.

@@ -314,10 +314,19 @@ fonts and explicit expected shaping. Test metric arithmetic independently from
 linguistic policy. Do not weaken line-width or source-coverage assertions to
 accommodate a broken dependency.
 
+### Dependency Release Checks
+
 The repository uses sibling `cords` and `uax` replacements. Tests exercise those
-checkouts, not necessarily published dependency versions. The `cords`
-bounded-reader and iterator corrections noted in [MIGRATION.md](MIGRATION.md)
-must be released together with khipu.
+checkouts, not necessarily published dependency versions. Encoding regressions
+depend on corrections in `cords`: `cordext.ByteRangeBounded` read empty spans
+after the first chunk, `BoundedReader.Read` under-reported bytes, and btree
+iteration ignored early stop. These fixes must be available in the released
+dependency used with khipu; they are not part of a khipu-only commit.
+
+Before release, verify compatible published dependency versions without local
+replacements. Local test success does not establish that compatibility. Real-font
+adapters and visual proofs also require separate integration checks; synthetic
+materialization/freezing tests do not establish font-backed typography quality.
 
 ## Useful Default Implementations
 

@@ -3,7 +3,7 @@
 Reference for `linebreak/knuthplass`. It describes the contract, the algorithm,
 its parameters, the design decisions behind it and its known limits. The
 paragraph-level design is in [KHIPU_ALGORITHM.md](KHIPU_ALGORITHM.md#knuth-plass);
-cost formulas are detailed in [DEMERITS.md](DEMERITS.md), discretionary
+cost formulas are detailed in [KNUTH_PLASS_SCORING.md](KNUTH_PLASS_SCORING.md), discretionary
 discovery in [HYPHENATION.md](HYPHENATION.md). For a short orientation, start
 with the package documentation in [doc.go](../linebreak/knuthplass/doc.go).
 
@@ -76,7 +76,7 @@ A **penalty** belongs to the knot it follows: it is the cost of breaking after
 that knot. `InfinityDemerits` (10000) prohibits a break, `InfinityMerits`
 (−10000) forces one. The encoder maps every allowed Unicode line-break
 opportunity to penalty 0; only mandatory and prohibited boundaries keep their
-sentinels (see [DEMERITS.md](DEMERITS.md#unicode-boundary-translation)). Other
+sentinels (see [KNUTH_PLASS_SCORING.md](KNUTH_PLASS_SCORING.md#unicode-boundary-translation)). Other
 penalty values come from hand-built knots or from discretionary fragments.
 
 A **breakpoint** is a `BreakRef{At, Variant}`. Variant 0 is an ordinary break
@@ -165,7 +165,7 @@ with `p = 0`. Discretionary breaks use the penalty of their `PreBreak` fragment
 and add `FirstHyphenDemerits` if they end the first line. A transition into the
 paragraph end adds `FinalHyphenDemerits` if the last line starts after a
 discretionary break. Costs are 64-bit, so repeated fallback demerits cannot
-wrap around. See [DEMERITS.md](DEMERITS.md).
+wrap around. See [KNUTH_PLASS_SCORING.md](KNUTH_PLASS_SCORING.md).
 
 ### Retirement
 
@@ -391,7 +391,7 @@ cannot prove that future lines are uniform.
 
 - **No fitness classes**, hence no `\adjdemerits`. Adding them would refine
   states and interact with retirement and compaction; see
-  [DEMERITS.md](DEMERITS.md).
+  [KNUTH_PLASS_SCORING.md](KNUTH_PLASS_SCORING.md).
 - **No demerits for consecutive hyphenated lines** (`\doublehyphendemerits`).
   `FirstHyphenDemerits` has no TeX counterpart.
 - **Lazy, local hyphenation** as described above, rather than hyphenating every

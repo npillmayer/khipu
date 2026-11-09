@@ -472,7 +472,7 @@ Each pass has the following structure:
 
 Demerits follow TeX: `(LinePenalty + b)² ± p²` for line badness `b` and break
 penalty `p`, plus extra demerits for hyphenated lines. See
-[DEMERITS.md](DEMERITS.md) and [KNUTH+PLASS.md](KNUTH+PLASS.md).
+[KNUTH_PLASS_SCORING.md](KNUTH_PLASS_SCORING.md) and [KNUTH+PLASS.md](KNUTH+PLASS.md).
 
 **Merging line counts.** States at the same breakpoint that differ only in the
 number of lines before them face different futures only if the remaining lines
@@ -742,7 +742,7 @@ to TeX.
 deterministic test/simple-layout shaping, not real font shaping. Applications
 supply a complete `Config.Streaming` with shaper factory, style resolver and
 defaults. There is no metric-only encoding path. See
-[MIGRATION.md](MIGRATION.md).
+[the integration guide](../README.md#integration-and-ownership).
 
 ### Code Map
 
@@ -793,7 +793,7 @@ Remaining deviations in `linebreak/knuthplass`:
 
 - **No fitness classes** (TeX's `\adjdemerits`) and **no demerits for
   consecutive hyphenated lines** (`\doublehyphendemerits`). See
-  [DEMERITS.md](DEMERITS.md).
+  [KNUTH_PLASS_SCORING.md](KNUTH_PLASS_SCORING.md).
 - **Merging line counts only for the built-in rectangle.** The `LineShape`
   interface cannot state that all lines from some number on have the same
   width, so only `linebreak.RectangularParShape` is recognized. Custom shapes,

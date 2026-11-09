@@ -1,4 +1,4 @@
-# Demerits Calculation: TeX vs Current Implementation
+# Knuth-Plass Scoring: TeX vs Current Implementation
 
 This note compares the demerits and badness calculation described in
 [the Knuth–Plass paper](knuthplass.pdf) with the current

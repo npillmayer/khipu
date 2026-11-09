@@ -3,7 +3,7 @@
 Streaming shaping and style resolution are integrated into paragraph encoding
 and discretionary reshaping. The metric-only `Shaper` has been removed;
 `RuneReader` remains the streaming input contract. See
-[the migration guide](../doc/MIGRATION.md).
+[the integration guide](../README.md#integration-and-ownership).
 
 `github.com/npillmayer/khipu/contracts` defines the font, shaping, and style
 services used by khipu. Implement an adapter against this package when providing
@@ -112,7 +112,7 @@ failures follow the relevant service contract and implementation documentation.
 Root names such as `khipu.FontFace` and `khipu.ShapeParams` remain type aliases.
 `khipu.ErrIllegalArguments` retains the same sentinel identity. Prefer the
 canonical `contracts` names in new adapters. See
-[compatibility declarations](../compat.go) and the [migration guide](../doc/MIGRATION.md).
+[compatibility declarations](../compat.go) and the [integration guide](../README.md#integration-and-ownership).
 
 For concrete usage, see the [helper guide](../helpers/ReadMe.md), the
 [encoding example](../helpers_example_test.go), and the
