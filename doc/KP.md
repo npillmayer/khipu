@@ -76,7 +76,7 @@ is unchanged. Overfull working states/seeds are retired after discretionary
 rescue; historical predecessors and retirement tombstones remain. Negative
 minimum widths or unsafe sums disable early pruning. See [RETIREMENT.md](RETIREMENT.md).
 The horizon contains active `BreakRef` values. Despite its historical name,
-`constructBreakpointGraph` now builds predecessor states, not a general graph.
+`buildBreakpointPaths` builds predecessor states, not a general graph.
 
 For built-in rectangular shapes, each completed ordinary boundary retains only
 its cheapest working state across line counts (fewer lines wins a cost tie).
@@ -203,7 +203,7 @@ forward for a textbox; tight lines look backward. These local scans avoid
 storing textbox identities on every path.
 Pass 3 uses emergency-adjusted badness for this threshold. Explicit markers
 request discovery independently of badness. The historical helper names
-`hyphenationCandidateForPass2` and `requestPass2Discretionaries` cover both passes.
+`hyphenationCandidateForLine` and `requestDiscretionariesForLine` cover both passes.
 
 `Khipukamayuq` coordinates its `Hyphenator` and `Shaper`, measures pre-break
 and post-break fragments, assigns their penalty, and caches candidates.
@@ -281,9 +281,9 @@ Then follow `BreakParagraph` into `selectParagraphBreaks` in `passes.go` and
 boundary commit. Read `path.go` for retained predecessor history, not active
 state management; retirement deletes working bookkeeping and seeds while keeping
 the history needed by collection. `geometry.go` and `evaluation_cache.go` explain
-classification and its boundary-local reuse. The graph and Pass2 helper names
-are historical; neither implies a second graph representation or a pass-2-only
-discovery path.
+classification and its boundary-local reuse. `buildBreakpointPaths` drives the
+scan; `hyphenationCandidateForLine` and `requestDiscretionariesForLine` implement
+discovery shared by passes 2 and 3.
 
 ## Verification
 

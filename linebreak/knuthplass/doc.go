@@ -70,9 +70,9 @@
 // states; geometry.go classifies line geometry; knuthplass.go manages working
 // bookkeeping, demerits and collection; path.go stores predecessor history;
 // discretionary.go discovers and evaluates replacements; evaluation_cache.go
-// owns boundary-local reuse. The historical constructBreakpointGraph name now
-// refers to predecessor-table construction, not a general graph. Helpers named
-// Pass2 also serve emergency-pass discovery.
+// owns boundary-local reuse. buildBreakpointPaths drives the knot scan and
+// predecessor-table construction. hyphenationCandidateForLine and
+// requestDiscretionariesForLine serve both hyphenating passes (2 and 3).
 //
 // This is not a complete TeX implementation: fitness classes and consecutive
 // discretionary demerits are not modeled, and lazy discovery does not enumerate

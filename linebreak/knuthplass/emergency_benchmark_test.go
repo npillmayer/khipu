@@ -119,7 +119,7 @@ func diagnoseEmergencyWorkload(tb testing.TB, tc emergencyWorkload, words int) e
 		kp.hyphenating, kp.final, kp.emergencyStretch = pass.hyphenating, pass.final, pass.emergencyStretch
 		enableWorkMetrics(kp)
 		requests, calls := f.provider.requests, f.policyCalls()
-		if err := kp.constructBreakpointGraph(f.khp); err != nil {
+		if err := kp.buildBreakpointPaths(f.khp); err != nil {
 			tb.Fatal(err)
 		}
 		refs, quality, complete := kp.collectOptimalBreakRefs(kp.end)

@@ -487,7 +487,7 @@ func calcBadness(segwss WSS, linelen dimen.DU) (merits, bool) {
 }
 
 // calcDemerits computes line demerits from a precomputed badness value.
-// Forced breaks are handled in constructBreakpointGraph and therefore reach
+// Forced breaks are handled in buildBreakpointPaths and therefore reach
 // this function with a neutralized penalty.
 //
 // The shape follows the TeX idea:
@@ -558,13 +558,13 @@ func (kp *linebreaker) snapshotHorizon() []BreakRef {
 	return kp.horizonScratch
 }
 
-// constructBreakpointGraph scans SOA knot indices and maintains a horizon of
+// buildBreakpointPaths scans SOA knot indices and maintains a horizon of
 // active BreakRefs. For each permitted boundary, it evaluates transitions from
 // active origins and records the cheapest predecessor for each line count.
 // Forced boundaries retire earlier origins; discretionary variants seed the
 // following line with their post-break fragment. Collection follows the
 // predecessor table to recover the single cheapest complete path.
-func (kp *linebreaker) constructBreakpointGraph(khp *khipu.Khipu) error {
+func (kp *linebreaker) buildBreakpointPaths(khp *khipu.Khipu) error {
 	if khp == nil || len(khp.W) == 0 {
 		return ErrNoBreakpoints
 	}

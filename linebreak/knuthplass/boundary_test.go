@@ -204,7 +204,7 @@ func TestNegativeWidthsDisablePruningIncludingTrailer(t *testing.T) {
 		khp := newKhipu(nodes)
 		khp.SetKnotFlags(1, 0) // retained negative width, not a trailing trim
 		kp, _ := prepareLineBreaker(khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}, nil)
-		if err := kp.constructBreakpointGraph(khp); err != nil {
+		if err := kp.buildBreakpointPaths(khp); err != nil {
 			t.Fatal(err)
 		}
 		breaks, _, ok := kp.collectOptimalBreakpoints(kp.end)
@@ -272,7 +272,7 @@ func TestForcedFallbackWhenPruningIsDisabled(t *testing.T) {
 	})
 	kp, _ := prepareLineBreaker(khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}, nil)
 	kp.final = true
-	if err := kp.constructBreakpointGraph(khp); err != nil {
+	if err := kp.buildBreakpointPaths(khp); err != nil {
 		t.Fatal(err)
 	}
 	breaks, q, ok := kp.collectOptimalBreakpoints(kp.end)

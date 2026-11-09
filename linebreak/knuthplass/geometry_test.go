@@ -117,7 +117,7 @@ func TestSharedClassificationUsesCurrentPassTolerance(t *testing.T) {
 			t.Fatalf("secondPass=%v ordinary=%+v", secondPass, evals)
 		}
 		kp.paths[kp.root][0] = bookkeeping{}
-		// Direct scoring tests the common threshold; the graph controls whether
+		// Direct scoring tests the common threshold; the path search controls whether
 		// discretionary scoring is invoked at all in a non-hyphenating pass.
 		cands := kp.evaluateDiscretionaryCandidates(khp, kp.root, 0, 0)
 		if (len(cands) == 1) != secondPass {

@@ -110,7 +110,7 @@ func BenchmarkFirstPassLorem(b *testing.B) {
 				b.Fatal(err)
 			}
 			enableWorkMetrics(kp)
-			if err = kp.constructBreakpointGraph(khp); err != nil {
+			if err = kp.buildBreakpointPaths(khp); err != nil {
 				b.Fatal(err)
 			}
 			var ok bool

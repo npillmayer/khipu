@@ -100,7 +100,7 @@ func breakParagraphPassRefs(khp *khipu.Khipu, layout khipu.Params,
 		return result, err
 	}
 	kp.hyphenating, kp.final, kp.emergencyStretch = pass.hyphenating, pass.final, pass.emergencyStretch
-	if err := kp.constructBreakpointGraph(khp); err != nil {
+	if err := kp.buildBreakpointPaths(khp); err != nil {
 		// Reporting belongs to the caller; return the original provider/input
 		// error without logging it again at this internal pass boundary.
 		return result, err

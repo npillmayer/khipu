@@ -75,7 +75,7 @@ func TestUniformCompactionEquivalence(t *testing.T) {
 									}
 								}
 								kp.compactUniform = compact && kp.compactUniform
-								if err := kp.constructBreakpointGraph(khp); err != nil {
+								if err := kp.buildBreakpointPaths(khp); err != nil {
 									t.Fatal(err)
 								}
 								got, q, ok := kp.collectOptimalBreakRefs(kp.end)
@@ -132,7 +132,7 @@ func TestUniformCompactionLongParagraph(t *testing.T) {
 		for _, compact := range []bool{false, true} {
 			kp, khp := uniformFixture(t, 1000, linebreak.RectangularParShape(150*dimen.PT), mode, pass, false, false)
 			kp.compactUniform = compact && kp.compactUniform
-			if err := kp.constructBreakpointGraph(khp); err != nil {
+			if err := kp.buildBreakpointPaths(khp); err != nil {
 				t.Fatal(err)
 			}
 			got, q, ok := kp.collectOptimalBreakRefs(kp.end)
@@ -162,7 +162,7 @@ func TestUniformCompactionEmergencyAndFallback(t *testing.T) {
 				}
 				kp.hyphenating, kp.final, kp.emergencyStretch = pass.hyphenating, pass.final, pass.emergencyStretch
 				kp.compactUniform = compact && kp.compactUniform
-				if err := kp.constructBreakpointGraph(fixture.khp); err != nil {
+				if err := kp.buildBreakpointPaths(fixture.khp); err != nil {
 					t.Fatal(err)
 				}
 				got, q, ok := kp.collectOptimalBreakRefs(kp.end)
@@ -195,7 +195,7 @@ func BenchmarkUniformCompaction(b *testing.B) {
 						kp.compactUniform = compact && kp.compactUniform
 						enableWorkMetrics(kp)
 						b.StartTimer()
-						err := kp.constructBreakpointGraph(khp)
+						err := kp.buildBreakpointPaths(khp)
 						breaks, q, ok := kp.collectOptimalBreakRefs(kp.end)
 						b.StopTimer()
 						if err != nil || !ok {

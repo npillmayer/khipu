@@ -14,6 +14,8 @@ checked against the SOA-only code on November 4, 2026.
 ## Current Status
 
 The active runtime implementation no longer uses `graph.go`.
+The scan entry point is now named `buildBreakpointPaths`; references to
+`constructBreakpointGraph` below retain the historical name used in the inventory.
 
 The package now uses `path.go`, which implements:
 

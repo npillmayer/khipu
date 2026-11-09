@@ -66,8 +66,8 @@ func TestCollectOptimalBreakpointsTracksWorstBadness(t *testing.T) {
 		t.Fatalf("prepareLineBreaker failed: %v", err)
 	}
 	kp.final = true // exercise worst-badness collection through a final fallback
-	if err := kp.constructBreakpointGraph(khp); err != nil {
-		t.Fatalf("constructBreakpointGraph failed: %v", err)
+	if err := kp.buildBreakpointPaths(khp); err != nil {
+		t.Fatalf("buildBreakpointPaths failed: %v", err)
 	}
 	breakpoints, quality, ok := kp.collectOptimalBreakpoints(kp.end)
 	if !ok {

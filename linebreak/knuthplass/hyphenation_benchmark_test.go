@@ -65,7 +65,7 @@ func hyphenatingLorem(tb testing.TB, words int) (*khipu.Khipu, *linebreaker, *co
 }
 
 // BenchmarkSecondPassHyphenatingLorem includes lazy discovery, fragment shaping,
-// graph construction and optimal-path collection, but not paragraph encoding or
+// path construction and optimal-path collection, but not paragraph encoding or
 // breaker setup. Every iteration starts with a fresh owner/Khipu: warming the
 // discretionary cache across iterations would hide part of the workload.
 // Smaller sizes than the ordinary benchmark keep the rescan-heavy case usable.
@@ -81,7 +81,7 @@ func BenchmarkSecondPassHyphenatingLorem(b *testing.B) {
 				khp, kp, provider, policy := hyphenatingLorem(b, words)
 				enableWorkMetrics(kp)
 				b.StartTimer()
-				err := kp.constructBreakpointGraph(khp)
+				err := kp.buildBreakpointPaths(khp)
 				breaks, quality, ok := kp.collectOptimalBreakRefs(kp.end)
 				b.StopTimer()
 				reportWorkMetrics(b, kp)
@@ -117,7 +117,7 @@ func BenchmarkSecondPassHyphenatingLorem(b *testing.B) {
 
 func TestHyphenatingLoremExercisesColdDiscoveryAndPaths(t *testing.T) {
 	khp, kp, provider, policy := hyphenatingLorem(t, 25)
-	if err := kp.constructBreakpointGraph(khp); err != nil {
+	if err := kp.buildBreakpointPaths(khp); err != nil {
 		t.Fatal(err)
 	}
 	breaks, _, ok := kp.collectOptimalBreakRefs(kp.end)
@@ -153,10 +153,10 @@ func TestHyphenatingLoremTightStateRequestsCachedCandidates(t *testing.T) {
 		t.Fatalf("fixture did not produce a screened-out tight state: %+v", ev)
 	}
 	for range 2 {
-		if err := kp.requestPass2Discretionaries(khp, breakpoint, ev); err != nil {
+		if err := kp.requestDiscretionariesForLine(khp, breakpoint, ev); err != nil {
 			t.Fatal(err)
 		}
-		candidate, ok := hyphenationCandidateForPass2(khp, breakpoint, ev)
+		candidate, ok := hyphenationCandidateForLine(khp, breakpoint, ev)
 		if !ok || candidate != breakpoint-1 || len(khp.DiscretionariesAt(candidate)) != 1 {
 			t.Fatal("expected a cached alternative behind the current breakpoint")
 		}

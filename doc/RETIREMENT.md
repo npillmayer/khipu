@@ -55,7 +55,8 @@ Merging states that differ only in line count is a separate, later step; see
 
 ### Current Behavior
 
-In `constructBreakpointGraph`, for every active breakpoint `S` and every
+In `constructBreakpointGraph` (the historical name of `buildBreakpointPaths`),
+for every active breakpoint `S` and every
 permitted breakpoint `E`, `evaluateCandidates(S, …)` evaluates all states of
 `S`. It returns `canReach = true` if *any* state of `S` yields an adjustment
 ratio (`calcAdjustmentRatio`). If `canReach` is false, `S` is removed from the

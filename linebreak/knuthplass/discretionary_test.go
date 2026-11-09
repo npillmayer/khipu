@@ -119,26 +119,26 @@ func TestScanStopsAtNonTextboxNonDiscardable(t *testing.T) {
 	}
 }
 
-func TestHyphenationCandidateForLoosePass2Line(t *testing.T) {
+func TestHyphenationCandidateForLooseLine(t *testing.T) {
 	khp := newKhipu([]node{
 		{w: 20, minw: 20, maxw: 20, p: -100, kind: khipu.KTTextBox},
 		{w: 5, minw: 5, maxw: 5, p: 0, kind: khipu.KTGlue},
 		{w: 30, minw: 30, maxw: 30, p: InfinityDemerits, kind: khipu.KTTextBox},
 	})
 	ev := lineEvaluation{disposition: lineAccepted, ratio: 0.5, badness: 137}
-	candidate, ok := hyphenationCandidateForPass2(khp, 0, ev)
+	candidate, ok := hyphenationCandidateForLine(khp, 0, ev)
 	if !ok || candidate != 2 {
 		t.Fatalf("expected loose pass-2 candidate at 2, got %d ok=%v", candidate, ok)
 	}
 }
 
-func TestHyphenationCandidateForTightPass2Line(t *testing.T) {
+func TestHyphenationCandidateForTightLine(t *testing.T) {
 	khp := newKhipu([]node{
 		{w: 20, minw: 20, maxw: 20, p: InfinityDemerits, kind: khipu.KTTextBox},
 		{w: 5, minw: 5, maxw: 5, p: 0, kind: khipu.KTGlue},
 	})
 	ev := lineEvaluation{disposition: lineScreenedOut, ratio: -0.5, badness: 250}
-	candidate, ok := hyphenationCandidateForPass2(khp, 1, ev)
+	candidate, ok := hyphenationCandidateForLine(khp, 1, ev)
 	if !ok || candidate != 0 {
 		t.Fatalf("expected tight pass-2 candidate at 0, got %d ok=%v", candidate, ok)
 	}

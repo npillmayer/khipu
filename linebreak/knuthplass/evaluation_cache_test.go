@@ -158,7 +158,7 @@ func TestBoundaryEvaluationsEndOnProviderError(t *testing.T) {
 		{w: 150, minw: 150, maxw: 150, p: InfinityDemerits, kind: khipu.KTTextBox},
 		{maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
-	if err := kp.constructBreakpointGraph(khp); !errors.Is(err, want) || kp.boundaryEvals.active {
+	if err := kp.buildBreakpointPaths(khp); !errors.Is(err, want) || kp.boundaryEvals.active {
 		t.Fatal("error escaped active boundary scope", err)
 	}
 }

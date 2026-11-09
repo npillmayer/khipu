@@ -126,11 +126,11 @@ func (kp *linebreaker) wantsHyphenation(ev lineEvaluation) bool {
 	return ev.disposition == lineOverfull || ev.badness > kp.params.PreTolerance
 }
 
-// hyphenationCandidateForPass2 picks the textbox to consult for one bad line:
+// hyphenationCandidateForLine picks the textbox to consult for one bad line:
 // loose lines ask for the next box that did not fit, tight lines ask for the
-// last box that is already on the line. Despite its historical name, it is used
-// by both hyphenating passes (2 and 3).
-func hyphenationCandidateForPass2(khp *khipu.Khipu, breakpoint kinx, ev lineEvaluation) (kinx, bool) {
+// last box that is already on the line. Both hyphenating passes (2 and 3) use
+// this same selection rule.
+func hyphenationCandidateForLine(khp *khipu.Khipu, breakpoint kinx, ev lineEvaluation) (kinx, bool) {
 	if khp == nil || breakpoint < 0 || breakpoint >= len(khp.Kind) {
 		return noinx, false
 	}
@@ -156,15 +156,15 @@ func hyphenationCandidateForPass2(khp *khipu.Khipu, breakpoint kinx, ev lineEval
 	}
 }
 
-// requestPass2Discretionaries performs lazy candidate discovery for one local
+// requestDiscretionariesForLine performs lazy candidate discovery for one local
 // situation in pass 2 or 3. It does not decide which discretionary to use; it only
 // ensures the relevant candidates are available on the Khipu for subsequent
 // evaluation.
-func (kp *linebreaker) requestPass2Discretionaries(khp *khipu.Khipu, breakpoint kinx, ev lineEvaluation) error {
+func (kp *linebreaker) requestDiscretionariesForLine(khp *khipu.Khipu, breakpoint kinx, ev lineEvaluation) error {
 	if !kp.wantsHyphenation(ev) {
 		return nil
 	}
-	candidate, ok := hyphenationCandidateForPass2(khp, breakpoint, ev)
+	candidate, ok := hyphenationCandidateForLine(khp, breakpoint, ev)
 	if !ok {
 		return nil
 	}

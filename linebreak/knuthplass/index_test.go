@@ -39,7 +39,7 @@ func TestIndexedCorpusBaseline(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := kp.constructBreakpointGraph(khp); err != nil {
+		if err := kp.buildBreakpointPaths(khp); err != nil {
 			t.Fatal(err)
 		}
 		breaks, quality, ok := kp.collectOptimalBreakRefs(kp.end)

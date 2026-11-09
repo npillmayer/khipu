@@ -62,11 +62,11 @@ func (kp *linebreaker) processKnot(khp *khipu.Khipu, last kinx) (bool, error) {
 			if !kp.wantsHyphenation(ev) {
 				continue
 			}
-			candidate, ok := hyphenationCandidateForPass2(khp, last, ev)
+			candidate, ok := hyphenationCandidateForLine(khp, last, ev)
 			if !ok || candidate <= from.At || khp.Penalty[candidate] <= InfinityMerits {
 				continue
 			}
-			if err := kp.requestPass2Discretionaries(khp, last, ev); err != nil {
+			if err := kp.requestDiscretionariesForLine(khp, last, ev); err != nil {
 				return false, err
 			}
 			for _, cand := range kp.evaluateDiscretionaryLine(khp, from, ev.line, last, candidate) {

@@ -56,7 +56,7 @@ func TestEmptyDiscoveryCachePreservesPassWork(t *testing.T) {
 				}
 				kp.final, kp.hyphenating = true, true
 				enableWorkMetrics(kp)
-				if err := kp.constructBreakpointGraph(khp); err != nil {
+				if err := kp.buildBreakpointPaths(khp); err != nil {
 					t.Fatal(err)
 				}
 				breaks, quality, ok := kp.collectOptimalBreakRefs(kp.end)
@@ -141,7 +141,7 @@ func BenchmarkRetirementWorkloads(b *testing.B) {
 						kp.final, kp.hyphenating = true, mode != "ordinary"
 						enableWorkMetrics(kp)
 						b.StartTimer()
-						err = kp.constructBreakpointGraph(khp)
+						err = kp.buildBreakpointPaths(khp)
 						breaks, quality, ok := kp.collectOptimalBreakRefs(kp.end)
 						b.StopTimer()
 						if err != nil || !ok || len(breaks) == 0 || breaks[len(breaks)-1] != kp.end {
