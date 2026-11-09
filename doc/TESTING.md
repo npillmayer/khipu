@@ -506,8 +506,14 @@ diagnostics from actual glyph rendering.
 
 ### Structural Diagnostics Without a Font Backend
 
-Start with a CLI that emits SVG and a machine-readable dump. A useful first
-diagram would show:
+`khipu-cli view` now emits a frozen-result SVG using the reusable
+`debug.WriteFrozenSVG` writer. Tests cover deterministic XML, escaping, width
+guides, writer errors, both breakers, LTR/RTL, explicit soft hyphens, empty input,
+file/stdin paths, invalid input and cancellation without output replacement.
+See [the CLI guide](../khipu-cli/README.md). Synthetic metrics establish structural
+contracts, not typography. Machine-readable dumps remain future work.
+
+A future elastic-input view could additionally show:
 
 - textboxes at their measured natural widths
 - distinct glue regions with stretch/shrink capacities
@@ -520,9 +526,9 @@ use its ordinary UI font for those labels; the diagram does not require khipu
 to load a font or shape glyphs. Represent special fill capacities symbolically
 rather than drawing them as enormous finite widths.
 
-Initially, show elastic widths and break decisions. Do not imply that these are
-final justified positions or visual bidi order. A standalone CLI artifact is a
-smaller first step than a web application and can accompany a failing test.
+An elastic-input view must not imply final justified positions or visual bidi
+order. The current frozen view does use final widths and physical knot order,
+but deliberately does not assign page origins or font-derived heights.
 
 ### Glyph Proofs Later
 

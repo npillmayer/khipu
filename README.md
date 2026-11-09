@@ -226,6 +226,20 @@ Only glue adjusts currently: elastic non-glue material returns
 renderer boxes or drawing output. See [freezing](doc/FREEZE.md#public-api) and
 [the result contract](doc/FROZEN-API.md) for ownership and coordinate details.
 
+## Visual Diagnostics
+
+`khipu-cli view` runs synthetic encoding, line breaking and freezing and writes a
+standalone SVG of final advance widths, glue, skips, fill and fit diagnostics:
+
+```sh
+printf 'Hello world, a structural proof.' | go run ./khipu-cli view --width 90 --output proof.svg
+```
+
+This is a structural diagram, not glyph rendering. It requires no OpenType or
+installed fonts. Downstream clients can visualize their own frozen results with
+`debug.WriteFrozenSVG`. See [the CLI guide](khipu-cli/README.md) for options,
+interpretation and limitations.
+
 ## Package Structure
 
 | Package | Responsibility |

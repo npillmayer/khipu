@@ -11,6 +11,9 @@
 # Test binary, built with `go test -c`
 *.test
 
+# CLI binary
+khipu-cli/khipu-cli
+
 # Code coverage profiles and other test artifacts
 *.out
 coverage.*
