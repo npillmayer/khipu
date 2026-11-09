@@ -135,7 +135,7 @@ fragment. Ordinary cells are 5 pt and spaces are elastic. It requires no install
 fonts, rejects application-defined styles, and is not real font shaping.
 Glyph/source provenance is retained. Logical/visual line materialization and
 glue-only freezing exist internally. Opaque `FrozenKhipu` result queries are
-implemented; the public `Freeze` construction entry point remains future work.
+implemented, with public `Khipukamayuq.Freeze(ctx, input, breaks, layout)` construction.
 See the [result contract](doc/FROZEN-API.md) and [testing guide](doc/TESTING.md).
 
 The metric encoder, `Config.Shaper`, `FixedWidthShaper` and `KnotStyler` have
@@ -176,6 +176,55 @@ publish selected variants only on success; failed runs preserve prior selections
 including whitespace and glyphless gaps. Selected variants require `SourceSplit`,
 independent of replacement spelling. Manual knots without retained provenance
 cannot be mapped; Pos/Len is not a fallback. See [hyphenation](doc/HYPHENATION.md).
+
+## Freezing
+
+After encoding and line breaking, freeze the chosen decisions into an opaque,
+read-only `FrozenKhipu`. Resolve geometry once and pass the same `layout` to both
+operations. Freeze before another breaker run replaces the input's selected
+discretionaries.
+
+```go
+input, err := owner.EncodeParagraph(ctx, para)
+if err != nil {
+    return err
+}
+layout := firstfit.DefaultLayout(linebreak.RectangularParShape(100 * dimen.PT))
+breaks, err := firstfit.BreakParagraph(input, layout, nil)
+if err != nil {
+    return err
+}
+frozen, err := owner.Freeze(ctx, input, breaks, layout)
+if err != nil {
+    return err
+}
+for i := 0; i < frozen.LineCount(); i++ {
+    line, _ := frozen.Line(i)
+    // line.Width is the actual width; line.TargetWidth is the requested width.
+    // Inspect line.Fit, Residual, Ratio and Badness for imperfect fits.
+    for j := 0; j < line.KnotCount; j++ {
+        knot, _ := frozen.Knot(line.FirstKnot + j)
+        _ = knot // Final width, kind, flags, source range and material role.
+    }
+}
+```
+
+This fragment belongs in an error-returning function; the executable
+[`ExampleKhipukamayuq_Freeze`](example_test.go) shows a complete call sequence.
+Knuth-Plass can replace firstfit using its own resolved layout profile.
+
+`CopyText(knotIndex)` returns independent glyph, cluster and feature snapshots;
+`SourceReader(ByteRange)` reads retained original text without flattening it.
+Line/knot indices are zero-based. Knots are in physical left-to-right order
+within each line; retained glyph arrays are not reversed.
+
+Pass a nonnil context. Cancellation returns no partial result and preserves the
+input for retry; synchronous shape calls cannot be interrupted mid-call.
+Overfull/underfull lines are successful results with diagnostics, not errors.
+Only glue adjusts currently: elastic non-glue material returns
+`ErrUnsupportedAdjustment`. Frozen output has no unfreeze operation and is not
+renderer boxes or drawing output. See [freezing](doc/FREEZE.md#public-api) and
+[the result contract](doc/FROZEN-API.md) for ownership and coordinate details.
 
 ## Package Structure
 

@@ -1,6 +1,7 @@
 package khipu
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"slices"
@@ -14,7 +15,7 @@ import (
 func TestWidthPlanGeometry(t *testing.T) {
 	p := geometryFixture(t)
 	left, right := allocationItem(dimen.PT, 0, 10*dimen.PT), allocationItem(2*dimen.PT, 0, 10*dimen.PT)
-	g, err := p.prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 20 * dimen.PT }), LeftSkip: left, RightSkip: right})
+	g, err := p.prepareGeometry(context.Background(), Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 20 * dimen.PT }), LeftSkip: left, RightSkip: right})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +70,7 @@ func TestWidthPlanRTLAndFillOrders(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, order := range []dimen.DU{dimen.Fil, dimen.Fill, dimen.Filll} {
-			g, err := owner.materializeLineGeometry(k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 25*dimen.PT + 5 }), LeftSkip: allocationItem(0, 0, order), RightSkip: KnotCore{}})
+			g, err := owner.materializeLineGeometry(context.Background(), k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 25*dimen.PT + 5 }), LeftSkip: allocationItem(0, 0, order), RightSkip: KnotCore{}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -95,7 +96,7 @@ func TestWidthPlanRTLAndFillOrders(t *testing.T) {
 			if plan.leftSkip != wantLeft || plan.rightSkip != 0 || plan.content[at] != wantFill {
 				t.Fatal(dir, order, plan)
 			}
-			frozen, err := g.freeze()
+			frozen, err := g.freeze(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -116,7 +117,7 @@ func TestWidthPlanElasticTextboxIsOnlyProposal(t *testing.T) {
 	p := geometryFixture(t)
 	// Model a future measured textbox capacity, without altering its glyphs.
 	p.lines[0].knots[0].core.MaxW += 10
-	g, err := p.prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10*dimen.PT + 5 }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
+	g, err := p.prepareGeometry(context.Background(), Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10*dimen.PT + 5 }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +135,7 @@ func TestWidthPlanElasticTextboxIsOnlyProposal(t *testing.T) {
 func TestWidthPlanRejectsStaleGeometry(t *testing.T) {
 	for _, mode := range []string{"content", "natural", "delta", "target"} {
 		t.Run(mode, func(t *testing.T) {
-			g, err := geometryFixture(t).prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
+			g, err := geometryFixture(t).prepareGeometry(context.Background(), Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
 			if err != nil {
 				t.Fatal(err)
 			}

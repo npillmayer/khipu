@@ -1,6 +1,7 @@
 package khipu
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"slices"
@@ -19,7 +20,7 @@ func (f geometryShapeFunc) LineLength(n int32) dimen.DU { return f(n) }
 func geometryFixture(t *testing.T) *visualParagraph {
 	t.Helper()
 	_, k := logicalTestParagraph(t, "aa bb")
-	p, err := l1Materialized(t, k, 3).visualLines()
+	p, err := l1Materialized(t, k, 3).visualLines(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +35,7 @@ func TestLineGeometrySnapshot(t *testing.T) {
 	targets := []dimen.DU{15 * dimen.PT, 0} // insufficient shrink is NOT a stage-1 error
 	var calls []int32
 	shape := geometryShapeFunc(func(n int32) dimen.DU { calls = append(calls, n); return targets[n-1] })
-	got, err := p.prepareGeometry(Params{LineShape: shape, LeftSkip: left, RightSkip: right})
+	got, err := p.prepareGeometry(context.Background(), Params{LineShape: shape, LeftSkip: left, RightSkip: right})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +76,7 @@ func TestLineGeometryPhysicalEdgesAndFill(t *testing.T) {
 				}
 				left := KnotCore{W: 2, MinW: 2, MaxW: 2}
 				right := KnotCore{W: 3, MinW: 3, MaxW: 3}
-				got, err := owner.materializeLineGeometry(k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 100 * dimen.PT }), LeftSkip: left, RightSkip: right})
+				got, err := owner.materializeLineGeometry(context.Background(), k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 100 * dimen.PT }), LeftSkip: left, RightSkip: right})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -106,7 +107,7 @@ func TestLineGeometryPhysicalEdgesAndFill(t *testing.T) {
 func TestLineGeometryNegativeFiniteSkip(t *testing.T) {
 	p := geometryFixture(t)
 	left := KnotCore{W: -5, MinW: -7, MaxW: -1}
-	got, err := p.prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 1 }), LeftSkip: left, RightSkip: KnotCore{}})
+	got, err := p.prepareGeometry(context.Background(), Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 1 }), LeftSkip: left, RightSkip: KnotCore{}})
 	if err != nil || got.lines[0].naturalWidth != p.lines[0].naturalWidth-5 {
 		t.Fatal(got, err)
 	}
@@ -164,7 +165,7 @@ func TestLineGeometryFailures(t *testing.T) {
 			if p != nil && len(p.lines) > 0 {
 				before = slices.Clone(p.lines[0].knots)
 			}
-			got, err := p.prepareGeometry(Params{LineShape: shape, LeftSkip: left, RightSkip: right})
+			got, err := p.prepareGeometry(context.Background(), Params{LineShape: shape, LeftSkip: left, RightSkip: right})
 			if got != nil || !errors.Is(err, ErrIllegalArguments) {
 				t.Fatal("accepted invalid geometry", got, err)
 			}
@@ -175,7 +176,7 @@ func TestLineGeometryFailures(t *testing.T) {
 				t.Fatal("failure changed input")
 			}
 			if mode == "late target" {
-				if _, err := p.prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 0 }), LeftSkip: left, RightSkip: right}); err != nil {
+				if _, err := p.prepareGeometry(context.Background(), Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 0 }), LeftSkip: left, RightSkip: right}); err != nil {
 					t.Fatal("retry failed", err)
 				}
 			}

@@ -1,6 +1,7 @@
 package khipu
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"slices"
@@ -30,7 +31,7 @@ func TestVisualLinesSnapshot(t *testing.T) {
 				before := slices.Clone(p.lines[0].knots)
 				levels := para.BidiLevels().Clone()
 				glyphs := slices.Clone(p.arena.glyphs)
-				got, err := p.visualLines()
+				got, err := p.visualLines(context.Background())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -67,7 +68,7 @@ func TestVisualLinesSnapshot(t *testing.T) {
 						t.Fatal("incorrect nested-isolate visual order", starts)
 					}
 				}
-				again, err := p.visualLines()
+				again, err := p.visualLines(context.Background())
 				if err != nil || !reflect.DeepEqual(got, again) || !reflect.DeepEqual(levels, para.BidiLevels()) ||
 					!reflect.DeepEqual(before, p.lines[0].knots) || !reflect.DeepEqual(glyphs, p.arena.glyphs) {
 					t.Fatal("mutated input or unstable output", err)
@@ -86,7 +87,7 @@ func TestVisualLinesSnapshot(t *testing.T) {
 }
 
 func TestVisualLinesFailureIsAtomic(t *testing.T) {
-	if got, err := (*logicalParagraph)(nil).visualLines(); got != nil || !errors.Is(err, ErrIllegalArguments) {
+	if got, err := (*logicalParagraph)(nil).visualLines(context.Background()); got != nil || !errors.Is(err, ErrIllegalArguments) {
 		t.Fatal(got, err)
 	}
 	for _, mode := range []string{"mapping", "placement"} {
@@ -101,7 +102,7 @@ func TestVisualLinesFailureIsAtomic(t *testing.T) {
 				p.lines[1].knots[len(original)-1].paragraphFill = false
 			}
 			bad := slices.Clone(p.lines[1].knots)
-			got, err := p.visualLines()
+			got, err := p.visualLines(context.Background())
 			if got != nil || !errors.Is(err, ErrIllegalArguments) || !strings.Contains(err.Error(), "line 2") {
 				t.Fatal("published partial result or lost context", got, err)
 			}
@@ -109,7 +110,7 @@ func TestVisualLinesFailureIsAtomic(t *testing.T) {
 				t.Fatal("failure consumed input")
 			}
 			p.lines[1].knots = original
-			if _, err := p.visualLines(); err != nil {
+			if _, err := p.visualLines(context.Background()); err != nil {
 				t.Fatal("cannot retry", err)
 			}
 		})

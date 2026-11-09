@@ -53,29 +53,33 @@ func TestFreezeFromBothBreakers(t *testing.T) {
 				}
 				before := slices.Clone(k.W)
 				shape.calls = nil
-				got, err := khipu.FreezeParagraphForTest(owner, k, breaks, layout)
+				got, err := owner.Freeze(t.Context(), k, breaks, layout)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if len(got) != 2 || !slices.Equal(shape.calls, []int32{1, 2}) || !slices.Equal(before, k.W) {
+				if got.LineCount() != 2 || !slices.Equal(shape.calls, []int32{1, 2}) || !slices.Equal(before, k.W) {
 					t.Fatal(got, shape.calls)
 				}
-				for i, line := range got {
+				for i := 0; i < got.LineCount(); i++ {
+					line, _ := got.Line(i)
 					sum := line.LeftSkip + line.RightSkip
-					for _, w := range line.Widths {
-						sum += w
+					for j := 0; j < line.KnotCount; j++ {
+						knot, _ := got.Knot(line.FirstKnot + j)
+						sum += knot.W
 					}
 					want := dimen.DU(15+15*i) * dimen.PT
 					if sum != want || line.Width != want || line.LeftSkip != left.W || line.RightSkip != right.W {
 						t.Fatal("incorrect frozen width", line)
 					}
 				}
-				last := got[1]
-				fill := len(last.Widths) - 1
+				last, _ := got.Line(1)
+				first, _ := got.Line(0)
+				fill := last.KnotCount - 1
 				if dir == bidi.RightToLeft {
 					fill = 0
 				}
-				if !last.ParagraphFill[fill] || last.Widths[fill] != 5*dimen.PT || got[0].ByteEnd != 3 || last.ByteStart != 3 || last.ByteEnd != 7 {
+				fillKnot, _ := got.Knot(last.FirstKnot + fill)
+				if fillKnot.Material != khipu.ParagraphFillMaterial || fillKnot.W != 5*dimen.PT || first.Source.End != 3 || last.Source.Start != 3 || last.Source.End != 7 {
 					t.Fatal("lost visual fill or logical coverage", got)
 				}
 			})

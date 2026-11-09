@@ -1,6 +1,7 @@
 package khipu
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/npillmayer/cords/styled"
@@ -31,12 +32,15 @@ type visualLine struct {
 // It inherits materializeLogicalLines' ownership and selection-validity contract.
 // No shaping, discretionary discovery, side-skip insertion or width allocation
 // occurs here. Errors return no partial paragraph and do not change the input.
-func (kq *Khipukamayuq) materializeVisualLines(k *Khipu, breakpoints []int) (*visualParagraph, error) {
-	p, err := kq.materializeLogicalLines(k, breakpoints)
+func (kq *Khipukamayuq) materializeVisualLines(ctx context.Context, k *Khipu, breakpoints []int) (*visualParagraph, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	p, err := kq.materializeLogicalLines(ctx, k, breakpoints)
 	if err != nil {
 		return nil, err
 	}
-	return p.visualLines()
+	return p.visualLines(ctx)
 }
 
 // visualLines builds on the logical snapshot without consuming it. lineOrderings
@@ -44,14 +48,20 @@ func (kq *Khipukamayuq) materializeVisualLines(k *Khipu, breakpoints []int) (*vi
 // reads the authoritative paragraph direction, not an individual run's direction
 // or an independently configured owner default. Only complete success publishes
 // the result, so even a failure on a later line leaves the snapshot retryable.
-func (p *logicalParagraph) visualLines() (*visualParagraph, error) {
-	orders, err := p.lineOrderings()
+func (p *logicalParagraph) visualLines(ctx context.Context) (*visualParagraph, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	orders, err := p.lineOrderings(ctx)
 	if err != nil {
 		return nil, err
 	}
 	direction := p.paragraph.BidiLevels().ParagraphDirection()
 	result := &visualParagraph{paragraph: p.paragraph, arena: p.arena, lines: make([]visualLine, len(p.lines))}
 	for i, line := range p.lines {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		partial, err := line.mapOrdering(orders[i])
 		if err != nil {
 			return nil, fmt.Errorf("khipu: visual line %d mapping: %w", i+1, err)
@@ -66,6 +76,9 @@ func (p *logicalParagraph) visualLines() (*visualParagraph, error) {
 			visual.knots[j] = line.knots[at]
 		}
 		result.lines[i] = visual
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return result, nil
 }

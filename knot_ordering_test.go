@@ -1,6 +1,7 @@
 package khipu
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"slices"
@@ -147,7 +148,7 @@ func TestKnotOrderingMaterializedLine(t *testing.T) {
 	}
 	k := eligibilityParagraph(t, para)
 	p := l1Materialized(t, k, 13)
-	orders, err := p.lineOrderings()
+	orders, err := p.lineOrderings(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,11 +176,11 @@ func TestKnotOrderingMaterializedLine(t *testing.T) {
 
 func TestKnotOrderingPlacesDiscretionaries(t *testing.T) {
 	owner, k, _ := logicalTestDiscretionary(t)
-	p, err := owner.materializeLogicalLines(k, []int{0, len(k.Kind) - 1})
+	p, err := owner.materializeLogicalLines(context.Background(), k, []int{0, len(k.Kind) - 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	orders, err := p.lineOrderings()
+	orders, err := p.lineOrderings(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

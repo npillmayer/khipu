@@ -1,6 +1,7 @@
 package khipu
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"slices"
@@ -40,12 +41,15 @@ type geometryLine struct {
 // geometry, so we cannot detect a different but structurally valid parameter set.
 // No breaker defaults are substituted. The result is private until every stage
 // succeeds; failure does not change the elastic khipu or selected discretionaries.
-func (kq *Khipukamayuq) materializeLineGeometry(k *Khipu, breaks []int, params Params) (*geometryParagraph, error) {
-	p, err := kq.materializeVisualLines(k, breaks)
+func (kq *Khipukamayuq) materializeLineGeometry(ctx context.Context, k *Khipu, breaks []int, params Params) (*geometryParagraph, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	p, err := kq.materializeVisualLines(ctx, k, breaks)
 	if err != nil {
 		return nil, err
 	}
-	return p.prepareGeometry(params)
+	return p.prepareGeometry(ctx, params)
 }
 
 // prepareGeometry snapshots one target per line in logical paragraph order,
@@ -58,7 +62,10 @@ func (kq *Khipukamayuq) materializeLineGeometry(k *Khipu, breaks []int, params P
 // totals and inconsistent width triples fail rather than saturate as breaker
 // summaries do. Negative finite skip widths are allowed if the total remains
 // nonnegative. Fit checks and allocation belong to the next stage.
-func (p *visualParagraph) prepareGeometry(params Params) (*geometryParagraph, error) {
+func (p *visualParagraph) prepareGeometry(ctx context.Context, params Params) (*geometryParagraph, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	bad := func(reason string) (*geometryParagraph, error) {
 		return nil, fmt.Errorf("%w: line geometry: %s", ErrIllegalArguments, reason)
 	}
@@ -71,7 +78,13 @@ func (p *visualParagraph) prepareGeometry(params Params) (*geometryParagraph, er
 	shape, leftSkip, rightSkip := params.LineShape, params.LeftSkip, params.RightSkip
 	result := &geometryParagraph{paragraph: p.paragraph, arena: p.arena, lines: make([]geometryLine, len(p.lines))}
 	for i, line := range p.lines {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		target := shape.LineLength(int32(i + 1))
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if target < 0 || target >= dimen.Fil {
 			return bad(fmt.Sprintf("line %d has invalid target width", i+1))
 		}
@@ -98,6 +111,9 @@ func (p *visualParagraph) prepareGeometry(params Params) (*geometryParagraph, er
 		line.knots = slices.Clone(line.knots)
 		result.lines[i] = geometryLine{content: line, leftSkip: leftSkip, rightSkip: rightSkip,
 			targetWidth: target, naturalWidth: dimen.DU(width), delta: dimen.DU(int64(target) - width)}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return result, nil
 }

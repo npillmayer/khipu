@@ -1,9 +1,8 @@
 # Frozen Result Contract
 
-Result contract implemented in `frozen_result.go`; construction API remains a
-proposal. Shared geometry, internal glue-only freezing and allocation outcomes
-are implemented. `FrozenKhipu` is opaque and its queries are public, but clients
-cannot yet construct a populated result through a public Freeze entry point.
+Result queries and public construction are implemented in `frozen_result.go`
+and `frozen.go`. `Khipukamayuq.Freeze` consumes complete break decisions and
+resolved Params, returning an opaque `FrozenKhipu` or an error without partial output.
 See [FREEZE.md](FREEZE.md) for allocation and ownership details.
 
 ## Scope And Recommendation
@@ -22,7 +21,7 @@ or target-width shaping API is introduced by this contract.
 
 ## Construction
 
-Proposed signatures, in package `khipu`:
+Public signatures, in package `khipu`:
 
 ```go
 type LineShape interface {
@@ -103,7 +102,7 @@ The internal materialization/geometry/freeze constructors now also accept Params
 `Params.ValidateGeometry()` rejects absent/typed-nil shapes and invalid side-skip
 width triples without querying the shape. Encoding does not require layout
 geometry. Config copies Params values, retaining the LineShape service by
-reference. Construction of public frozen results remains later work.
+reference. Freeze uses these same resolved parameters without reapplying defaults.
 
 Requirements:
 
@@ -127,14 +126,16 @@ widths remain. The public line record must expose target and actual width,
 signed residual, fit status, ratio, badness and fill order from that outcome.
 No shaper/hyphenator is called in the current supported subset.
 
-Include context now because a later implementation may need shaping roundtrips.
-The initial wrapper should check cancellation at entry and between line stages;
-it cannot interrupt a client's synchronous LineLength call. Cancellation returns
+Pass a nonnil context. Cancellation is checked at entry, between stages and
+lines, during logical knot scanning, after each LineLength call, and before
+publication. It cannot interrupt a synchronous client LineLength call or a single
+bidi/allocation operation. Cancellation returns
 nil and an error matching `context.Canceled` or `context.DeadlineExceeded`.
-This requires cancellation plumbing beyond merely exporting today's method.
+Nil context returns ErrIllegalArguments. An already-canceled context takes
+precedence over subsequent input validation. A new context can retry unchanged input.
 
-Promote the unsupported-adjustment error to an exported
-sentinel (`ErrUnsupportedAdjustment`). There is no capacity-error sentinel. Continue to
+Unsupported non-glue elasticity returns the exported
+sentinel `ErrUnsupportedAdjustment`. There is no capacity-error sentinel. Continue to
 use `ErrIllegalArguments` and `ErrVoidKhipukamayuq` for their existing cases.
 Wrap errors with stage/line context; callers use `errors.Is`, not message text.
 
@@ -193,8 +194,7 @@ one-based argument. Knot indices are global to this result, not indices in the
 elastic input. Lines are in paragraph sequence; each line's contiguous knot
 range is in physical left-to-right order, independently of base direction.
 Queries return false for invalid indices, with no panic. Nil/zero results have
-zero counts and unsuccessful lookups. Currently only internal freezing produces
-a populated result; the proposed public Freeze will be the client entry point.
+zero counts and unsuccessful lookups. Freeze is the public construction entry point.
 
 Records are detached values. Changing a returned record does not alter the
 result. No MinW, MaxW, Penalty, candidates or arena references are exposed.
@@ -322,6 +322,24 @@ reused. Frozen output is not a persistent/portable font serialization format.
 
 ## Delivery Plan
 
+### Complete Pipeline Verification
+
+The public EncodeParagraph -> BreakParagraph -> Freeze pipeline is exercised
+with both firstfit and Knuth-Plass by `pipeline_integration_test.go`, alongside
+the public cancellation/retry and varying-shape tests. Checks include mixed bidi
+ordering, source coverage, glyph/width consistency, explicit and automatic
+replacements, fixed-width spaces, finite shrink, finite overstretch, overfull
+words, empty paragraphs and competing fill orders. Frozen output survives later
+replacement of the input's selected decisions; freezing does not call shaping
+or hyphenation services. An executable Freeze example demonstrates the sequence.
+
+These are synthetic-font contract tests, not typography proofs. They do not
+require identical break decisions from the two algorithms. In particular, a fil
+skip can make a shorter K&P line preferable to a compressed line; the shared
+shrink fixture uses zero side skips to exercise finite shrink with both engines.
+Font-backed adapters, broader script corpora and elastic-textbox realization
+remain separate work. There were no production changes required by this sweep.
+
 1. **Implemented:** Params is the shared geometry source for both breakers and
    internal freezing. Default profiles resolve before breaking, with firstfit's
    right skip set to fil. Tests cover explicit zero overrides, shared geometry,
@@ -333,7 +351,7 @@ reused. Frozen output is not a persistent/portable font serialization format.
 3. **Implemented:** CopyText and source access. Tests cover snapshot independence, replacement
    coordinates, feature/context preservation, rebased cluster glyph ranges,
    retained lifetime, bounded cord reads and concurrent read-only access.
-4. **Next:** expose Freeze consuming resolved Params, promote error sentinels and thread
+4. **Implemented:** Freeze consumes resolved Params, promotes the unsupported-adjustment sentinel and threads
    cancellation checks through
    internal stages. Move test-only integration bridges to public API tests for
    both breakers, including failure/retry and input preservation.

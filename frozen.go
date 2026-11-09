@@ -1,6 +1,7 @@
 package khipu
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -11,7 +12,9 @@ import (
 	"github.com/npillmayer/khipu/dimen"
 )
 
-var errUnsupportedAdjustment = errors.New("khipu: unsupported non-glue width adjustment")
+// ErrUnsupportedAdjustment reports elastic non-glue material that cannot yet
+// be realized without a target-width shaping service.
+var ErrUnsupportedAdjustment = errors.New("khipu: unsupported non-glue width adjustment")
 
 // FrozenKhipu is an opaque, immutable final-width result. Its private aligned SOA
 // planes concatenate lines in paragraph order, and knots in physical visual
@@ -79,18 +82,34 @@ type frozenShaping struct {
 	contexts []preparedRun
 }
 
-// freezeParagraph connects complete break decisions to final-width output.
+// Freeze connects complete break decisions to final-width output.
 // Use the same shape and side skips as the breaker, before its selections are
 // replaced. Materialization validates ownership/provenance, trims, substitutes
 // selected fragments and orders knots; geometry snapshots inclusive targets.
 // No shaper or hyphenator is consulted. Failure publishes no partial paragraph
 // and leaves the elastic input and its decisions unchanged.
-func (kq *Khipukamayuq) freezeParagraph(k *Khipu, breaks []int, params Params) (*FrozenKhipu, error) {
-	p, err := kq.materializeLineGeometry(k, breaks, params)
+// Pass a nonnil context and the same resolved Params used for breaking.
+// Cancellation is checked between stages and lines and after client shape calls;
+// it cannot interrupt a synchronous LineLength call or a single bidi/allocation
+// operation. Capacity shortfalls are reported in the result, not as errors.
+func (kq *Khipukamayuq) Freeze(ctx context.Context, k *Khipu, breaks []int, params Params) (*FrozenKhipu, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("%w: nil freeze context", ErrIllegalArguments)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if kq == nil {
+		return nil, ErrVoidKhipukamayuq
+	}
+	if err := params.ValidateGeometry(); err != nil {
+		return nil, err
+	}
+	p, err := kq.materializeLineGeometry(ctx, k, breaks, params)
 	if err != nil {
 		return nil, err
 	}
-	return p.freeze()
+	return p.freeze(ctx)
 }
 
 // freeze realizes the currently supported subset: only glue can change width.
@@ -104,7 +123,10 @@ func (kq *Khipukamayuq) freezeParagraph(k *Khipu, breaks []int, params Params) (
 // Each line uses the allocator's exact integer assignment (including fill
 // precedence and bounded shrink). All output remains private until every line
 // succeeds. Geometry and immutable shaping storage are never modified.
-func (p *geometryParagraph) freeze() (*FrozenKhipu, error) {
+func (p *geometryParagraph) freeze(ctx context.Context) (*FrozenKhipu, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if p == nil || p.paragraph == nil || len(p.lines) == 0 {
 		return nil, fmt.Errorf("%w: freeze requires prepared geometry", ErrIllegalArguments)
 	}
@@ -113,10 +135,13 @@ func (p *geometryParagraph) freeze() (*FrozenKhipu, error) {
 		shaping: frozenShaping{p.arena.boxes, p.arena.glyphs, p.arena.clusters, p.arena.contexts},
 		lines:   make([]frozenLine, len(p.lines))}
 	for i, line := range p.lines {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("freeze line %d: %w", i+1, err)
+		}
 		for j, knot := range line.content.knots {
 			core := knot.core
 			if core.Kind != KTGlue && (core.MinW != core.W || core.MaxW != core.W) {
-				return nil, fmt.Errorf("freeze line %d knot %d: %w (kind %d)", i+1, j, errUnsupportedAdjustment, core.Kind)
+				return nil, fmt.Errorf("freeze line %d knot %d: %w (kind %d)", i+1, j, ErrUnsupportedAdjustment, core.Kind)
 			}
 		}
 		plan, err := line.planWidths()
@@ -137,6 +162,9 @@ func (p *geometryParagraph) freeze() (*FrozenKhipu, error) {
 			leftSkip: plan.leftSkip, rightSkip: plan.rightSkip, width: plan.adjustment.actual,
 			adjustment: plan.adjustment,
 			byteStart:  line.content.byteStart, byteEnd: line.content.byteEnd}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return result, nil
 }

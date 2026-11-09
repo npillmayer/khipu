@@ -46,6 +46,39 @@ func ExampleKhipukamayuq_EncodeParagraph() {
 // A small example provider; applications can supply a dictionary-backed one.
 type exampleHyphenator struct{}
 
+func ExampleKhipukamayuq_Freeze() {
+	ctx := context.Background()
+	text := styled.TextFromString("Hello world")
+	para, err := styled.ParagraphFromText(&text, 0, text.Raw().Len(), bidi.LeftToRight, nil)
+	if err != nil {
+		panic(err)
+	}
+	owner := khipu.NewKhipukamayuq(khipu.Config{})
+	input, err := owner.EncodeParagraph(ctx, para)
+	if err != nil {
+		panic(err)
+	}
+	// Resolve geometry once; freeze the chosen decisions before another breaker
+	// run replaces the paragraph's selected discretionaries.
+	layout := firstfit.DefaultLayout(linebreak.RectangularParShape(100 * dimen.PT))
+	breaks, err := firstfit.BreakParagraph(input, layout, nil)
+	if err != nil {
+		panic(err)
+	}
+	frozen, err := owner.Freeze(ctx, input, breaks, layout)
+	if err != nil {
+		panic(err)
+	}
+	line, _ := frozen.Line(0)
+	fmt.Println("lines:", frozen.LineCount())
+	fmt.Println("target reached:", line.Width == line.TargetWidth)
+	fmt.Println("source bytes:", line.Source.End-line.Source.Start)
+	// Output:
+	// lines: 1
+	// target reached: true
+	// source bytes: 11
+}
+
 func (exampleHyphenator) Discretionaries(word string, _ *khipu.Params) ([]khipu.HyphenationFragment, error) {
 	if word != "breaking" {
 		return nil, nil

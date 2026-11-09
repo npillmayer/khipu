@@ -1,6 +1,7 @@
 package khipu
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/npillmayer/cords/styled"
@@ -62,7 +63,10 @@ type logicalKnot struct {
 //
 // The result preserves elasticity for later allocation; it is not FrozenKhipu.
 // Targets, side skips, fit/optimality checks and visual ordering are out of scope.
-func (kq *Khipukamayuq) materializeLogicalLines(k *Khipu, breakpoints []int) (*logicalParagraph, error) {
+func (kq *Khipukamayuq) materializeLogicalLines(ctx context.Context, k *Khipu, breakpoints []int) (*logicalParagraph, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if kq == nil {
 		return nil, ErrVoidKhipukamayuq
 	}
@@ -100,12 +104,18 @@ func (kq *Khipukamayuq) materializeLogicalLines(k *Khipu, breakpoints []int) (*l
 	var start uint64
 	previous, selected := -1, 0
 	for lineIndex, at := range breakpoints {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		line := logicalLine{breakpoint: at, byteStart: start, byteEnd: ends[lineIndex]}
 		if carry != nil {
 			line.knots = append(line.knots, *carry)
 			carry = nil
 		}
 		for i := previous + 1; i <= at; i++ {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			// Forced breaks cannot be skipped, including by a replacement.
 			if i < at && k.Penalty[i] <= MaxMerit {
 				return bad()
@@ -155,6 +165,9 @@ func (kq *Khipukamayuq) materializeLogicalLines(k *Khipu, breakpoints []int) (*l
 	}
 	if selected != len(k.SelectedDiscretionaries) || carry != nil {
 		return bad() // includes stale/out-of-bounds selection keys
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return result, nil
 }

@@ -1,5 +1,7 @@
 package khipu
 
+import "context"
+
 import "github.com/npillmayer/khipu/dimen"
 
 // LogicalLineForTest exposes value snapshots only to external integration tests.
@@ -12,7 +14,7 @@ type LogicalLineForTest struct {
 }
 
 func MaterializeLogicalLinesForTest(owner *Khipukamayuq, k *Khipu, breaks []int) ([]LogicalLineForTest, error) {
-	p, err := owner.materializeLogicalLines(k, breaks)
+	p, err := owner.materializeLogicalLines(context.Background(), k, breaks)
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +31,7 @@ func MaterializeLogicalLinesForTest(owner *Khipukamayuq, k *Khipu, breaks []int)
 // MaterializeVisualLinesForTest exposes only geometry/source value snapshots;
 // it does not add a production freeze or renderer API.
 func MaterializeVisualLinesForTest(owner *Khipukamayuq, k *Khipu, breaks []int) ([]LogicalLineForTest, error) {
-	p, err := owner.materializeVisualLines(k, breaks)
+	p, err := owner.materializeVisualLines(context.Background(), k, breaks)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +52,7 @@ type GeometryLineForTest struct {
 }
 
 func MaterializeLineGeometryForTest(owner *Khipukamayuq, k *Khipu, breaks []int, params Params) ([]GeometryLineForTest, error) {
-	p, err := owner.materializeLineGeometry(k, breaks, params)
+	p, err := owner.materializeLineGeometry(context.Background(), k, breaks, params)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +81,7 @@ type FrozenLineForTest struct {
 // FreezeParagraphForTest exercises the internal end-to-end constructor without
 // introducing public output accessors for downstream box creation.
 func FreezeParagraphForTest(owner *Khipukamayuq, k *Khipu, breaks []int, params Params) ([]FrozenLineForTest, error) {
-	p, err := owner.freezeParagraph(k, breaks, params)
+	p, err := owner.Freeze(context.Background(), k, breaks, params)
 	if err != nil {
 		return nil, err
 	}

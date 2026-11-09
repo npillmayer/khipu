@@ -19,8 +19,8 @@
 //
 // Owners and their mutable collaborators must not be used concurrently.
 // Linebreaking does not produce final glyph placement or rendering. Internal
-// line materialization and glue-only freezing exist; a public freezing API
-// remains future work. Streaming paragraphs retain glyph/source provenance.
+// line materialization and glue-only freezing are exposed through Freeze,
+// returning an opaque FrozenKhipu. Streaming paragraphs retain glyph/source provenance.
 // Package contracts owns the service
 // interfaces and their value types. Package helpers provides deterministic
 // defaults: SyntheticFont, DefaultStyleResolver, and SyntheticStreamingShaper.

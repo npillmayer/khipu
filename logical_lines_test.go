@@ -1,6 +1,7 @@
 package khipu
 
 import (
+	"context"
 	"errors"
 	"maps"
 	"reflect"
@@ -55,7 +56,7 @@ func TestLogicalLinesOrdinary(t *testing.T) {
 			for i := range cores {
 				cores[i] = k.KnotByIndex(i)
 			}
-			got, err := owner.materializeLogicalLines(k, breaks)
+			got, err := owner.materializeLogicalLines(context.Background(), k, breaks)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -131,7 +132,7 @@ func TestLogicalLinesSilentReplacements(t *testing.T) {
 		t.Fatal(err)
 	}
 	k.SelectDiscretionary(0, DiscretionarySelection{0, 1})
-	p, err := k.owner.materializeLogicalLines(k, []int{0, len(k.Kind) - 1})
+	p, err := k.owner.materializeLogicalLines(context.Background(), k, []int{0, len(k.Kind) - 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +163,7 @@ func TestLogicalLinesConsecutiveReplacements(t *testing.T) {
 		}
 	}
 	breaks = append(breaks, len(k.Kind)-1)
-	p, err := owner.materializeLogicalLines(k, breaks)
+	p, err := owner.materializeLogicalLines(context.Background(), k, breaks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +184,7 @@ func TestLogicalLinesGlyphlessSourceGap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := owner.materializeLogicalLines(k, []int{0, len(k.Kind) - 1})
+	p, err := owner.materializeLogicalLines(context.Background(), k, []int{0, len(k.Kind) - 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +218,7 @@ func TestLogicalLinesReplacementAndLifetime(t *testing.T) {
 	selections := maps.Clone(k.SelectedDiscretionaries)
 	glyphs := slices.Clone(k.shaping.glyphs)
 	breaks := []int{0, len(k.Kind) - 1}
-	got, err := owner.materializeLogicalLines(k, breaks)
+	got, err := owner.materializeLogicalLines(context.Background(), k, breaks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,15 +289,15 @@ func TestLogicalLinesRejectInvalidInput(t *testing.T) {
 					k.MaxW[i] = k.W[i]
 				}
 			}
-			if got, err := owner.materializeLogicalLines(k, breaks); got != nil || !errors.Is(err, ErrIllegalArguments) {
+			if got, err := owner.materializeLogicalLines(context.Background(), k, breaks); got != nil || !errors.Is(err, ErrIllegalArguments) {
 				t.Fatal(got, err)
 			}
 		})
 	}
-	if got, err := (*Khipukamayuq)(nil).materializeLogicalLines(nil, nil); got != nil || !errors.Is(err, ErrVoidKhipukamayuq) {
+	if got, err := (*Khipukamayuq)(nil).materializeLogicalLines(context.Background(), nil, nil); got != nil || !errors.Is(err, ErrVoidKhipukamayuq) {
 		t.Fatal(got, err)
 	}
-	if got, err := NewKhipukamayuq(Config{}).materializeLogicalLines(nil, nil); got != nil || !errors.Is(err, ErrIllegalArguments) {
+	if got, err := NewKhipukamayuq(Config{}).materializeLogicalLines(context.Background(), nil, nil); got != nil || !errors.Is(err, ErrIllegalArguments) {
 		t.Fatal(got, err)
 	}
 }
@@ -330,7 +331,7 @@ func TestLogicalLinesRejectBrokenSelection(t *testing.T) {
 			case "moved source":
 				k.SelectedDiscretionaries[0] = DiscretionarySelection{1, 4}
 			}
-			if got, err := owner.materializeLogicalLines(k, breaks); got != nil || !errors.Is(err, ErrIllegalArguments) {
+			if got, err := owner.materializeLogicalLines(context.Background(), k, breaks); got != nil || !errors.Is(err, ErrIllegalArguments) {
 				t.Fatal(got, err)
 			}
 		})

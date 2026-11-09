@@ -7,7 +7,7 @@ infrastructure. Benchmarks and measurements are described in
 
 ## Purpose and Scope
 
-Clients can exercise encoding, line breaking and the internal later stages
+Clients can exercise public encoding, line breaking and freezing
 without installed fonts: `Config{}` enables synthetic streaming shaping. The
 synthetic tests establish layout, ownership and lifecycle contracts, not real
 typography. Hand-built knot fixtures remain useful as independent line-breaker
@@ -17,10 +17,21 @@ conformance suites, visual proofs and a shared testing package are proposals
 
 ## Existing Guarantees and Evidence
 
+- `pipeline_integration_test.go` runs EncodeParagraph -> either public breaker
+  -> Freeze without internal test bridges. It checks source endpoints, contiguous
+  output traversal, width/residual conservation, retained glyph advances, empty
+  paragraphs, fixed spaces, finite shrink/overstretch, unavoidable overfull words,
+  fill precedence and mixed LTR/RTL ordering without glyph-array reversal.
+  Automatic and explicit discretionary cases check applied replacement strings,
+  no additional shaping/discovery during freezing, warm cache reuse and survival
+  of frozen results after a later layout clears the input's selections.
+  `ExampleKhipukamayuq_Freeze` is an executable public-pipeline example.
 - `frozen_result_test.go` checks nil/zero queries, detached records, allocation
   metadata, glyph/cluster/feature copy independence, replacement-local coordinates,
   silent material, captured source offsets, bounded readers and concurrent queries
-  after elastic-input release. Public construction/cancellation remain future work.
+  after elastic-input release. `freeze_api_test.go` tests public cancellation,
+  deadlines, validation, unsupported adjustment and retry with both breakers in
+  LTR/RTL. `freeze_cancellation_test.go` checks cancellation at internal stages.
 - `linebreak/firstfit/cleanup_test.go` checks disabled debug/info guards,
   unchanged results across logging levels, forced-textbox exclusion from rescue,
   and paragraph-level kern flag/interior/carry semantics. Benchmark workload

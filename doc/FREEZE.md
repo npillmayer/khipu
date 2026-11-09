@@ -5,7 +5,7 @@ assigns final widths to the knots of each line.
 
 For now, the working term will be **freezing the khipu**.
 
-Status updated November 8, 2026: internal logical-line materialization and
+Status updated November 9, 2026: internal logical-line materialization and
 line-local bidi ordering creation are implemented. An internal partial knot
 permutation now maps source-backed knots, including selected discretionary
 fragments. Final ParFillSkip placement is implemented as a separate internal
@@ -14,8 +14,9 @@ Elastic line geometry now snapshots target widths and physical side skips.
 The pure allocator now produces numeric width plans, without changing knots or
 glyphs. Internal frozen-output construction now applies these plans for fixed
 textboxes and adjustable glue. The separate `FrozenKhipu` has final-width
-SOA planes, retained shaping/provenance and no elastic knot cores. No public
-`FrozenKhipu` type or freeze entry point exists yet. Both modern linebreakers
+SOA planes, retained shaping/provenance and no elastic knot cores. Public
+`Khipukamayuq.Freeze` constructs the opaque result with cancellation and atomic
+publication; read-only queries expose final content and physical diagnostics. Both modern linebreakers
 provide the breakpoints and retained selected variants consumed by this pipeline.
 
 The upstream rewrite is complete for the supported knotting and linebreaking
@@ -25,9 +26,8 @@ automatic discretionaries retain shaped replacement fragments and their original
 source split. `BreakpointPositions` maps chosen breaks to paragraph-relative
 UTF-8 byte endpoints. The metric-only shaping path has been removed.
 
-The next decisions concern a public freeze/result contract and future
-script-sensitive realization, not another encoder migration. See
-[the public result contract draft](FROZEN-API.md),
+The next decisions concern future script-sensitive realization, not another
+encoder migration. See [the public result contract](FROZEN-API.md),
 [the overall algorithm](KHIPU_ALGORITHM.md#phase-3-line-local-bidi-ordering) and
 [discretionary ownership](HYPHENATION.md).
 
@@ -38,6 +38,57 @@ for ragged-right layout; `knuthplass.DefaultLayout(shape)` retains its 50 BP
 finite-stretch profile. Defaults are resolved once before breaking; explicit
 zero skips remain valid overrides. Both breaker APIs now take the resolved
 Params as their second argument; their algorithm parameter types have no skips.
+
+## Public API
+
+The public entry point in package `khipu` is:
+
+```go
+func (kq *Khipukamayuq) Freeze(ctx context.Context, input *Khipu,
+    breakpoints []int, params Params) (*FrozenKhipu, error)
+```
+
+Use the same resolved `Params` as the breaker, including LineShape and both
+side skips. The input must belong to this owner and retain the selected
+discretionaries corresponding to the supplied complete breakpoint sequence.
+No defaults are reapplied. Input, services and geometry must remain stable
+during construction; the result does not retain mutable input selections.
+
+The opaque result exposes these read-only queries:
+
+```go
+func (f *FrozenKhipu) LineCount() int
+func (f *FrozenKhipu) KnotCount() int
+func (f *FrozenKhipu) Line(index int) (FrozenLine, bool)
+func (f *FrozenKhipu) Knot(index int) (FrozenKnot, bool)
+func (f *FrozenKhipu) CopyText(knotIndex int) (FrozenText, bool)
+func (f *FrozenKhipu) SourceOffset() uint64
+func (f *FrozenKhipu) SourceLen() uint64
+func (f *FrozenKhipu) SourceReader(span ByteRange) (io.Reader, error)
+```
+
+Indices are zero-based. Lines are in paragraph sequence; each line's
+`FirstKnot`/`KnotCount` identifies a contiguous physical left-to-right range.
+`FrozenLine` carries actual `Width`, `TargetWidth`, signed `Residual`, side skips,
+source coverage, `Fit`, `Ratio`, `Badness` and `FillOrder`. `FrozenKnot` carries
+final `W`, kind, flags, original source range and applied material role, not
+elastic bounds or penalties. Returned records are detached values; invalid
+indices return false. Nil/zero results have zero counts and no valid lookups.
+
+`CopyText` copies glyphs, clusters and feature slices on request. Font services
+remain shared and immutable. Source readers have independent cursors over the
+retained original cord. See [FROZEN-API.md](FROZEN-API.md) for replacement-local
+versus paragraph-relative coordinates, complete record definitions and lifetime
+requirements. The [README example](../README.md#freezing) demonstrates the pipeline.
+
+Freeze requires a nonnil context and checks cancellation between stages/lines,
+during logical scanning, after shape calls and before publication. It cannot
+interrupt a synchronous LineLength call or a single bidi/allocation operation.
+Cancellation matches `context.Canceled` or `context.DeadlineExceeded`; failures
+return nil without changing input decisions. Nil context and invalid inputs use
+`ErrIllegalArguments`; a nil owner uses `ErrVoidKhipukamayuq`. Unsupported elastic
+non-glue material uses `ErrUnsupportedAdjustment`. Use `errors.Is` for wrapped errors.
+Capacity shortfalls instead produce successful over-/underfull results.
 
 ## Implemented Logical-Line Stage
 
@@ -511,7 +562,7 @@ below `Fil`. Invalid input yields no partial geometry and changes no input.
 This stage does not adjust any W, require fixed textboxes, judge available
 stretch/shrink, or declare the line feasible. Both positive and negative delta
 are retained, even if the requested adjustment will later prove impossible.
-Frozen construction is a subsequent internal stage; no public entry point exists.
+Frozen construction is a subsequent internal stage; Freeze is the public entry point.
 
 `line_geometry_test.go` covers one-based snapshots, signed delta, finite negative
 skips, immutable inputs, empty/all-space and RTL lines, final-fill accounting,
@@ -566,7 +617,7 @@ supported inputs to fixed textboxes rather than silently applying numeric propos
 to glyph-backed elastic text. Later support needs trustworthy upstream capacities
 and a shaping contract that realizes requested widths or reports achieved widths
 for redistribution. The internal frozen representation implements the fixed-text
-subset; no public freeze API exists yet.
+subset; the public Freeze API realizes this subset.
 
 `width_allocation_test.go` covers finite stretch/shrink, fill precedence, ties,
 exhaustion, signed widths, near-limit arithmetic, kind independence and 2,000
@@ -581,9 +632,9 @@ The result contract is now implemented: `FrozenKhipu` exposes detached line/knot
 records, physical allocation diagnostics, copy-on-request shaping snapshots and
 bounded source readers. Its planes and arena IDs stay private. See
 [FROZEN-API.md](FROZEN-API.md) for coordinates and lifetime rules. Public
-construction through `Freeze`, including cancellation, is still the next step.
+construction through `Freeze`, including cancellation, is now implemented.
 
-`Khipukamayuq.freezeParagraph` in `frozen.go` internally connects materialization,
+`Khipukamayuq.Freeze` in `frozen.go` internally connects materialization,
 visual ordering, geometry and allocation. It uses the same shape and skip values
 as the completed breaker run. `geometryParagraph.freeze` publishes only after
 every line succeeds; a failure returns nil, with line context and the underlying
@@ -591,7 +642,7 @@ error preserved. The elastic input and its selected decisions are unchanged.
 
 The supported realization is deliberately **glue-only**. Every non-glue content
 knot must have `MinW == W == MaxW`, including selected discretionary fragments.
-Elastic textboxes, kerns and custom material return `errUnsupportedAdjustment`,
+Elastic textboxes, kerns and custom material return `ErrUnsupportedAdjustment`,
 even on exact-fit lines or when a dominant fill would absorb all adjustment.
 Fixed non-glue material is retained. Physical side skips are glue by role,
 irrespective of their incidental Kind. No shaper/hyphenator is called, and glyph
