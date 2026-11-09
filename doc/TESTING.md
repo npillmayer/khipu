@@ -25,6 +25,25 @@ and a shared testing package remain proposals.
 
 ## Existing Guarantees and Evidence
 
+- `linebreak/firstfit/cleanup_test.go` checks disabled debug/info guards,
+  unchanged results across logging levels, forced-textbox exclusion from rescue,
+  and paragraph-level kern flag/interior/carry semantics. Benchmark workload
+  tests assert cold discovery/selection counts and warm reuse without policy calls.
+- `firstfit_fitting_integration_test.go` checks ordinary checkpoints and carry
+  through freezing: positive slack, exact natural/minimum widths, finite shrink,
+  one-DU overflow and fixed-space input. It verifies breakpoints, unchanged text
+  widths, space adjustment, fil/fill allocation, exact line totals and unchanged
+  input width planes. `linebreak/firstfit/fitting_test.go` pins discretionary fit
+  at the same shrink boundary, including fixed glue and one-DU excess.
+- `linebreak/firstfit/discretionary_policy_test.go` checks prohibited variants at
+  and above the sentinel, mixed/all-prohibited lists, exact and zero gain
+  thresholds, width-first ranking, finite-penalty and candidate-order ties, and
+  unchanged candidate storage. Public tests cover provider/cache lookup and both
+  overflow-rescue branches, including publication of only eligible selections.
+- `linebreak/firstfit/ownership_test.go` covers early/late provider errors in both
+  rescue branches, unchanged nil/populated selections during callbacks and after
+  failure, cache retention and retry, successful stale-selection clearing,
+  validation errors, independent defaults and nil/explicit-default equivalence.
 - `linebreak/knuthplass/uniform_test.go` compares automatic ordinary
   state compaction with baseline paths, quality and completion across shapes,
   passes, providers, forced boundaries, rewards, emergency recovery and fallback.
@@ -997,6 +1016,50 @@ evaluation work scales linearly for these fixtures; neither observation establis
 general K&P complexity. Late pass-2 exhaustion, broad active sets, large variant
 fan-out and real font shaping require separate workloads. Freezing insufficient
 real capacities remains outside this measurement and implementation.
+
+## Firstfit Performance Baseline
+
+November 9, 2026, Go 1.25.6, darwin/arm64, Apple M1. `BenchmarkFirstfit` uses repeated
+`abcd` words with 5pt synthetic cells and a 40pt target. Variants split after two
+letters, adding a synthetic hyphen to the pre-break fragment. This is a workload
+policy, not linguistic hyphenation. Sizes are 16, 128 and 512 words.
+
+Each iteration times the full public breaker call, including lazy discovery,
+fragment shaping and winner publication. Encoding/setup and result checks are
+untimed. Owners and caches start fresh; no-provider, declining-provider and
+productive-provider cases are separate. The ordinary case still checks the local
+candidate-cache seam, but does not invoke a provider. Neither freezing nor real
+font shaping is measured. The lightweight request/policy counters are included
+in the timed calls. Counts are per call, not accumulated across iterations.
+
+```sh
+go test ./linebreak/firstfit -run '^TestFirstfitBenchmarkWorkloads$' -count=1
+go test ./linebreak/firstfit -run '^$' -bench '^BenchmarkFirstfit$' -benchtime=3x -count=3 -benchmem
+```
+
+Before/after the logging guards and shared rescue path, medians of three samples
+of three iterations (microseconds per call):
+
+| Words | Ordinary before/after | Declining before/after | Productive before/after |
+| --- | ---: | ---: | ---: |
+| 16 | 11.38 / 5.86 | 60.57 / 48.51 | 154.86 / 150.38 |
+| 128 | 38.13 / 17.00 | 249.36 / 221.40 | 914.17 / 852.24 |
+| 512 | 157.86 / 61.50 | 1155.74 / 993.79 | 3580.60 / 3453.60 |
+
+Small synthetic samples are diagnostic, not a general speedup guarantee. At 512
+words, ordinary timings ranged 156.78-162.24us before and 60.68-63.29us after;
+productive timings ranged 3578.43-3590.07us before and 3376.42-3469.29us after.
+Ordinary allocations fell from 8,071 to 7 per call (182,272 to 8,176 bytes).
+Declining allocations fell from 19,798 to 11,734; productive from about 30,471
+to 22,877. Disabled logging argument construction was therefore material even
+without state dumps. Discovery and shaping still dominate productive workloads.
+
+At 512 words, unchanged work counts are 512/512/342 lines for ordinary/declining/
+productive; provider requests and policy calls are 0/511/341; selections are
+0/0/171. Productive discovery does not imply every returned candidate is selected.
+Normal tests pin these counts at every benchmark size and compare warm reruns'
+breakpoints and selections with cold results. Broader scripts, real fonts,
+variable shapes and high candidate fan-out need separate workload profiles.
 
 ## Validation and Next Work
 

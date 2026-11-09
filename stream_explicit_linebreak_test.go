@@ -59,7 +59,7 @@ func TestStreamingExplicitBreaksEndToEnd(t *testing.T) {
 				breakAt := func(width dimen.DU) ([]int, error) {
 					shape := linebreak.RectangularParShape(width)
 					if engine == "firstfit" {
-						p := *firstfit.DefaultParameters
+						p := *firstfit.NewDefaultParameters()
 						p.DiscretionaryProvider = owner
 						return firstfit.BreakParagraph(k, firstfit.DefaultLayout(shape), &p)
 					}

@@ -41,7 +41,7 @@ func TestVisualLinesFromBothBreakers(t *testing.T) {
 				shape := linebreak.RectangularParShape(200 * dimen.PT)
 				var breaks []int
 				if engine == "firstfit" {
-					params := *firstfit.DefaultParameters
+					params := *firstfit.NewDefaultParameters()
 					breaks, err = firstfit.BreakParagraph(k, firstfit.DefaultLayout(shape), &params)
 				} else {
 					breaks, err = knuthplass.BreakParagraph(k, knuthplass.DefaultLayout(shape), knuthplass.NewDefaultParameters())

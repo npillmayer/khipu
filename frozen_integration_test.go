@@ -42,7 +42,7 @@ func TestFreezeFromBothBreakers(t *testing.T) {
 				layout := khipu.Params{LineShape: shape, LeftSkip: left, RightSkip: right}
 				var breaks []int
 				if engine == "firstfit" {
-					params := *firstfit.DefaultParameters
+					params := *firstfit.NewDefaultParameters()
 					breaks, err = firstfit.BreakParagraph(k, layout, &params)
 				} else {
 					params := knuthplass.NewDefaultParameters()

@@ -46,7 +46,7 @@ func TestLogicalLinesFromBothBreakers(t *testing.T) {
 				var breaks []int
 				var layout khipu.Params
 				if engine == "firstfit" {
-					params := *firstfit.DefaultParameters
+					params := *firstfit.NewDefaultParameters()
 					params.DiscretionaryProvider = owner
 					layout = firstfit.DefaultLayout(shape)
 					breaks, err = firstfit.BreakParagraph(k, layout, &params)

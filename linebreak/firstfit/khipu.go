@@ -6,6 +6,7 @@ import (
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/dimen"
 	"github.com/npillmayer/khipu/linebreak"
+	"github.com/npillmayer/schuko/tracing"
 )
 
 type kinx = int
@@ -19,18 +20,22 @@ const (
 // Parameters configures the SOA first-fit breaker.
 // Geometry lives exclusively in khipu.Params, shared with freezing.
 type Parameters struct {
-	MinHyphenGain         dimen.DU // minimum width improvement to justify a discretionary break
+	// MinHyphenGain is the inclusive minimum natural-width gain over the last
+	// ordinary checkpoint. Zero permits zero improvement, not just positive gain.
+	MinHyphenGain         dimen.DU
 	DiscretionaryProvider DiscretionaryProvider
 }
 
-// DefaultParameters are the standard first-fit parameters for SOA paragraphs.
-var DefaultParameters = &Parameters{
-	MinHyphenGain: 0,
-}
+// NewDefaultParameters returns independent algorithm defaults: zero minimum
+// hyphenation gain and no provider. Nil parameters to BreakParagraph use this
+// profile. Paragraph geometry is resolved separately with DefaultLayout.
+func NewDefaultParameters() *Parameters { return &Parameters{} }
 
 // DefaultLayout resolves a ragged-right paragraph profile. The physical right
 // skip absorbs positive slack at fil order, leaving finite interword glue at
 // natural width. Higher-order paragraph fill still wins on the final line.
+// This is not a no-compression policy: when natural width exceeds the target,
+// the breaker may use the shrink capacity explicitly supplied by the knots.
 // Apply overrides after this call and reuse the returned Params for freezing.
 // No defaults are reapplied by BreakParagraph, even for explicitly zero skips.
 func DefaultLayout(shape khipu.LineShape) khipu.Params {
@@ -58,9 +63,17 @@ func glue(w, wmin int, wmax dimen.DU) khipu.KnotCore {
 // checkpoint and carries the already scanned post-break material over to the
 // next line.
 //
+// Fit means effective MinW <= target, after edge trimming and including skips.
+// Natural-width overflow alone does not force a break when shrink is available.
+// Clients wanting fixed-width content must supply MinW = W = MaxW for that
+// content; a fil side skip can still absorb positive slack without compressing it.
+// Breaking chooses endpoints only; freezing performs the actual adjustment.
+//
 // Results are zero-based indices of line-ending knots, including the final
-// trailer. SelectedDiscretionaries is replaced on each run. Nil params selects
-// DefaultParameters for algorithm controls only. Layout must be resolved
+// trailer. SelectedDiscretionaries is replaced only on success. Errors preserve
+// earlier selections, though providers may populate candidate caches during a
+// failed call. Nil params selects NewDefaultParameters for algorithm controls only.
+// Layout must be resolved
 // explicitly (for example with DefaultLayout) and reused unchanged for freezing.
 // Configure DiscretionaryProvider for lazy discovery.
 func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) ([]kinx, error) {
@@ -75,21 +88,24 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 		return nil, errors.New("cannot break an empty paragraph")
 	}
 	if params == nil {
-		params = DefaultParameters
+		params = NewDefaultParameters()
 	}
-	// firstfit reports only the decisions from the current run. Any stale
-	// discretionary selections from an earlier linebreaking attempt are removed
-	// before the paragraph is processed again.
-	clear(khp.SelectedDiscretionaries)
+	// Stage decisions separately: a later provider failure must not publish a
+	// partial result or erase selections from an earlier successful run.
+	var selections []khipu.DiscretionarySelection
 	seg := &segmentState{}
 	firstInLine := true
 	lastFeasible := noinx
 	lastFeasibleWidth := WSS{}
 	breakpoints := make([]kinx, 0, 8)
+	trace := tracer()
+	debug := trace.GetTraceLevel() >= tracing.LevelDebug
 	for i := range len(khp.Kind) {
 		k := khp.KnotByIndex(i)
 		prevSeg := seg.segmentState()
-		tracer().Debugf("_______________ %d/%v ___________________", i, k)
+		if debug {
+			trace.Debugf("_______________ %d/%v ___________________", i, k)
+		}
 		seg.append(k)
 		// The first visible item of a line defines the carry origin. If we later
 		// have to commit an earlier checkpoint, reset() restores exactly the
@@ -101,36 +117,39 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 		}
 		linelen := parshape.LineLength(int32(len(breakpoints) + 1))
 		segw := seg.width(layout)
-		tracer().Debugf("candidate %d: seg=%v len=%.2f", i, segw, linelen.Points())
-		if k.Penalty >= InfinityDemerits {
-			// An overflowing textbox may still be salvageable locally by splitting
-			// it with one of its discretionary variants. This is firstfit's only
-			// hyphenation hook: no second pass, no global search, just a greedy
-			// "does one variant fit better than the last plain checkpoint?" test.
-			// An explicit marker may also salvage an overflowing first word,
-			// even when no earlier space supplied a plain checkpoint.
-			if (lastFeasible >= 0 || khp.HasExplicitDiscretionary(i)) && k.Kind == khipu.KTTextBox && segw.Min > linelen {
-				cand, nextSeg, ok, err := tryLooseHyphenation(khp, i, prevSeg, lastFeasibleWidth, linelen, layout, params)
-				if err != nil {
-					return nil, err
-				}
-				if ok {
-					breakpoints = append(breakpoints, i)
-					// Only the chosen discretionary is persisted as linebreaking
-					// result. Other cached candidates remain opportunity data on the
-					// Khipu but are not part of the committed breakpoint sequence.
-					khp.SelectDiscretionary(i, khipu.DiscretionarySelection{
-						Source:  i,
-						Variant: cand.Variant,
-					})
-					*seg = nextSeg
-					firstInLine = !seg.seenContent
-					lastFeasible = noinx
-					lastFeasibleWidth = WSS{}
-					continue
-				}
+		if debug {
+			trace.Debugf("candidate %d: seg=%v len=%.2f", i, segw, linelen.Points())
+		}
+		// Rescue applies to both permitted and prohibited ordinary endpoints:
+		// the internal discretionary has its own penalty. Forced endpoints must
+		// instead follow mandatory-break handling below, without provider calls.
+		// Explicit markers can also rescue a first word without a checkpoint.
+		if k.Penalty > InfinityMerits && k.Kind == khipu.KTTextBox && segw.Min > linelen &&
+			(lastFeasible >= 0 || khp.HasExplicitDiscretionary(i)) {
+			cand, nextSeg, ok, err := tryLooseHyphenation(khp, i, prevSeg, lastFeasibleWidth, linelen, layout, params)
+			if err != nil {
+				return nil, err
 			}
-			tracer().Debugf("break prohibited at %d (p=%d)", i, k.Penalty)
+			if ok {
+				breakpoints = append(breakpoints, i)
+				// Only the chosen discretionary is persisted as linebreaking
+				// result. Other cached candidates remain opportunity data on the
+				// Khipu but are not part of the committed breakpoint sequence.
+				selections = append(selections, khipu.DiscretionarySelection{
+					Source:  i,
+					Variant: cand.Variant,
+				})
+				*seg = nextSeg
+				firstInLine = !seg.seenContent
+				lastFeasible = noinx
+				lastFeasibleWidth = WSS{}
+				continue
+			}
+		}
+		if k.Penalty >= InfinityDemerits {
+			if debug {
+				trace.Debugf("break prohibited at %d (p=%d)", i, k.Penalty)
+			}
 			continue
 		}
 		if k.Penalty <= InfinityMerits {
@@ -153,24 +172,6 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 			// A candidate that cannot shrink enough no longer fits this line. The
 			// first-fit decision is therefore to commit the last acceptable
 			// checkpoint and continue with the carried post-break material.
-			if (lastFeasible >= 0 || khp.HasExplicitDiscretionary(i)) && k.Kind == khipu.KTTextBox {
-				cand, nextSeg, ok, err := tryLooseHyphenation(khp, i, prevSeg, lastFeasibleWidth, linelen, layout, params)
-				if err != nil {
-					return nil, err
-				}
-				if ok {
-					breakpoints = append(breakpoints, i)
-					khp.SelectDiscretionary(i, khipu.DiscretionarySelection{
-						Source:  i,
-						Variant: cand.Variant,
-					})
-					*seg = nextSeg
-					firstInLine = !seg.seenContent
-					lastFeasible = noinx
-					lastFeasibleWidth = WSS{}
-					continue
-				}
-			}
 			if lastFeasible >= 0 {
 				breakpoints = append(breakpoints, lastFeasible)
 				seg.reset()
@@ -178,7 +179,9 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 				lastFeasible = noinx
 				lastFeasibleWidth = WSS{}
 			} else {
-				tracer().Infof("Overfull box at line %d", len(breakpoints)+1)
+				if trace.GetTraceLevel() >= tracing.LevelInfo {
+					trace.Infof("Overfull box at line %d", len(breakpoints)+1)
+				}
 				breakpoints = append(breakpoints, i)
 				seg.clear()
 				firstInLine = true
@@ -208,6 +211,12 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 	// explicit breakpoint has been committed yet, fall back to the last knot.
 	if len(breakpoints) == 0 || breakpoints[len(breakpoints)-1] != len(khp.Kind)-1 {
 		breakpoints = append(breakpoints, len(khp.Kind)-1)
+	}
+	// No remaining operation can fail. Replace the previous decisions, including
+	// clearing stale selections when this successful run chose no discretionaries.
+	clear(khp.SelectedDiscretionaries)
+	for _, choice := range selections {
+		khp.SelectDiscretionary(choice.Source, choice)
 	}
 	return breakpoints, nil
 }
@@ -372,17 +381,21 @@ func discretionaryCandidates(khp *khipu.Khipu, at kinx, params *Parameters) ([]k
 }
 
 // tryLooseHyphenation evaluates discretionary variants for the overflowing
-// textbox itself. A candidate is accepted only if its pre-break fragment fits
-// the current line and improves the line by at least MinHyphenGain compared to
-// the last non-hyphenated feasible checkpoint.
+// textbox itself. A candidate is accepted only if its pre-break penalty permits
+// breaking, its minimum width fits the current line, and its natural-width gain
+// over the last non-hyphenated checkpoint is at least MinHyphenGain.
 //
 // The selection rule is intentionally greedy and local:
-//   - keep only variants whose PreBreak fits this line
+//   - reject PreBreak.Penalty >= InfinityDemerits, even if its width is ideal
+//   - keep only variants whose PreBreak fits this line at minimum width
 //   - reject variants that do not improve the line enough
 //   - among the survivors, prefer the widest PreBreak
 //   - use lower breakpoint penalty as a tie-break
 //
-// This keeps firstfit simple while still preventing gratuitous soft hyphens.
+// Finite penalties do not compete with width: a wider eligible variant wins
+// regardless of its finite penalty. Exact width/penalty ties keep provider order.
+// Zero MinHyphenGain permits zero improvement. This is a local gain filter, not
+// a hyphen-frequency limit or a demerit model; discovery itself stays lazy.
 func tryLooseHyphenation(khp *khipu.Khipu, at kinx, base segmentState, checkpointWidth WSS, linelen dimen.DU, layout khipu.Params, params *Parameters) (khipu.DiscretionaryCandidate, segmentState, bool, error) {
 	cands, err := discretionaryCandidates(khp, at, params)
 	if err != nil || len(cands) == 0 {
@@ -393,6 +406,11 @@ func tryLooseHyphenation(khp *khipu.Khipu, at kinx, base segmentState, checkpoin
 	var best khipu.DiscretionaryCandidate
 	var bestSeed segmentState
 	for _, cand := range cands {
+		// Prohibition is eligibility, not a preference used only to break ties.
+		// Apply it equally to provider-returned and already cached alternatives.
+		if cand.PreBreak.Penalty >= InfinityDemerits {
+			continue
+		}
 		lineSeg := base.segmentState()
 		lineSeg.append(cand.PreBreak)
 		segw := lineSeg.width(layout)
