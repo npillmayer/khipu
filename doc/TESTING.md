@@ -133,8 +133,8 @@ conformance suites, visual proofs and a shared testing package are proposals
   paragraph and discretionary integration tests exercise both callers.
 - `linebreak/knuthplass/path_test.go` checks canonical equal-cost predecessor
   replacement, synchronized live seeds, and terminal selection by cost then
-  line count. `service_integration_test.go` checks the ParShape/LineShape alias
-  identity and canonical contracts/helpers integration through encoding;
+  line count. `service_integration_test.go` checks rectangular LineShape behavior
+  and canonical contracts/helpers integration through encoding;
   `khipu_test.go` checks allocation sizing and slice growth beyond capacity.
 - `layout_params_test.go` checks complete independent default profiles, shared
   Params across breaking/freezing, explicit zero-skip overrides, firstfit's fil

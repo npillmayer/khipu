@@ -42,13 +42,13 @@ func TestKPVoid(t *testing.T) {
 
 func TestBookkeepingAppendItem(t *testing.T) {
 	book := bookkeeping{}
-	glue := WSS{}.SetFromKnot(khipu.KnotCore{
+	glue := linebreak.WSS{}.SetFromKnot(khipu.KnotCore{
 		W: 10 * dimen.BP, MinW: 5 * dimen.BP, MaxW: 15 * dimen.BP, Kind: khipu.KTGlue,
 	})
-	text := WSS{}.SetFromKnot(khipu.KnotCore{
+	text := linebreak.WSS{}.SetFromKnot(khipu.KnotCore{
 		W: 80 * dimen.BP, MinW: 80 * dimen.BP, MaxW: 80 * dimen.BP, Kind: khipu.KTTextBox,
 	})
-	terminal := WSS{}.SetFromKnot(khipu.KnotCore{
+	terminal := linebreak.WSS{}.SetFromKnot(khipu.KnotCore{
 		W: 0, MinW: 0, MaxW: dimen.Fill, Penalty: InfinityMerits, Kind: khipu.KTGlue,
 	})
 
@@ -64,7 +64,7 @@ func TestBookkeepingAppendItem(t *testing.T) {
 	if !book.seenContent {
 		t.Fatalf("text must mark bookkeeping as containing content")
 	}
-	if book.trailingTrim != (WSS{}) {
+	if book.trailingTrim != (linebreak.WSS{}) {
 		t.Fatalf("text must clear trailing trim, got %v", book.trailingTrim)
 	}
 
@@ -94,9 +94,9 @@ func TestClassifyLineItemUsesDiscardableFlags(t *testing.T) {
 
 func TestBookkeepingEffectiveWidth(t *testing.T) {
 	book := bookkeeping{
-		segment:      WSS{W: 100 * dimen.BP, Min: 90 * dimen.BP, Max: 120 * dimen.BP},
-		leadingTrim:  WSS{W: 10 * dimen.BP, Min: 5 * dimen.BP, Max: 15 * dimen.BP},
-		trailingTrim: WSS{W: 12 * dimen.BP, Min: 6 * dimen.BP, Max: 18 * dimen.BP},
+		segment:      linebreak.WSS{W: 100 * dimen.BP, Min: 90 * dimen.BP, Max: 120 * dimen.BP},
+		leadingTrim:  linebreak.WSS{W: 10 * dimen.BP, Min: 5 * dimen.BP, Max: 15 * dimen.BP},
+		trailingTrim: linebreak.WSS{W: 12 * dimen.BP, Min: 6 * dimen.BP, Max: 18 * dimen.BP},
 	}
 	params := khipu.Params{
 		LeftSkip:  glue(3, 0, 0),
@@ -104,7 +104,7 @@ func TestBookkeepingEffectiveWidth(t *testing.T) {
 	}
 
 	got := book.effectiveWidth(params)
-	want := WSS{
+	want := linebreak.WSS{
 		W:   85 * dimen.BP,
 		Min: 79 * dimen.BP,
 		Max: 97 * dimen.BP,
@@ -116,8 +116,8 @@ func TestBookkeepingEffectiveWidth(t *testing.T) {
 
 func TestBookkeepingEffectiveWidthRetainsInternalDiscardable(t *testing.T) {
 	book := bookkeeping{}
-	text := WSS{W: 40 * dimen.BP, Min: 40 * dimen.BP, Max: 40 * dimen.BP}
-	glue := WSS{W: 10 * dimen.BP, Min: 10 * dimen.BP, Max: 10 * dimen.BP}
+	text := linebreak.WSS{W: 40 * dimen.BP, Min: 40 * dimen.BP, Max: 40 * dimen.BP}
+	glue := linebreak.WSS{W: 10 * dimen.BP, Min: 10 * dimen.BP, Max: 10 * dimen.BP}
 
 	book.appendItem(LICContent, text)
 	book.appendItem(LICTrimDiscardable, glue)
@@ -127,7 +127,7 @@ func TestBookkeepingEffectiveWidthRetainsInternalDiscardable(t *testing.T) {
 		LeftSkip:  glueKnot(0, 0, 0),
 		RightSkip: glueKnot(0, 0, 0),
 	})
-	want := WSS{W: 90 * dimen.BP, Min: 90 * dimen.BP, Max: 90 * dimen.BP}
+	want := linebreak.WSS{W: 90 * dimen.BP, Min: 90 * dimen.BP, Max: 90 * dimen.BP}
 	if got != want {
 		t.Fatalf("expected effective width %v, got %v", want, got)
 	}
@@ -135,19 +135,19 @@ func TestBookkeepingEffectiveWidthRetainsInternalDiscardable(t *testing.T) {
 
 func TestBookkeepingAccumulatesConsecutiveDiscardables(t *testing.T) {
 	book := bookkeeping{}
-	trim := WSS{W: 10 * dimen.BP, Min: 10 * dimen.BP, Max: 10 * dimen.BP}
-	text := WSS{W: 40 * dimen.BP, Min: 40 * dimen.BP, Max: 40 * dimen.BP}
+	trim := linebreak.WSS{W: 10 * dimen.BP, Min: 10 * dimen.BP, Max: 10 * dimen.BP}
+	text := linebreak.WSS{W: 40 * dimen.BP, Min: 40 * dimen.BP, Max: 40 * dimen.BP}
 
 	book.appendItem(LICTrimDiscardable, trim)
 	book.appendItem(LICTrimDiscardable, trim)
-	if want := (WSS{W: 20 * dimen.BP, Min: 20 * dimen.BP, Max: 20 * dimen.BP}); book.leadingTrim != want {
+	if want := (linebreak.WSS{W: 20 * dimen.BP, Min: 20 * dimen.BP, Max: 20 * dimen.BP}); book.leadingTrim != want {
 		t.Fatalf("expected leading trim %v, got %v", want, book.leadingTrim)
 	}
 
 	book.appendItem(LICContent, text)
 	book.appendItem(LICTrimDiscardable, trim)
 	book.appendItem(LICTrimDiscardable, trim)
-	if want := (WSS{W: 20 * dimen.BP, Min: 20 * dimen.BP, Max: 20 * dimen.BP}); book.trailingTrim != want {
+	if want := (linebreak.WSS{W: 20 * dimen.BP, Min: 20 * dimen.BP, Max: 20 * dimen.BP}); book.trailingTrim != want {
 		t.Fatalf("expected trailing trim %v, got %v", want, book.trailingTrim)
 	}
 }

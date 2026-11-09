@@ -96,7 +96,7 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 	seg := &segmentState{}
 	firstInLine := true
 	lastFeasible := noinx
-	lastFeasibleWidth := WSS{}
+	lastFeasibleWidth := linebreak.WSS{}
 	breakpoints := make([]kinx, 0, 8)
 	trace := tracer()
 	debug := trace.GetTraceLevel() >= tracing.LevelDebug
@@ -142,7 +142,7 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 				*seg = nextSeg
 				firstInLine = !seg.seenContent
 				lastFeasible = noinx
-				lastFeasibleWidth = WSS{}
+				lastFeasibleWidth = linebreak.WSS{}
 				continue
 			}
 		}
@@ -177,7 +177,7 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 				seg.reset()
 				firstInLine = !seg.seenContent
 				lastFeasible = noinx
-				lastFeasibleWidth = WSS{}
+				lastFeasibleWidth = linebreak.WSS{}
 			} else {
 				if trace.GetTraceLevel() >= tracing.LevelInfo {
 					trace.Infof("Overfull box at line %d", len(breakpoints)+1)
@@ -185,7 +185,7 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 				breakpoints = append(breakpoints, i)
 				seg.clear()
 				firstInLine = true
-				lastFeasibleWidth = WSS{}
+				lastFeasibleWidth = linebreak.WSS{}
 			}
 			// The current candidate has already been scanned into the carry.
 			// After committing the old checkpoint it may fit the next line;
@@ -221,18 +221,15 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 	return breakpoints, nil
 }
 
-// WSS is shared with other linebreakers through the root linebreak package.
-type WSS = linebreak.WSS
-
 // segmentState tracks one in-progress first-fit line together with the seed
 // for the next line after the current checkpoint. `length` is the raw scanned
 // material, `leadingTrim`/`trailingTrim` capture line-edge discardables, and
 // `carry` remembers the already scanned post-break fragment that becomes the
 // next line when a checkpoint is committed.
 type segmentState struct {
-	length       WSS
-	leadingTrim  WSS
-	trailingTrim WSS
+	length       linebreak.WSS
+	leadingTrim  linebreak.WSS
+	trailingTrim linebreak.WSS
 	carry        segmentSnapshot
 	seenContent  bool
 }
@@ -241,9 +238,9 @@ type segmentState struct {
 // the visible-width bookkeeping of segmentState so the next line starts with
 // the same trim semantics as if it had been scanned from scratch.
 type segmentSnapshot struct {
-	length       WSS
-	leadingTrim  WSS
-	trailingTrim WSS
+	length       linebreak.WSS
+	leadingTrim  linebreak.WSS
+	trailingTrim linebreak.WSS
 	seenContent  bool
 }
 
@@ -278,7 +275,7 @@ func classifyLineItem(k khipu.KnotCore) lineItemClass {
 }
 
 func (s *segmentState) append(k khipu.KnotCore) {
-	w := WSS{}.SetFromKnot(k)
+	w := linebreak.WSS{}.SetFromKnot(k)
 	cls := classifyLineItem(k)
 	s.appendToState(w, cls)
 	s.appendToCarry(w, cls)
@@ -287,7 +284,7 @@ func (s *segmentState) append(k khipu.KnotCore) {
 // appendToState advances the visible bookkeeping of the current line. Leading
 // discardables accumulate until visible content arrives; afterwards discardable
 // material becomes trailing trim at the candidate breakpoint.
-func (s *segmentState) appendToState(w WSS, cls lineItemClass) {
+func (s *segmentState) appendToState(w linebreak.WSS, cls lineItemClass) {
 	s.length = s.length.Add(w)
 	switch cls {
 	case LICTrimDiscardable:
@@ -298,14 +295,14 @@ func (s *segmentState) appendToState(w WSS, cls lineItemClass) {
 		}
 	case LICContent:
 		s.seenContent = true
-		s.trailingTrim = WSS{}
+		s.trailingTrim = linebreak.WSS{}
 	}
 }
 
 // appendToCarry records the same knot into the post-checkpoint snapshot. carry
 // is reset whenever a new feasible breakpoint is accepted, so it always holds
 // the material that would become the next line after that checkpoint.
-func (s *segmentState) appendToCarry(w WSS, cls lineItemClass) {
+func (s *segmentState) appendToCarry(w linebreak.WSS, cls lineItemClass) {
 	s.carry.length = s.carry.length.Add(w)
 	switch cls {
 	case LICTrimDiscardable:
@@ -316,17 +313,17 @@ func (s *segmentState) appendToCarry(w WSS, cls lineItemClass) {
 		}
 	case LICContent:
 		s.carry.seenContent = true
-		s.carry.trailingTrim = WSS{}
+		s.carry.trailingTrim = linebreak.WSS{}
 	}
 }
 
 // width returns the effective width of the current candidate line after
 // trimming discardable material at both edges and adding paragraph side skips.
-func (s *segmentState) width(params khipu.Params) WSS {
+func (s *segmentState) width(params khipu.Params) linebreak.WSS {
 	segw := s.length.Subtract(s.leadingTrim)
 	segw = segw.Subtract(s.trailingTrim)
-	segw = segw.Add(WSS{}.SetFromKnot(params.LeftSkip))
-	segw = segw.Add(WSS{}.SetFromKnot(params.RightSkip))
+	segw = segw.Add(linebreak.WSS{}.SetFromKnot(params.LeftSkip))
+	segw = segw.Add(linebreak.WSS{}.SetFromKnot(params.RightSkip))
 	return segw
 }
 
@@ -349,9 +346,9 @@ func (s *segmentState) trackcarry() {
 // clear discards both the current line and any pending carried state. It is
 // used after forced breaks and overfull fallback breaks.
 func (s *segmentState) clear() {
-	s.length = WSS{}
-	s.leadingTrim = WSS{}
-	s.trailingTrim = WSS{}
+	s.length = linebreak.WSS{}
+	s.leadingTrim = linebreak.WSS{}
+	s.trailingTrim = linebreak.WSS{}
 	s.seenContent = false
 	s.carry = segmentSnapshot{}
 }
@@ -396,7 +393,7 @@ func discretionaryCandidates(khp *khipu.Khipu, at kinx, params *Parameters) ([]k
 // regardless of its finite penalty. Exact width/penalty ties keep provider order.
 // Zero MinHyphenGain permits zero improvement. This is a local gain filter, not
 // a hyphen-frequency limit or a demerit model; discovery itself stays lazy.
-func tryLooseHyphenation(khp *khipu.Khipu, at kinx, base segmentState, checkpointWidth WSS, linelen dimen.DU, layout khipu.Params, params *Parameters) (khipu.DiscretionaryCandidate, segmentState, bool, error) {
+func tryLooseHyphenation(khp *khipu.Khipu, at kinx, base segmentState, checkpointWidth linebreak.WSS, linelen dimen.DU, layout khipu.Params, params *Parameters) (khipu.DiscretionaryCandidate, segmentState, bool, error) {
 	cands, err := discretionaryCandidates(khp, at, params)
 	if err != nil || len(cands) == 0 {
 		return khipu.DiscretionaryCandidate{}, segmentState{}, false, err

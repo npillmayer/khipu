@@ -12,29 +12,29 @@ import (
 func TestEmergencyClassificationAndCandidateConsistency(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
-		w             WSS
+		w             linebreak.WSS
 		target, extra dimen.DU
 		tolerance     merits
 		ratio         float64
 		badness       merits
 		disposition   lineDisposition
 	}{
-		{"exact fit", WSS{W: 100, Min: 100, Max: 100}, 100, 20, 0, 0, 0, lineAccepted},
-		{"finite stretch", WSS{W: 90, Min: 80, Max: 95}, 100, 5, 100, 1, 100, lineAccepted},
-		{"zero real stretch", WSS{W: 90, Min: 80, Max: 90}, 100, 20, 12, .5, 12, lineAccepted},
-		{"still above tolerance", WSS{W: 90, Min: 80, Max: 90}, 100, 20, 11, .5, 12, lineScreenedOut},
-		{"badness still capped", WSS{W: 90, Min: 80, Max: 90}, 100, 1, 200, 10, 10000, lineScreenedOut},
-		{"empty line", WSS{}, 100, 100, 100, 1, 100, lineAccepted},
-		{"shrink unchanged", WSS{W: 110, Min: 90, Max: 120}, 100, 50, 12, -.5, 12, lineAccepted},
-		{"shrink limit", WSS{W: 110, Min: 100, Max: 120}, 100, 50, 100, -1, 100, lineAccepted},
-		{"overfull unchanged", WSS{W: 111, Min: 101, Max: 120}, 100, 50, 10000, -1.1, 10000, lineOverfull},
-		{"no shrink", WSS{W: 110, Min: 110, Max: 120}, 100, 50, 10000, math.Inf(-1), 10000, lineOverfull},
+		{"exact fit", linebreak.WSS{W: 100, Min: 100, Max: 100}, 100, 20, 0, 0, 0, lineAccepted},
+		{"finite stretch", linebreak.WSS{W: 90, Min: 80, Max: 95}, 100, 5, 100, 1, 100, lineAccepted},
+		{"zero real stretch", linebreak.WSS{W: 90, Min: 80, Max: 90}, 100, 20, 12, .5, 12, lineAccepted},
+		{"still above tolerance", linebreak.WSS{W: 90, Min: 80, Max: 90}, 100, 20, 11, .5, 12, lineScreenedOut},
+		{"badness still capped", linebreak.WSS{W: 90, Min: 80, Max: 90}, 100, 1, 200, 10, 10000, lineScreenedOut},
+		{"empty line", linebreak.WSS{}, 100, 100, 100, 1, 100, lineAccepted},
+		{"shrink unchanged", linebreak.WSS{W: 110, Min: 90, Max: 120}, 100, 50, 12, -.5, 12, lineAccepted},
+		{"shrink limit", linebreak.WSS{W: 110, Min: 100, Max: 120}, 100, 50, 100, -1, 100, lineAccepted},
+		{"overfull unchanged", linebreak.WSS{W: 111, Min: 101, Max: 120}, 100, 50, 10000, -1.1, 10000, lineOverfull},
+		{"no shrink", linebreak.WSS{W: 110, Min: 110, Max: 120}, 100, 50, 10000, math.Inf(-1), 10000, lineOverfull},
 		// The new denominator exceeds DU and the symbolic fill range but is
 		// still finite. Clamping/narrowing it would produce the wrong badness.
-		{"large finite denominator", WSS{Max: dimen.Fil - 1}, dimen.Fil - 1, dimen.Fil - 1, 12, .5, 12, lineAccepted},
+		{"large finite denominator", linebreak.WSS{Max: dimen.Fil - 1}, dimen.Fil - 1, dimen.Fil - 1, 12, .5, 12, lineAccepted},
 		// Both subtractions exceed signed DU. Only the stored adjustment
 		// magnitude saturates; all arithmetic feeding the ratio remains wide.
-		{"wide subtractions", WSS{W: -1500000000, Min: -1500000000, Max: 1500000000}, 1500000000, 1500000000, 29, 2.0 / 3.0, 29, lineAccepted},
+		{"wide subtractions", linebreak.WSS{W: -1500000000, Min: -1500000000, Max: 1500000000}, 1500000000, 1500000000, 29, 2.0 / 3.0, 29, lineAccepted},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			adjustment := int64(tc.target) - int64(tc.w.W)
@@ -100,7 +100,7 @@ func TestEmergencyClassificationAndCandidateConsistency(t *testing.T) {
 func TestEmergencyFillCompatibility(t *testing.T) {
 	for _, maximum := range []dimen.DU{dimen.Fil, dimen.Fill, dimen.Filll, dimen.Infinity} {
 		for _, target := range []dimen.DU{100, dimen.Fil - 1} {
-			w := WSS{Max: maximum}
+			w := linebreak.WSS{Max: maximum}
 			want := classifyLine(w, target, 200, 0)
 			for _, extra := range []dimen.DU{1, 100, dimen.Fil - 1} {
 				if got := classifyLine(w, target, 200, extra); got != want {
@@ -117,7 +117,7 @@ func TestEmergencyFillCompatibility(t *testing.T) {
 func TestNonpositiveEmergencyStretchPreservesLegacyClassification(t *testing.T) {
 	// Reconstruct the pre-emergency classification from its unchanged helpers,
 	// including extreme summaries. E=0 must not incidentally repair old behavior.
-	for _, w := range []WSS{
+	for _, w := range []linebreak.WSS{
 		{},
 		{W: 100, Min: 90, Max: 110},
 		{W: 110, Min: 110, Max: 110},

@@ -18,15 +18,16 @@
 // run replaces the previous selections.
 //
 // Owners and their mutable collaborators must not be used concurrently.
-// Linebreaking does not produce final glyph placement or rendering; freezing
+// Linebreaking does not produce final glyph placement or rendering. Internal
+// line materialization and glue-only freezing exist; a public freezing API
 // remains future work. Streaming paragraphs retain glyph/source provenance.
 // Package contracts owns the service
 // interfaces and their value types. Package helpers provides deterministic
 // defaults: SyntheticFont, DefaultStyleResolver, and SyntheticStreamingShaper.
 // The default resolver rejects application-defined styles; synthetic glyphs
-// are not real font shaping. Root aliases and
-// forwarding constructors preserve earlier client code; new code should import
-// contracts and helpers directly. Paragraph-specific interfaces stay here.
+// are not real font shaping. Import contracts and helpers directly; the root
+// package does not re-export their service types or constructors.
+// Paragraph-specific interfaces stay here.
 //
 /*
 License

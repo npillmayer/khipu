@@ -12,7 +12,7 @@ import (
 func TestCalcAdjustmentRatioAndBadness(t *testing.T) {
 	tests := []struct {
 		name      string
-		segwss    WSS
+		segwss    linebreak.WSS
 		linelen   int
 		wantRatio float64
 		wantBad   merits
@@ -20,7 +20,7 @@ func TestCalcAdjustmentRatioAndBadness(t *testing.T) {
 	}{
 		{
 			name:      "exact fit",
-			segwss:    WSS{W: 100, Min: 90, Max: 120},
+			segwss:    linebreak.WSS{W: 100, Min: 90, Max: 120},
 			linelen:   100,
 			wantRatio: 0,
 			wantBad:   0,
@@ -28,7 +28,7 @@ func TestCalcAdjustmentRatioAndBadness(t *testing.T) {
 		},
 		{
 			name:      "stretch",
-			segwss:    WSS{W: 90, Min: 90, Max: 110},
+			segwss:    linebreak.WSS{W: 90, Min: 90, Max: 110},
 			linelen:   100,
 			wantRatio: 0.5,
 			wantBad:   12,
@@ -36,7 +36,7 @@ func TestCalcAdjustmentRatioAndBadness(t *testing.T) {
 		},
 		{
 			name:      "shrink",
-			segwss:    WSS{W: 120, Min: 110, Max: 200},
+			segwss:    linebreak.WSS{W: 120, Min: 110, Max: 200},
 			linelen:   115,
 			wantRatio: -0.5,
 			wantBad:   12,
@@ -44,7 +44,7 @@ func TestCalcAdjustmentRatioAndBadness(t *testing.T) {
 		},
 		{
 			name:      "capped awful badness",
-			segwss:    WSS{W: 90, Min: 90, Max: 95},
+			segwss:    linebreak.WSS{W: 90, Min: 90, Max: 95},
 			linelen:   100,
 			wantRatio: 2,
 			wantBad:   800,
@@ -52,7 +52,7 @@ func TestCalcAdjustmentRatioAndBadness(t *testing.T) {
 		},
 		{
 			name:      "no stretch available",
-			segwss:    WSS{W: 100, Min: 100, Max: 100},
+			segwss:    linebreak.WSS{W: 100, Min: 100, Max: 100},
 			linelen:   110,
 			wantRatio: 0,
 			wantBad:   0,
@@ -60,7 +60,7 @@ func TestCalcAdjustmentRatioAndBadness(t *testing.T) {
 		},
 		{
 			name:      "no shrink available",
-			segwss:    WSS{W: 100, Min: 100, Max: 120},
+			segwss:    linebreak.WSS{W: 100, Min: 100, Max: 120},
 			linelen:   90,
 			wantRatio: 0,
 			wantBad:   0,
@@ -140,11 +140,11 @@ func TestEvaluateCandidatesSeparatesScreeningFromRanking(t *testing.T) {
 		t.Fatalf("prepareLineBreaker failed: %v", err)
 	}
 	kp.paths[kp.root][0] = bookkeeping{
-		segment:     WSS{W: 100, Min: 100, Max: 100},
+		segment:     linebreak.WSS{W: 100, Min: 100, Max: 100},
 		seenContent: true,
 	}
 	kp.paths[kp.root][1] = bookkeeping{
-		segment:     WSS{W: 90, Min: 90, Max: 95},
+		segment:     linebreak.WSS{W: 90, Min: 90, Max: 95},
 		seenContent: true,
 	}
 

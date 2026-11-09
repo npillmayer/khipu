@@ -469,7 +469,7 @@ breaker decision to visual construction and `visualParagraph.prepareGeometry`.
 It accepts the same resolved Params used by the breaker, including shape and
 exact left/right skip values. There are no implicit defaults and no dependency on
 package `linebreak`: the public `khipu.LineShape` interface declares `LineLength(int32)`, which
-existing `linebreak.ParShape` implementations satisfy structurally.
+the shape returned by `linebreak.RectangularParShape` satisfies structurally.
 
 The result is an internal `geometryParagraph` with one `geometryLine` per line.
 Its physical sequence is represented explicitly as:

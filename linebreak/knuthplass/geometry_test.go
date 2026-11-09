@@ -12,28 +12,28 @@ import (
 func TestLineClassificationAndCandidateConsistency(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
-		width       WSS
+		width       linebreak.WSS
 		tolerance   merits
 		ratio       float64
 		badness     merits
 		disposition lineDisposition
 	}{
-		{"rigid exact fit", WSS{W: 100, Min: 100, Max: 100}, 0, 0, 0, lineAccepted},
-		{"elastic exact fit", WSS{W: 100, Min: 90, Max: 120}, 0, 0, 0, lineAccepted},
-		{"finite shrink", WSS{W: 110, Min: 90, Max: 120}, 200, -0.5, 12, lineAccepted},
-		{"shrink limit accepted", WSS{W: 110, Min: 100, Max: 120}, 100, -1, 100, lineAccepted},
-		{"shrink limit screened", WSS{W: 110, Min: 100, Max: 120}, 99, -1, 100, lineScreenedOut},
-		{"rounding cannot hide excess shrink", WSS{W: 1101, Min: 101, Max: 1200}, 100, -1.001, 10000, lineOverfull},
-		{"excess shrink below old tolerance", WSS{W: 111, Min: 101, Max: 120}, 200, -1.1, 10000, lineOverfull},
-		{"excess shrink at maximum tolerance", WSS{W: 111, Min: 101, Max: 120}, 10000, -1.1, 10000, lineOverfull},
-		{"no shrink", WSS{W: 110, Min: 110, Max: 120}, 10000, math.Inf(-1), 10000, lineOverfull},
-		{"stretch at tolerance", WSS{W: 90, Min: 80, Max: 110}, 12, 0.5, 12, lineAccepted},
-		{"stretch above tolerance", WSS{W: 90, Min: 80, Max: 110}, 11, 0.5, 12, lineScreenedOut},
-		{"stretch beyond maximum is not overfull", WSS{W: 90, Min: 80, Max: 95}, 800, 2, 800, lineAccepted},
-		{"cubic badness cap", WSS{W: 90, Min: 80, Max: 91}, 10000, 10, 10000, lineAccepted},
-		{"no stretch screened", WSS{W: 90, Min: 80, Max: 90}, 200, math.Inf(1), 10000, lineScreenedOut},
-		{"no stretch admitted", WSS{W: 90, Min: 80, Max: 90}, 10000, math.Inf(1), 10000, lineAccepted},
-		{"empty line", WSS{}, 200, math.Inf(1), 10000, lineScreenedOut},
+		{"rigid exact fit", linebreak.WSS{W: 100, Min: 100, Max: 100}, 0, 0, 0, lineAccepted},
+		{"elastic exact fit", linebreak.WSS{W: 100, Min: 90, Max: 120}, 0, 0, 0, lineAccepted},
+		{"finite shrink", linebreak.WSS{W: 110, Min: 90, Max: 120}, 200, -0.5, 12, lineAccepted},
+		{"shrink limit accepted", linebreak.WSS{W: 110, Min: 100, Max: 120}, 100, -1, 100, lineAccepted},
+		{"shrink limit screened", linebreak.WSS{W: 110, Min: 100, Max: 120}, 99, -1, 100, lineScreenedOut},
+		{"rounding cannot hide excess shrink", linebreak.WSS{W: 1101, Min: 101, Max: 1200}, 100, -1.001, 10000, lineOverfull},
+		{"excess shrink below old tolerance", linebreak.WSS{W: 111, Min: 101, Max: 120}, 200, -1.1, 10000, lineOverfull},
+		{"excess shrink at maximum tolerance", linebreak.WSS{W: 111, Min: 101, Max: 120}, 10000, -1.1, 10000, lineOverfull},
+		{"no shrink", linebreak.WSS{W: 110, Min: 110, Max: 120}, 10000, math.Inf(-1), 10000, lineOverfull},
+		{"stretch at tolerance", linebreak.WSS{W: 90, Min: 80, Max: 110}, 12, 0.5, 12, lineAccepted},
+		{"stretch above tolerance", linebreak.WSS{W: 90, Min: 80, Max: 110}, 11, 0.5, 12, lineScreenedOut},
+		{"stretch beyond maximum is not overfull", linebreak.WSS{W: 90, Min: 80, Max: 95}, 800, 2, 800, lineAccepted},
+		{"cubic badness cap", linebreak.WSS{W: 90, Min: 80, Max: 91}, 10000, 10, 10000, lineAccepted},
+		{"no stretch screened", linebreak.WSS{W: 90, Min: 80, Max: 90}, 200, math.Inf(1), 10000, lineScreenedOut},
+		{"no stretch admitted", linebreak.WSS{W: 90, Min: 80, Max: 90}, 10000, math.Inf(1), 10000, lineAccepted},
+		{"empty line", linebreak.WSS{}, 200, math.Inf(1), 10000, lineScreenedOut},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			want := lineEvaluation{
@@ -103,7 +103,7 @@ func TestSharedClassificationUsesCurrentPassTolerance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := WSS{W: 110, Min: 100, Max: 110}
+	w := linebreak.WSS{W: 110, Min: 100, Max: 110}
 	khp := newKhipu([]node{{w: 1, minw: 1, maxw: 1, kind: khipu.KTTextBox}})
 	khp.AddDiscretionaryCandidate(0, khipu.DiscretionaryCandidate{
 		Variant:  1,
@@ -132,7 +132,7 @@ func TestSharedClassificationDoesNotRetireWorkingStates(t *testing.T) {
 		t.Fatal(err)
 	}
 	kp.paths[kp.root][0] = bookkeeping{
-		segment: WSS{W: 200 * dimen.PT, Min: 150 * dimen.PT, Max: 250 * dimen.PT}, seenContent: true,
+		segment: linebreak.WSS{W: 200 * dimen.PT, Min: 150 * dimen.PT, Max: 250 * dimen.PT}, seenContent: true,
 	}
 	before := kp.paths[kp.root][0]
 	evals := kp.evaluateCandidates(kp.root, 0)

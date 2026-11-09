@@ -91,7 +91,7 @@ func TestEmergencyRetroactiveSeedsRemainPhysical(t *testing.T) {
 		seed, ok := kp.seeds[origin{from, 2}]
 		// Retroactive discovery has consumed the 5 pt suffix glue. Keep it
 		// in live bookkeeping, not in the immutable 60 pt post-break seed.
-		if !ok || seed != seedBookkeepingFromKnot(candidate.PostBreak) || kp.paths[from][2].segment != (WSS{W: 65 * dimen.BP, Min: 65 * dimen.BP, Max: 65 * dimen.BP}) {
+		if !ok || seed != seedBookkeepingFromKnot(candidate.PostBreak) || kp.paths[from][2].segment != (linebreak.WSS{W: 65 * dimen.BP, Min: 65 * dimen.BP, Max: 65 * dimen.BP}) {
 			t.Fatal("virtual capacity or consumed suffix leaked into the rescan seed", seed)
 		}
 		if live, err := kp.processKnot(khp, 3); err != nil || !live {

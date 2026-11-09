@@ -3,6 +3,7 @@ package knuthplass
 import (
 	"fmt"
 	"github.com/npillmayer/khipu"
+	"github.com/npillmayer/khipu/linebreak"
 )
 
 // DiscretionaryProvider supplies hyphenation alternatives for one textbox knot.
@@ -199,7 +200,7 @@ func cacheDiscretionaryCandidates(khp *khipu.Khipu, at kinx, cands []khipu.Discr
 // appendKnotToBook applies ordinary trimming semantics to one KnotCore. It is
 // shared by physical Khipu knots and by synthetic discretionary fragments.
 func appendKnotToBook(book *bookkeeping, k khipu.KnotCore) {
-	wss := WSS{}.SetFromKnot(k)
+	wss := linebreak.WSS{}.SetFromKnot(k)
 	cls := classifyLineItem(k)
 	book.appendItem(cls, wss)
 }

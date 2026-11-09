@@ -129,7 +129,7 @@ func checkBoundarySuccessors(t *testing.T, extra dimen.DU) {
 		kp.boundaryEvals.begin()
 		kp.evaluateCandidates(target, 0) // caches an overfull bucket or an empty one
 		w := 100*dimen.BP - extra
-		seed.segment = WSS{W: w, Min: w, Max: w}
+		seed.segment = linebreak.WSS{W: w, Min: w, Max: w}
 		kp.activateDiscretionary(kp.root, breakCandidate{
 			eval: lineEvaluation{line: 0, demerits: 5}, target: target, seed: seed, initial: seed,
 		})

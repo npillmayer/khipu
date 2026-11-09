@@ -2,7 +2,6 @@ package khipu_test
 
 import (
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -13,10 +12,7 @@ import (
 	"github.com/npillmayer/khipu/linebreak"
 )
 
-func TestParShapeAliasesLineShape(t *testing.T) {
-	if reflect.TypeFor[linebreak.ParShape]() != reflect.TypeFor[khipu.LineShape]() {
-		t.Fatal("ParShape must retain LineShape type identity")
-	}
+func TestRectangularLineShape(t *testing.T) {
 	var shape khipu.LineShape = linebreak.RectangularParShape(100 * dimen.PT)
 	if got := shape.LineLength(1); got != 100*dimen.PT {
 		t.Fatalf("rectangular shape width: %v", got)

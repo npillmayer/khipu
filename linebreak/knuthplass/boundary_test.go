@@ -150,7 +150,7 @@ func TestRetirementIsPerLineAndPreservesHistory(t *testing.T) {
 	}
 	kp.prune = true
 	for _, line := range []lineNo{0, 1} {
-		kp.paths[kp.root][line] = bookkeeping{segment: WSS{W: 150, Min: 150, Max: 150}, seenContent: true}
+		kp.paths[kp.root][line] = bookkeeping{segment: linebreak.WSS{W: 150, Min: 150, Max: 150}, seenContent: true}
 		kp.seeds[origin{kp.root, line}] = bookkeeping{}
 	}
 	if !kp.finishBoundary(1, 0) {
@@ -295,7 +295,7 @@ func TestFallbackCanonicalCostIncludesTerminalHyphenExtra(t *testing.T) {
 			}
 			for _, ref := range refs {
 				kp.horizon[ref] = struct{}{}
-				kp.paths[ref] = map[lineNo]bookkeeping{1: {segment: WSS{W: 200, Min: 200, Max: 200}, seenContent: true}}
+				kp.paths[ref] = map[lineNo]bookkeeping{1: {segment: linebreak.WSS{W: 200, Min: 200, Max: 200}, seenContent: true}}
 				kp.seeds[origin{ref, 1}] = bookkeeping{}
 				kp.SetPred(kp.root, ref, 0, 0, 1)
 			}

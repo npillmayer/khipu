@@ -3,6 +3,7 @@ package knuthplass
 import (
 	"cmp"
 	"fmt"
+	"github.com/npillmayer/khipu/linebreak"
 	"slices"
 	"strings"
 
@@ -118,12 +119,12 @@ func prepareLineBreaker(layout khipu.Params,
 // --- Breakpoints -----------------------------------------------------------
 
 type bookkeeping struct {
-	segment      WSS    // sum of widths from this breakpoint up to current knot
-	totalcost    merits // sum of costs for segment up to this breakpoint
-	worstbadness merits // highest line badness encountered along the path
-	leadingTrim  WSS    // discardable width before the first retained line item
-	trailingTrim WSS    // discardable width after the most recent retained line item
-	seenContent  bool   // does this segment contain a non-discardable content item?
+	segment      linebreak.WSS // sum of widths from this breakpoint up to current knot
+	totalcost    merits        // sum of costs for segment up to this breakpoint
+	worstbadness merits        // highest line badness encountered along the path
+	leadingTrim  linebreak.WSS // discardable width before the first retained line item
+	trailingTrim linebreak.WSS // discardable width after the most recent retained line item
+	seenContent  bool          // does this segment contain a non-discardable content item?
 }
 
 func (path bookkeeping) String() string {
@@ -154,7 +155,7 @@ func classifyLineItem(k khipu.KnotCore) lineItemClass {
 	}
 }
 
-func (book *bookkeeping) appendItem(cls lineItemClass, w WSS) {
+func (book *bookkeeping) appendItem(cls lineItemClass, w linebreak.WSS) {
 	book.segment = book.segment.Add(w)
 	switch cls {
 	case LICTrimDiscardable:
@@ -165,19 +166,19 @@ func (book *bookkeeping) appendItem(cls lineItemClass, w WSS) {
 		}
 	case LICContent:
 		book.seenContent = true
-		book.trailingTrim = WSS{}
+		book.trailingTrim = linebreak.WSS{}
 	case LICRetainedNeutral:
 		// width stays in segment, but does not contribute to trim bookkeeping
 	}
 }
 
-func (book bookkeeping) effectiveWidth(params khipu.Params) WSS {
+func (book bookkeeping) effectiveWidth(params khipu.Params) linebreak.WSS {
 	segw := book.segment
 	segw = segw.Subtract(book.leadingTrim)
 	segw = segw.Subtract(book.trailingTrim)
-	w := WSS{}.SetFromKnot(params.LeftSkip)
+	w := linebreak.WSS{}.SetFromKnot(params.LeftSkip)
 	segw = segw.Add(w)
-	w = WSS{}.SetFromKnot(params.RightSkip)
+	w = linebreak.WSS{}.SetFromKnot(params.RightSkip)
 	segw = segw.Add(w)
 	return segw
 }
@@ -196,8 +197,8 @@ func (kp *linebreaker) updatePath(bp BreakRef, idx kinx, k khipu.KnotCore) {
 		return
 	}
 	kp.boundaryEvals.invalidate(bp)
-	wss := WSS{}.SetFromKnot(k) // get dimensions of knot
-	cls := classifyLineItem(k)  // classify for line-edge trimming
+	wss := linebreak.WSS{}.SetFromKnot(k) // get dimensions of knot
+	cls := classifyLineItem(k)            // classify for line-edge trimming
 	trace := tracer()
 	debug := trace.GetTraceLevel() >= tracing.LevelDebug
 	lines := kp.paths[bp]
@@ -450,7 +451,7 @@ func (kp *linebreaker) evaluateCandidates(bp BreakRef, penalty khipu.Penalty) []
 //
 // This function is pure geometry. It does not decide whether the line is
 // acceptable in the current pass.
-func calcAdjustmentRatio(segwss WSS, linelen dimen.DU) (float64, bool) {
+func calcAdjustmentRatio(segwss linebreak.WSS, linelen dimen.DU) (float64, bool) {
 	if segwss.W == linelen {
 		return 0, true
 	}
@@ -478,7 +479,7 @@ func calcAdjustmentRatio(segwss WSS, linelen dimen.DU) (float64, bool) {
 // calcAdjustmentRatio, this function is part of pass screening, not of path
 // ranking. This low-level helper reports the cubic value only; classifyLine
 // additionally rejects excessive shrink even when that value is below tolerance.
-func calcBadness(segwss WSS, linelen dimen.DU) (merits, bool) {
+func calcBadness(segwss linebreak.WSS, linelen dimen.DU) (merits, bool) {
 	ratio, ok := calcAdjustmentRatio(segwss, linelen)
 	if !ok {
 		return 0, false

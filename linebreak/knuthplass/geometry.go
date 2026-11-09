@@ -1,6 +1,7 @@
 package knuthplass
 
 import (
+	"github.com/npillmayer/khipu/linebreak"
 	"math"
 
 	"github.com/npillmayer/khipu/dimen"
@@ -15,7 +16,7 @@ import (
 // changes widths or shrink. Nonpositive values preserve the original calculation.
 // Positive values must be below dimen.Fil (validated by public pass setup).
 // Max >= Fil deliberately keeps the old numerical fill/saturation behavior:
-// WSS cannot distinguish actual fill from a saturated sum of finite maxima.
+// linebreak.WSS cannot distinguish actual fill from a saturated sum of finite maxima.
 // This compatibility rule does not claim exact symbolic fill semantics.
 //
 // Shrink is a hard bound: Min > target is overfull regardless of tolerance.
@@ -24,7 +25,7 @@ import (
 // it is not an overfull line and may improve when more material is appended.
 // Signed infinities preserve
 // the loose/tight distinction when no finite ratio can be computed.
-func classifyLine(w WSS, target dimen.DU, tolerance merits, extraStretch dimen.DU) lineEvaluation {
+func classifyLine(w linebreak.WSS, target dimen.DU, tolerance merits, extraStretch dimen.DU) lineEvaluation {
 	var ratio float64
 	var available bool
 	stretch := absD(target - w.W)

@@ -1,6 +1,7 @@
 package knuthplass
 
 import (
+	"github.com/npillmayer/khipu/linebreak"
 	"slices"
 	"testing"
 
@@ -151,7 +152,7 @@ func TestCanonicalTieReplacesLivePathAndSeed(t *testing.T) {
 	low, high, end := PlainBreak(1), PlainBreak(3), PlainBreak(5)
 	kp.paths[low] = map[lineNo]bookkeeping{1: {totalcost: 10, worstbadness: 20}}
 	kp.paths[high] = map[lineNo]bookkeeping{1: {totalcost: 10, worstbadness: 40}}
-	seed := bookkeeping{segment: WSS{W: 7}, seenContent: true}
+	seed := bookkeeping{segment: linebreak.WSS{W: 7}, seenContent: true}
 	kp.evalNewSegmentSeed(high, end, 2, cost{demerits: 5, badness: 10}, bookkeeping{})
 	kp.evalNewSegmentSeed(low, end, 2, cost{demerits: 5, badness: 10}, seed)
 	pred, ok := kp.pathTable.Pred(end, 2)

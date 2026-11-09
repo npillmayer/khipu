@@ -3,7 +3,6 @@ package knuthplass
 import (
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/dimen"
-	"github.com/npillmayer/khipu/linebreak"
 )
 
 // Parameters is a collection of configuration parameters for line-breaking.
@@ -86,6 +85,3 @@ func clampPenalty(p merits) merits {
 	}
 	return p
 }
-
-// WSS is shared with other linebreakers through the root linebreak package.
-type WSS = linebreak.WSS

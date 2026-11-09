@@ -63,8 +63,8 @@ func TestIndexedUpdatesAndScoringStayWithinBreakpoint(t *testing.T) {
 	before := make(map[BreakRef]map[lineNo]bookkeeping)
 	for _, ref := range refs {
 		kp.paths[ref] = map[lineNo]bookkeeping{
-			1: {segment: WSS{W: 20, Min: 10, Max: 200}, seenContent: true, totalcost: 5},
-			4: {segment: WSS{W: 30, Min: 10, Max: 200}, seenContent: true, totalcost: 9},
+			1: {segment: linebreak.WSS{W: 20, Min: 10, Max: 200}, seenContent: true, totalcost: 5},
+			4: {segment: linebreak.WSS{W: 30, Min: 10, Max: 200}, seenContent: true, totalcost: 9},
 		}
 		before[ref] = maps.Clone(kp.paths[ref])
 	}
@@ -121,7 +121,7 @@ func TestIndexedDiscretionaryScoringUsesMatchingLinesAndSeeds(t *testing.T) {
 	}
 	// Distinct seeds catch accidentally rescanning with another line's state.
 	seed4 := seed
-	seed4.segment = WSS{W: 12 * dimen.BP, Min: 12 * dimen.BP, Max: 12 * dimen.BP}
+	seed4.segment = linebreak.WSS{W: 12 * dimen.BP, Min: 12 * dimen.BP, Max: 12 * dimen.BP}
 	kp.seeds[origin{from, 4}] = seed4
 	khp := newKhipu([]node{
 		{w: 50, minw: 50, maxw: 50, p: InfinityDemerits, kind: khipu.KTTextBox},
@@ -154,7 +154,7 @@ func TestIndexedDiscretionaryScoringUsesMatchingLinesAndSeeds(t *testing.T) {
 					wantWidth = 23 * dimen.BP
 				}
 			}
-			wantBadness, _ := calcBadness(WSS{W: wantWidth, Min: wantWidth, Max: wantWidth + 20*dimen.BP}, 30*dimen.BP)
+			wantBadness, _ := calcBadness(linebreak.WSS{W: wantWidth, Min: wantWidth, Max: wantWidth + 20*dimen.BP}, 30*dimen.BP)
 			if result.eval.badness != wantBadness || result.eval.stretch != 30*dimen.BP-wantWidth {
 				t.Fatalf("wrong line-specific seed at %d: %+v", at, result.eval)
 			}
@@ -173,8 +173,8 @@ func TestIndexedReplacementKeepsSiblingStates(t *testing.T) {
 	otherVariant := BreakRef{At: 5, Variant: 2}
 	kp.paths[from] = map[lineNo]bookkeeping{1: {totalcost: 10}, 2: {totalcost: 20}}
 	kp.paths[cheaper] = map[lineNo]bookkeeping{1: {totalcost: 5, worstbadness: 3}}
-	oldSeed := bookkeeping{segment: WSS{W: 7}, seenContent: true}
-	newSeed := bookkeeping{segment: WSS{W: 9}, seenContent: true}
+	oldSeed := bookkeeping{segment: linebreak.WSS{W: 7}, seenContent: true}
+	newSeed := bookkeeping{segment: linebreak.WSS{W: 9}, seenContent: true}
 	kp.evalNewSegmentSeed(from, target, 2, cost{demerits: 10}, oldSeed)
 	kp.evalNewSegmentSeed(from, target, 3, cost{demerits: 10}, oldSeed)
 	kp.evalNewSegmentSeed(from, otherVariant, 2, cost{demerits: 10}, oldSeed)
