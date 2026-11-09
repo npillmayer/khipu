@@ -70,6 +70,10 @@ type FrozenLineForTest struct {
 	ParagraphFill              []bool
 	LeftSkip, RightSkip, Width dimen.DU
 	ByteStart, ByteEnd         uint64
+	TargetWidth, Residual      dimen.DU
+	Ratio                      float64
+	Badness                    int
+	Underfull, Overfull        bool
 }
 
 // FreezeParagraphForTest exercises the internal end-to-end constructor without
@@ -82,6 +86,9 @@ func FreezeParagraphForTest(owner *Khipukamayuq, k *Khipu, breaks []int, params 
 	lines := make([]FrozenLineForTest, len(p.lines))
 	for i, line := range p.lines {
 		out := FrozenLineForTest{LeftSkip: line.leftSkip, RightSkip: line.rightSkip, Width: line.width, ByteStart: line.byteStart, ByteEnd: line.byteEnd}
+		out.TargetWidth, out.Residual = line.adjustment.target, line.adjustment.residual
+		out.Ratio, out.Badness = line.adjustment.ratio, line.adjustment.badness
+		out.Underfull, out.Overfull = line.adjustment.fit == widthUnderfull, line.adjustment.fit == widthOverfull
 		out.Widths = append(out.Widths, p.w[line.content.start:line.content.end]...)
 		for _, origin := range p.origins[line.content.start:line.content.end] {
 			out.ParagraphFill = append(out.ParagraphFill, origin.paragraphFill)

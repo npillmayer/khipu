@@ -132,7 +132,7 @@ func TestWidthPlanElasticTextboxIsOnlyProposal(t *testing.T) {
 }
 
 func TestWidthPlanRejectsStaleGeometry(t *testing.T) {
-	for _, mode := range []string{"content", "natural", "delta", "target", "capacity"} {
+	for _, mode := range []string{"content", "natural", "delta", "target"} {
 		t.Run(mode, func(t *testing.T) {
 			g, err := geometryFixture(t).prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
 			if err != nil {
@@ -150,10 +150,6 @@ func TestWidthPlanRejectsStaleGeometry(t *testing.T) {
 			case "target":
 				line.targetWidth = dimen.Fill
 				line.delta = line.targetWidth - line.naturalWidth
-			case "capacity":
-				line.targetWidth++
-				line.delta++
-				want = errInsufficientCapacity
 			}
 			before := slices.Clone(line.content.knots)
 			if got, err := line.planWidths(); got != nil || !errors.Is(err, want) {

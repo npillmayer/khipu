@@ -143,8 +143,8 @@ pass 2 final; values at or above Fil are rejected before searching.
 The constructor default is now zero; the tolerant profile retains 50 BP, now
 active. The first complete pass wins without comparing costs across passes.
 Reported emergency quality is optimization quality, not physical badness.
-Freezing still rejects insufficient real capacity; supporting and reporting
-over-/underfull lines is a separate change. See [KNUTH+PLASS.md](KNUTH+PLASS.md#emergency-pass).
+Freezing reports over-/underfull outcomes from real capacity, independently of
+virtual emergency stretch. See [KNUTH+PLASS.md](KNUTH+PLASS.md#emergency-pass).
 
 This is useful for robustness, but it is not a direct transcription of TeX's paragraph-breaking internals.
 

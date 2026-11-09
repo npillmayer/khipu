@@ -142,10 +142,10 @@ func TestSharedLayoutExplicitZeroSkips(t *testing.T) {
 					t.Fatal("substituted skip defaults")
 				}
 			}
-			// The forced first line has only 2.5pt finite stretch, insufficient
-			// for its 5pt slack. Neither breaking nor freezing may restore defaults.
-			if got, err := khipu.FreezeParagraphForTest(owner, k, breaks, layout); got != nil || err == nil {
-				t.Fatal("zero override silently acquired default capacity", got, err)
+			// Finite glue stretches beyond its nominal maximum without restoring
+			// default side skips; the allocation is reported as underfull.
+			if got, err := khipu.FreezeParagraphForTest(owner, k, breaks, layout); err != nil || got[0].LeftSkip != 0 || got[0].RightSkip != 0 || got[0].Width != 30*dimen.PT || !got[0].Underfull || got[0].Residual != 0 || got[0].Badness != 800 {
+				t.Fatal("zero override lost during allocation", got, err)
 			}
 		})
 	}

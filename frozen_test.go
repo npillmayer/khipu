@@ -132,34 +132,29 @@ func TestFreezeRejectsElasticNonGlue(t *testing.T) {
 }
 
 func TestFreezeFailureAndRetry(t *testing.T) {
-	for _, mode := range []string{"capacity", "cache"} {
-		p := geometryFixture(t)
-		p.lines[1].knots[len(p.lines[1].knots)-1].core.MaxW = 0
-		g, err := p.prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		g.lines[1].targetWidth++
-		want := ErrIllegalArguments
-		if mode == "capacity" {
-			g.lines[1].delta++
-			want = errInsufficientCapacity
-		}
-		before := slices.Clone(g.lines[1].content.knots)
-		if got, err := g.freeze(); got != nil || !errors.Is(err, want) || !strings.Contains(err.Error(), "line 2") {
-			t.Fatal("published a prefix or lost cause", got, err)
-		}
-		if !reflect.DeepEqual(before, g.lines[1].content.knots) {
-			t.Fatal("failure changed input")
-		}
-		g.lines[1].targetWidth--
-		g.lines[1].delta = 0
-		got, err := g.freeze()
-		if err != nil {
-			t.Fatal(err)
-		}
-		checkFrozenGeometry(t, got, g)
+	p := geometryFixture(t)
+	p.lines[1].knots[len(p.lines[1].knots)-1].core.MaxW = 0
+	g, err := p.prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
+	if err != nil {
+		t.Fatal(err)
 	}
+	g.lines[1].targetWidth++
+	want := ErrIllegalArguments
+	before := slices.Clone(g.lines[1].content.knots)
+	if got, err := g.freeze(); got != nil || !errors.Is(err, want) || !strings.Contains(err.Error(), "line 2") {
+		t.Fatal("published a prefix or lost cause", got, err)
+	}
+	if !reflect.DeepEqual(before, g.lines[1].content.knots) {
+		t.Fatal("failure changed input")
+	}
+	g.lines[1].targetWidth--
+	g.lines[1].delta = 0
+	got, err := g.freeze()
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkFrozenGeometry(t, got, g)
+
 	if got, err := (*geometryParagraph)(nil).freeze(); got != nil || !errors.Is(err, ErrIllegalArguments) {
 		t.Fatal(got, err)
 	}

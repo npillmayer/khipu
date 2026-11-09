@@ -118,8 +118,11 @@ Requirements:
   input decisions must remain stable for the operation.
 
 Success returns a complete independent final-width result. Failure returns nil
-and an error, without changing the input or its selections. This is not a
-best-effort operation: insufficient capacity does not produce an overfull result.
+and an error, without changing the input or its selections. Insufficient capacity
+is not an error: internal allocation now publishes over-/underfull outcomes.
+Finite stretch can exceed MaxW; shrink stops at MinW. With no stretch, natural
+widths remain. The public line record must expose target and actual width,
+signed residual, fit status, ratio, badness and fill order from that outcome.
 No shaper/hyphenator is called in the current supported subset.
 
 Include context now because a later implementation may need shaping roundtrips.
@@ -128,8 +131,8 @@ it cannot interrupt a client's synchronous LineLength call. Cancellation returns
 nil and an error matching `context.Canceled` or `context.DeadlineExceeded`.
 This requires cancellation plumbing beyond merely exporting today's method.
 
-Promote the existing capacity and unsupported-adjustment errors to exported
-sentinels (`ErrInsufficientCapacity`, `ErrUnsupportedAdjustment`). Continue to
+Promote the unsupported-adjustment error to an exported
+sentinel (`ErrUnsupportedAdjustment`). There is no capacity-error sentinel. Continue to
 use `ErrIllegalArguments` and `ErrVoidKhipukamayuq` for their existing cases.
 Wrap errors with stage/line context; callers use `errors.Is`, not message text.
 

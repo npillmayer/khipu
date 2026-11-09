@@ -1,7 +1,6 @@
 package khipu
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -9,7 +8,28 @@ import (
 	"github.com/npillmayer/khipu/dimen"
 )
 
-var errInsufficientCapacity = errors.New("khipu: insufficient width adjustment capacity")
+type widthFit uint8
+
+const (
+	widthFits widthFit = iota
+	widthUnderfull
+	widthOverfull
+)
+
+// widthAdjustment describes physical allocation, not the breaker's score (which
+// may include virtual emergency stretch). Residual is target minus actual width:
+// positive leaves trailing space, negative protrudes at the paragraph's trailing
+// edge. Ratio is requested adjustment / finite capacity, signed for shrink;
+// absent capacity gives signed infinity. Fill uses ratio zero and records its
+// order instead. Badness is rounded 100*abs(ratio)^3, capped at 10000; overfull
+// and zero-capacity mismatches always have badness 10000.
+type widthAdjustment struct {
+	target, actual, residual dimen.DU
+	ratio                    float64
+	badness                  int
+	fill                     dimen.DU
+	fit                      widthFit
+}
 
 // lineWidthPlan is a numeric proposal, NOT frozen output. Content widths follow
 // the visual knot sequence, with side skips represented separately as in geometry.
@@ -18,6 +38,7 @@ var errInsufficientCapacity = errors.New("khipu: insufficient width adjustment c
 type lineWidthPlan struct {
 	leftSkip, rightSkip dimen.DU
 	content             []dimen.DU
+	adjustment          widthAdjustment
 }
 
 // planWidths adapts prepared geometry to the kind-independent pure allocator.
@@ -43,11 +64,11 @@ func (line geometryLine) planWidths() (*lineWidthPlan, error) {
 		return nil, fmt.Errorf("%w: inconsistent width-plan geometry", ErrIllegalArguments)
 	}
 	items = append(items, line.rightSkip)
-	widths, err := allocateWidths(items, line.targetWidth)
+	widths, adjustment, err := allocateWidths(items, line.targetWidth)
 	if err != nil {
 		return nil, err
 	}
-	return &lineWidthPlan{leftSkip: widths[0], rightSkip: widths[len(widths)-1], content: widths[1 : len(widths)-1]}, nil
+	return &lineWidthPlan{leftSkip: widths[0], rightSkip: widths[len(widths)-1], content: widths[1 : len(widths)-1], adjustment: adjustment}, nil
 }
 
 // allocateWidths assigns a finite target across elastic width triples. Kind,
@@ -64,12 +85,14 @@ func (line geometryLine) planWidths() (*lineWidthPlan, error) {
 //
 // Finite shares are proportional to capacity. Integer floors are followed by
 // largest-remainder apportionment, ties in input order (physical left-to-right
-// for prepared geometry). The sum is exactly target, without exceeding bounds.
-// No floating-point arithmetic or silent saturation is used. Complexity is
+// for prepared geometry). Finite stretch may exceed MaxW; shrink stops at MinW.
+// Without stretch the natural widths remain. Capacity shortfalls are outcomes,
+// not errors. Width apportionment uses no floating-point arithmetic; only the
+// diagnostic ratio and badness do. Complexity is
 // O(N log N) time and O(N) memory, including the independently owned result.
-func allocateWidths(items []KnotCore, target dimen.DU) ([]dimen.DU, error) {
-	bad := func(reason string) ([]dimen.DU, error) {
-		return nil, fmt.Errorf("%w: width allocation: %s", ErrIllegalArguments, reason)
+func allocateWidths(items []KnotCore, target dimen.DU) ([]dimen.DU, widthAdjustment, error) {
+	bad := func(reason string) ([]dimen.DU, widthAdjustment, error) {
+		return nil, widthAdjustment{}, fmt.Errorf("%w: width allocation: %s", ErrIllegalArguments, reason)
 	}
 	if target < 0 || target >= dimen.Fil {
 		return bad("invalid target")
@@ -95,14 +118,13 @@ func allocateWidths(items []KnotCore, target dimen.DU) ([]dimen.DU, error) {
 		return bad("natural width out of range")
 	}
 	delta := int64(target) - natural
+	outcome := widthAdjustment{target: target, actual: target}
 	if delta == 0 {
-		return widths, nil
+		return widths, outcome, nil
 	}
 	amount, sign := delta, int64(1)
-	direction := "stretch"
 	if delta < 0 {
 		amount, sign = -delta, -1
-		direction = "shrink"
 	}
 	weights := make([]int64, len(items))
 	var total int64
@@ -122,9 +144,30 @@ func allocateWidths(items []KnotCore, target dimen.DU) ([]dimen.DU, error) {
 		}
 		total += weights[i]
 	}
-	if total == 0 || ((delta < 0 || fill == 0) && amount > total) {
-		return nil, fmt.Errorf("%w: need %d DU %s, have %d", errInsufficientCapacity, amount, direction, total)
+	if delta > 0 && fill != 0 {
+		outcome.fill = fill
+	} else {
+		outcome.ratio = math.Inf(int(sign))
+		if total > 0 {
+			outcome.ratio = float64(delta) / float64(total)
+		}
+		outcome.badness = int(math.Round(math.Min(10000, 100*math.Pow(math.Abs(outcome.ratio), 3))))
+		if amount > total {
+			if delta > 0 {
+				outcome.fit = widthUnderfull
+			} else {
+				outcome.fit = widthOverfull
+				outcome.badness = 10000
+				amount = total // shrink only as far as the declared minima
+			}
+		}
 	}
+	if total == 0 {
+		outcome.actual, outcome.residual = dimen.DU(natural), dimen.DU(delta)
+		return widths, outcome, nil
+	}
+	outcome.actual = dimen.DU(natural + sign*amount)
+	outcome.residual = target - outcome.actual
 	type remainder struct {
 		index int
 		value int64
@@ -157,7 +200,8 @@ func allocateWidths(items []KnotCore, target dimen.DU) ([]dimen.DU, error) {
 	})
 	for i := int64(0); i < remaining; i++ {
 		// For valid quotas the residue is smaller than the number of positive
-		// remainders. Each item receives at most one extra DU and stays in bounds.
+		// remainders. Each item receives at most one extra DU; shrink stays at or
+		// above MinW, while finite stretch deliberately may exceed MaxW.
 		at := remainders[i].index
 		assigned := int64(widths[at]) + sign
 		if assigned <= -int64(dimen.Fil) || assigned >= int64(dimen.Fil) {
@@ -165,5 +209,5 @@ func allocateWidths(items []KnotCore, target dimen.DU) ([]dimen.DU, error) {
 		}
 		widths[at] = dimen.DU(assigned)
 	}
-	return widths, nil
+	return widths, outcome, nil
 }

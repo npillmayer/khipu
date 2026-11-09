@@ -39,10 +39,13 @@ type frozenParagraph struct {
 // Side skips have no fabricated source identity; paragraph fill remains a
 // content knot at its already determined visual edge. width includes both
 // skips, while the byte interval describes untrimmed original source coverage.
+// adjustment retains target, residual and quality; width is the actual assigned
+// total and need not equal target on overfull or unstretchable underfull lines.
 type frozenLine struct {
 	content             arenaRange
 	leftSkip, rightSkip dimen.DU
 	width               dimen.DU
+	adjustment          widthAdjustment
 	byteStart, byteEnd  uint64
 }
 
@@ -124,8 +127,9 @@ func (p *geometryParagraph) freeze() (*frozenParagraph, error) {
 				knot.variant, knot.fragment, knot.paragraphFill})
 		}
 		result.lines[i] = frozenLine{content: arenaRange{start, len(result.w)},
-			leftSkip: plan.leftSkip, rightSkip: plan.rightSkip, width: line.targetWidth,
-			byteStart: line.content.byteStart, byteEnd: line.content.byteEnd}
+			leftSkip: plan.leftSkip, rightSkip: plan.rightSkip, width: plan.adjustment.actual,
+			adjustment: plan.adjustment,
+			byteStart:  line.content.byteStart, byteEnd: line.content.byteEnd}
 	}
 	return result, nil
 }

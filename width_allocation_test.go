@@ -43,7 +43,7 @@ func TestAllocateWidths(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before := slices.Clone(tc.items)
-			got, err := allocateWidths(tc.items, tc.target)
+			got, _, err := allocateWidths(tc.items, tc.target)
 			if err != nil || !slices.Equal(got, tc.want) {
 				t.Fatal(got, tc.want, err)
 			}
@@ -51,7 +51,7 @@ func TestAllocateWidths(t *testing.T) {
 				t.Fatal("mutated input")
 			}
 			checkWidthAllocation(t, tc.items, tc.target, got)
-			again, err := allocateWidths(tc.items, tc.target)
+			again, _, err := allocateWidths(tc.items, tc.target)
 			if err != nil || !slices.Equal(got, again) {
 				t.Fatal("not deterministic", err)
 			}
@@ -84,35 +84,26 @@ func checkWidthAllocation(t *testing.T, items []KnotCore, target dimen.DU, got [
 
 func TestAllocateWidthsRejects(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		items    []KnotCore
-		target   dimen.DU
-		capacity bool
+		name   string
+		items  []KnotCore
+		target dimen.DU
 	}{
-		{"empty nonzero", nil, 1, true},
-		{"no stretch", []KnotCore{allocationItem(10, 5, 10)}, 11, true},
-		{"too much stretch", []KnotCore{allocationItem(10, 5, 15)}, 16, true},
-		{"no shrink", []KnotCore{allocationItem(10, 10, 20)}, 9, true},
-		{"too much shrink", []KnotCore{allocationItem(10, 5, 20)}, 4, true},
-		{"negative target", nil, -1, false},
-		{"fill target", nil, dimen.Fil, false},
-		{"unordered min", []KnotCore{allocationItem(10, 11, 20)}, 10, false},
-		{"unordered max", []KnotCore{allocationItem(10, 0, 9)}, 10, false},
-		{"infinite shrink", []KnotCore{allocationItem(10, -dimen.Fil, 20)}, 10, false},
-		{"infinity max", []KnotCore{allocationItem(0, 0, dimen.Infinity)}, 0, false},
-		{"nonfinite natural", []KnotCore{allocationItem(dimen.Fil, 0, dimen.Fill)}, 0, false},
-		{"negative total", []KnotCore{allocationItem(-1, -1, 1)}, 0, false},
-		{"natural sum overflow DU", []KnotCore{allocationItem(dimen.Fil-1, 0, dimen.Fill), allocationItem(10, 0, 10)}, 0, false},
-		{"nonfinite assignment", []KnotCore{allocationItem(dimen.Fil-2, 0, dimen.Fill), allocationItem(-dimen.Fil+2, -dimen.Fil+2, -dimen.Fil+2)}, dimen.Fil - 1, false},
-		{"rounding reaches sentinel", []KnotCore{allocationItem(dimen.Fil-2, 0, dimen.Fill), allocationItem(0, 0, dimen.Fill), allocationItem(-dimen.Fil+2, -dimen.Fil+2, -dimen.Fil+2)}, 3, false},
+		{"negative target", nil, -1},
+		{"fill target", nil, dimen.Fil},
+		{"unordered min", []KnotCore{allocationItem(10, 11, 20)}, 10},
+		{"unordered max", []KnotCore{allocationItem(10, 0, 9)}, 10},
+		{"infinite shrink", []KnotCore{allocationItem(10, -dimen.Fil, 20)}, 10},
+		{"infinity max", []KnotCore{allocationItem(0, 0, dimen.Infinity)}, 0},
+		{"nonfinite natural", []KnotCore{allocationItem(dimen.Fil, 0, dimen.Fill)}, 0},
+		{"negative total", []KnotCore{allocationItem(-1, -1, 1)}, 0},
+		{"natural sum overflow DU", []KnotCore{allocationItem(dimen.Fil-1, 0, dimen.Fill), allocationItem(10, 0, 10)}, 0},
+		{"nonfinite assignment", []KnotCore{allocationItem(dimen.Fil-2, 0, dimen.Fill), allocationItem(-dimen.Fil+2, -dimen.Fil+2, -dimen.Fil+2)}, dimen.Fil - 1},
+		{"rounding reaches sentinel", []KnotCore{allocationItem(dimen.Fil-2, 0, dimen.Fill), allocationItem(0, 0, dimen.Fill), allocationItem(-dimen.Fil+2, -dimen.Fil+2, -dimen.Fil+2)}, 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before := slices.Clone(tc.items)
-			got, err := allocateWidths(tc.items, tc.target)
+			got, _, err := allocateWidths(tc.items, tc.target)
 			want := ErrIllegalArguments
-			if tc.capacity {
-				want = errInsufficientCapacity
-			}
 			if got != nil || !errors.Is(err, want) || !reflect.DeepEqual(before, tc.items) {
 				t.Fatal(got, err)
 			}
@@ -130,7 +121,7 @@ func TestAllocateWidthsKindIndependent(t *testing.T) {
 			items[i].Flags = KFDiscardable
 			items[i].Penalty = MaxPenalty
 		}
-		got, err := allocateWidths(items, 45)
+		got, _, err := allocateWidths(items, 45)
 		if err != nil || !slices.Equal(got, []dimen.DU{15, 30}) || items[0].W != 10 || items[1].W != 20 {
 			t.Fatal(got, err)
 		}
@@ -150,7 +141,7 @@ func TestAllocateWidthsFiniteProperties(t *testing.T) {
 			max += int64(items[i].MaxW)
 		}
 		target := dimen.DU(min + rng.Int63n(max-min+1))
-		got, err := allocateWidths(items, target)
+		got, _, err := allocateWidths(items, target)
 		if err != nil {
 			t.Fatal(trial, err)
 		}

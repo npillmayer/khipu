@@ -546,13 +546,15 @@ The allocation policy is:
   remainder, ties in physical left-to-right order. This also applies to shrink
   magnitudes. Each eligible item receives at most one rounding-residue DU.
 
-The resulting sum is exactly the target and each width respects its bounds.
+Finite stretch may exceed MaxW to reach the target and is then underfull.
+Without any stretch, natural widths remain and positive slack is retained.
+Shrink stops at MinW; any remaining excess is reported as overfull.
 Calculations use checked widened sums and bounded integer products rather than
 floating point or saturation. Signed finite widths remain supported. If a fill
 assignment would reach a reserved sentinel (for example when large negative
 fixed widths offset it), allocation fails instead of publishing nonfinite W.
-Insufficient finite capacity returns `errInsufficientCapacity`, distinguishable
-with `errors.Is`; malformed/nonrepresentable geometry wraps `ErrIllegalArguments`.
+Capacity shortfalls are successful allocation outcomes, not errors.
+Malformed/nonrepresentable geometry wraps `ErrIllegalArguments`.
 Every failure returns no partial assignment. Complexity is `O(N log N)` time and
 `O(N)` storage because of remainder ordering.
 
@@ -596,6 +598,18 @@ original byte coverage. There are no `KnotCore` values, `MinW`/`MaxW` planes,
 penalty planes, or candidate/selection maps. Paragraph fill remains a content
 knot at its visual edge, with its assigned finite width; side skips are separate
 numeric slots, counted exactly once.
+
+Each line also retains a `widthAdjustment`: requested target, actual width,
+signed residual (target minus actual), finite adjustment ratio, badness, active
+fill order and fit status. Positive residual leaves space at the paragraph's
+trailing edge; negative residual protrudes there (right for LTR, left for RTL).
+No knot or glyph is reversed or translated to manufacture that residual.
+Finite ratios use the requested delta and available capacity; missing capacity
+gives signed infinity. Fill uses ratio/badness zero and records its order.
+Badness is rounded `100*abs(ratio)^3`, capped at 10000; overfull and zero-capacity
+mismatches always report 10000. These physical diagnostics do not reuse K&P's
+emergency-adjusted scoring. A finite overstretch can have zero residual and still
+be underfull. Exact capacity usage (ratio magnitude one) is not a shortfall.
 
 Provenance retains original ranges, box IDs, selected variant/fragment roles and
 the explicit paragraph-fill identity. `frozenShaping` retains only immutable
@@ -919,11 +933,11 @@ This first slice requires all non-glue content to be fixed upstream. It reports
 declared non-glue elasticity as unsupported rather than silently ignoring it,
 even when the current allocation would not exercise that capacity.
 
-Remainder rounding, insufficient-capacity errors and fill precedence are now
+Remainder rounding, over-/underfull outcomes and fill precedence are now
 implemented in the pure allocator. Frozen tests cover exact fit, stretch, shrink,
 exhaustion, skips, discretionary boundaries, and conservation of total assigned
-width. An impossible target is reported rather than
-hidden by widths outside the advertised bounds.
+width. Unattainable targets retain an explicit signed residual; finite stretch
+beyond nominal MaxW is permitted and reported, while shrink never crosses MinW.
 
 Treat fill sentinels as ordered capacities, not ordinary numeric dimensions.
 Consume the geometry stage's inclusive target and count its side skips once.

@@ -191,7 +191,9 @@ conformance suites, visual proofs and a shared testing package are proposals
   lines. This geometry stage does not allocate widths or check capacity.
 - `width_allocation_test.go` covers the pure allocator's exact conservation,
   proportional quotas, deterministic remainder ties, symbolic fill precedence,
-  finite shrink, signed widths, capacity errors and near-limit arithmetic. A
+  finite shrink, signed widths and near-limit arithmetic. `width_outcomes_test.go`
+  covers finite overstretch, exhausted shrink, zero capacity, physical diagnostics,
+  deterministic rounding and successful publication of imperfect lines. A
   deterministic randomized suite checks 2,000 feasible finite cases. Kind
   independence includes hypothetical textboxes without implying glyph realization.
   `width_plan_test.go` checks geometry adaptation, side skips, LTR/RTL final fill,

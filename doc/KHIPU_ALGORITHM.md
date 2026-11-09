@@ -735,7 +735,7 @@ to TeX.
 | Knotting | Implemented: `Khipukamayuq.EncodeParagraph`. |
 | Line breaking | Implemented: `linebreak/firstfit` and `linebreak/knuthplass`, with lazy explicit and automatic discretionaries. Known deviations listed below. |
 | Bidi ordering | Implemented internally; no public API. |
-| Freezing | Internal glue-only implementation; no public API. Over-/underfull lines are rejected. |
+| Freezing | Internal glue-only implementation; no public API. Over-/underfull outcomes retain actual widths, residuals and physical quality diagnostics. |
 | Visual representation | Out of scope. |
 
 `Config{}` provides a synthetic streaming backend for unstyled text; this is
@@ -838,9 +838,10 @@ result cannot yet represent them (see below).
   `FrozenKhipu` are proposed in [FROZEN-API.md](FROZEN-API.md).
 - Only glue may change width. Non-glue knots must have `MinW == W == MaxW`;
   elastic textboxes are rejected until a target-width shaping service exists.
-- **Over- and underfull lines are rejected.** `allocateWidths` returns
-  `errInsufficientCapacity` when a line needs more shrink or more finite
-  stretch than available, instead of setting the line as described above. No
-  adjustment ratio, badness or over-/underfull status is recorded per line.
+- Over-/underfull lines are published with physical adjustment outcomes.
+  Finite stretch may exceed MaxW; shrink stops at MinW. Zero stretch preserves
+  natural width. Lines retain target/actual width, signed residual, ratio,
+  badness, fill order and fit status. Malformed or unrepresentable geometry
+  and unsupported non-glue adjustment remain errors.
 - Fill precedence, finite stretch/shrink and largest-remainder rounding are
   implemented as designed. See [FREEZE.md](FREEZE.md#frozen-publication).
