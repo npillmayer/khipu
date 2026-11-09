@@ -144,7 +144,7 @@ The constructor default is now zero; the tolerant profile retains 50 BP, now
 active. The first complete pass wins without comparing costs across passes.
 Reported emergency quality is optimization quality, not physical badness.
 Freezing still rejects insufficient real capacity; supporting and reporting
-over-/underfull lines is a separate change. See [PASS3.md](PASS3.md).
+over-/underfull lines is a separate change. See [KNUTH+PLASS.md](KNUTH+PLASS.md#emergency-pass).
 
 This is useful for robustness, but it is not a direct transcription of TeX's paragraph-breaking internals.
 
@@ -174,7 +174,7 @@ The following cleanup stages are now in place in the rewrite:
     - accepted
   - screening and ranking are explicit separate steps
 
-The subsequent boundary/retirement change is described in [RETIREMENT.md](RETIREMENT.md).
+Retirement and boundary processing are described in [KNUTH+PLASS.md](KNUTH+PLASS.md#retirement).
 Ordinary and discretionary scoring share classification. Short zero-stretch
 lines have badness 10000, not an infeasible disposition; overfull working states
 are retired only after their discretionary rescue opportunity. Predecessor
@@ -192,7 +192,7 @@ During pass 2, local lookup is triggered by geometrically feasible candidates
 with badness above `PreTolerance`, including those accepted by `Tolerance`.
 Current defaults are explicit independent profiles: `NewDefaultParameters`
 matches nil algorithm parameters; `NewTolerantParameters` raises tolerance and
-enables emergency stretch. See [the profile table](KP.md#parameter-profiles).
+enables emergency stretch. See [the profile table](KNUTH+PLASS.md#parameter-profiles).
 
 ## Comparison With The Legacy `kp` Package
 

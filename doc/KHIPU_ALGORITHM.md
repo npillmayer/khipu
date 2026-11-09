@@ -128,11 +128,17 @@ later stages (reshaping for hyphenation, glyph placement).
 Segmentation of the rune sequence follows the Unicode annexes. Three are
 relevant:
 
-- **UAX#14 (line breaking)** yields a penalty after every character. `U(c)`
-  denotes the line-break penalty after input character `c`. A prohibited break
-  has `U(c) = ∞`, a mandatory break has `U(c) = -∞`. Hard-break classes (BK,
-  LF, NL, CR) are always mandatory, even where the additive rule contributions
-  would cancel each other out; CR LF counts as one separator.
+- **UAX#14 (line breaking)** classifies the position after every character.
+  `U(c)` denotes the line-break penalty after input character `c`: a prohibited
+  break has `U(c) = ∞`, a mandatory break has `U(c) = -∞`, and every allowed
+  break has `U(c) = 0`. Hard-break classes (BK, LF, NL, CR) are always
+  mandatory, even where the additive rule contributions would cancel each other
+  out; CR LF counts as one separator.
+
+  The finite rule weights computed by UAX#14 only express "allowed"; they are
+  not typographic preferences. Used as TeX penalties, their (negative) squares
+  would reward every additional line. Preferences can still be expressed by
+  penalties on hand-built knots or on discretionary fragments.
 - **UAX#29 (word boundaries)** yields boolean word-boundary hints. These are
   kept separate from line-break penalties: a word boundary does not permit a
   line break, and a line-break opportunity need not coincide with a word
@@ -336,7 +342,6 @@ Glyphs are knotted in logical order.
 
 ```
 [ Find line breaks for `K` ] :=
-    [ Clear previously selected discretionary decisions ]
     [ Obtain target line widths from the paragraph shape ]
     [ Run the chosen line-breaking algorithm over `K` in logical order ] :
         [ Consider permitted knot boundaries as candidate breakpoints ]
@@ -354,11 +359,16 @@ Glyphs are knotted in logical order.
                 [ Associate PostBreak with the continuation after that break ]
         [ Choose the breakpoint sequence according to the algorithm ]
         [ If no feasible sequence exists, fall back to over-/underfull lines ]
-    [ Store only the applied discretionary choices in `K` ]
-    [ Return the ordered breakpoint sequence ]
+    [ On success ] :
+        [ Replace the discretionary choices stored in `K` with the applied ones ]
+        [ Return the ordered breakpoint sequence ]
+    [ On failure, leave the choices of an earlier run untouched ]
 ```
 
-Both first-fit and Knuth-Plass follow this outline.
+Both first-fit and Knuth-Plass follow this outline. Choices are collected
+during the run and published only when it succeeds; a failed run must not leave
+a partial or cleared selection behind. Alternatives discovered during a failed
+run may stay in the paragraph's cache.
 
 ### Width Model and Badness
 
@@ -380,8 +390,11 @@ line without any stretch has badness `inf_bad`.
 Following TeX:
 
 - A line with `r < -1` (it cannot shrink enough) is **infeasible**. When a
-  candidate line from an active breakpoint becomes infeasible, that breakpoint
-  is **deactivated**; it cannot reach any later breakpoint either.
+  candidate line from an active state becomes infeasible, that state is
+  **deactivated**; it cannot reach any later breakpoint either. A state is a
+  breakpoint together with the number of lines before it, since that number
+  determines the next line's target width. A breakpoint stays active while any
+  of its states is active.
 - A line with `r > 1` is feasible, merely bad. Whether it is acceptable depends
   on the tolerance of the current pass.
 
@@ -415,8 +428,9 @@ tolerance may become acceptable, lines without any stretch get a finite
 badness, and since `E` is the same for every line, looseness tends to be spread
 evenly across the paragraph. Nothing else changes: shrink is not relaxed
 (`r < -1` remains infeasible, so overfull lines cannot be rescued), and
-tolerance, penalties, forced/prohibited breaks, demerits and discretionary
-lookup are the same as in pass 2.
+tolerance, penalties, forced/prohibited breaks and demerits are the same as in
+pass 2. Discretionary lookup works as in pass 2, but is triggered by the
+emergency-adjusted badness (see below).
 
 `E` only influences the choice of breakpoints. It is not added to any knot, and
 freezing sets each line with its real glue only. Lines chosen thanks to `E`
@@ -438,7 +452,7 @@ Each pass has the following structure:
                 [ If r < -1 ] :
                     [ Deactivate `S` ]
                     [ In the final pass, remember it as a fallback if it is the last one ]
-                [ During pass 2, if the line's badness warrants discretionary lookup ] :
+                [ During passes 2 and 3, if the line warrants discretionary lookup ] :
                     [ Request and evaluate discretionary alternatives ]
                 [ For each acceptable ordinary or discretionary candidate ] :
                     [ Calculate line demerits and accumulated path cost ]
@@ -450,21 +464,37 @@ Each pass has the following structure:
             [ If no active state remains ] :
                 [ In the final pass, activate `E` from the remembered fallback, as an overfull line ]
                 [ Otherwise the pass fails ]
+            [ If all remaining lines have the same target width ] :
+                [ Keep only the cheapest state at `E`; drop states differing only in line count ]
     [ Compare complete states reaching the paragraph end ]
     [ Report the best path and its quality, or failure ]
 ```
 
 Demerits follow TeX: `(LinePenalty + b)² ± p²` for line badness `b` and break
 penalty `p`, plus extra demerits for hyphenated lines. See
-[DEMERITS.md](DEMERITS.md) and [KP.md](KP.md).
+[DEMERITS.md](DEMERITS.md) and [KNUTH+PLASS.md](KNUTH+PLASS.md).
+
+**Merging line counts.** States at the same breakpoint that differ only in the
+number of lines before them face different futures only if the remaining lines
+differ in width. Where the paragraph shape guarantees that all following lines
+have the same target (TeX: after the last special line of `\parshape`), the
+cheapest of these states dominates the others, which can be dropped (equal
+costs keep the one with fewer lines). This keeps the number of states per
+breakpoint constant instead of growing with the paragraph. Merging requires
+that nothing else in the scoring depends on the line number, and it applies
+only to breakpoints that cannot later receive a better predecessor
+(discretionary breakpoints discovered retroactively can).
 
 Discretionaries are discovered lazily. Shaping hyphenation alternatives is
-costly, so pass 2 only requests them where a line's badness suggests that
-hyphenation could help: for a loose line the next textbox that did not fit, for
-a tight line the last textbox on the line. This is a deliberate deviation from
-TeX, which hyphenates every word in pass 2; it may miss solutions that
-hyphenate a different word. Explicit soft hyphens are requested whenever the
-scan reaches a textbox that contains one. See [HYPHENATION.md](HYPHENATION.md).
+costly, so passes 2 and 3 only request them where a line suggests that
+hyphenation could help: a line whose badness exceeds `PreTolerance` or which is
+overfull. For a loose line the next textbox that did not fit is considered, for
+a tight or overfull line the last textbox on the line. The emergency pass uses
+its emergency-adjusted badness for this decision. This is a deliberate
+deviation from TeX, which hyphenates every word in pass 2; it may miss
+solutions that hyphenate a different word. Explicit soft hyphens are requested
+whenever the scan reaches a textbox that contains one. See
+[HYPHENATION.md](HYPHENATION.md).
 
 ### First-Fit
 
@@ -755,52 +785,35 @@ defaults. There is no metric-only encoding path. See
 
 ### Line Breaking
 
-Known deviations from this design in `linebreak/knuthplass`:
+Both breakers implement the outline above, including failure-atomic
+publication of discretionary choices. Details are in
+[KNUTH+PLASS.md](KNUTH+PLASS.md) and [FIRSTFIT.md](FIRSTFIT.md).
 
-- **Geometric screening and retirement are implemented.** Ordinary and
-  discretionary candidates with `MinW > target` are rejected independently of
-  tolerance. Overfull working states are retired after discretionary rescue;
-  short zero-stretch lines have badness `inf_bad` and stay active. Negative
-  original/cached minimum widths or unsafe sums disable early pruning. Lazy
-  provider fragments must obey nonnegative and safe-accumulation bounds; see
-  [RETIREMENT.md](RETIREMENT.md).
-- **Pass failure is normal control flow.** No acceptable first-pass path starts
-  a fresh second pass. Forced boundaries also enforce the active tolerance.
-- **Emergency pass implemented.** Positive finite `EmergencyStretch` starts
-  pass 3 only after two failed non-final passes. Nonpositive values disable it;
-  values at or above Fil fail validation before pass 1. The constructor default
-  is now zero, preserving nil-parameter behavior; the tolerant profile retains
-  50 bp, now active. Emergency-adjusted badness drives lazy discovery as well as
-  scoring; fill/saturated summaries retain their numerical behavior. Internal
-  results retain pass identity and scoring quality, without a new public API.
-  Regression coverage includes cross-pass discovery caches, explicit markers,
-  cached/uncached equivalence and repeated-run determinism. Public/isolated
-  emergency benchmarks cover recovery, productive/declining discovery and
-  unavoidable fallback; see [PASS3.md](PASS3.md) and
-  [TESTING.md](TESTING.md#emergency-pass-workloads) for scope and baselines.
-- **Fallbacks are final-pass-only.** Pass 2 is final when emergency stretch is
-  disabled; otherwise pass 3 is final. Fallbacks are selected
-  deterministically before their source is deleted. Newly discovered post-break
-  remainders are evaluated through the same forced boundary before retirement.
-- The unused `DoubleHyphenDemerits` and `HyphenPenalty` fields and their defaults
-  have been removed from `Parameters`. Consecutive-discretionary demerits remain
-  deferred. The effective hyphen penalty comes from a nonzero penalty on the
-  hyphenator's fragment or from `khipu.Params.Hyphenpenalty` (default 10), with no
-  competing breaker default.
-- **Performance.** Working states are indexed by breakpoint and line number;
-  width updates and ordinary/discretionary scoring visit only the requested
-  breakpoint's bucket. Ordinary/discretionary evaluation results and sorted
-  horizon snapshots reuse separate per-breaker scratch buffers. Retired working
-  states and seeds are deleted; predecessor history and retirement tombstones
-  remain. Rescue scoring is state-local. Widening line-count bands and historical
-  storage remain optimization targets.
-  Expensive debug arguments and final info dumps are now guarded
-  before formatting; full debug tracing remains intentionally expensive.
-  Separate encoding/breaking/first-pass benchmarks and initial measurements
-  are documented in [TESTING.md](TESTING.md#knuth-plass-performance-baseline).
-- Complete paths tied on total demerits prefer fewer lines. Equal-cost
-  predecessors for the same state prefer the lower knot index, then variant;
-  these tie decisions no longer depend on map iteration or arrival order.
+Remaining deviations in `linebreak/knuthplass`:
+
+- **No fitness classes** (TeX's `\adjdemerits`) and **no demerits for
+  consecutive hyphenated lines** (`\doublehyphendemerits`). See
+  [DEMERITS.md](DEMERITS.md).
+- **Merging line counts only for the built-in rectangle.** The `LineShape`
+  interface cannot state that all lines from some number on have the same
+  width, so only `linebreak.RectangularParShape` is recognized. Custom shapes,
+  including shapes that differ only in their first lines, keep all line counts
+  and become superlinear.
+- **Discretionary breakpoints are never merged**, so productive hyphenation
+  still makes the number of states grow with the paragraph.
+- **Fill orders are approximated numerically.** Width summaries do not separate
+  finite stretch from fil, fill and filll; emergency stretch is not added to
+  lines whose summed maximum width reaches the fill range.
+- **Retirement requires nonnegative minimum widths.** Paragraphs with negative
+  widths are broken correctly, but without early retirement.
+- **Pass 1 always runs**, even with a negative `PreTolerance` (TeX skips it).
+- **Path quality is internal**: callers cannot see which pass succeeded or how
+  bad its lines are (see [Reporting](#reporting-over--and-underfull-lines)).
+
+First-fit (`linebreak/firstfit`) is greedy by design: no badness, tolerance,
+demerits or passes, and hyphenation only for a textbox that makes the line
+overflow. Lines fit by minimum width, so supplied shrink is used before an
+earlier break is taken. See [FIRSTFIT.md](FIRSTFIT.md#limits).
 
 Both breakers fall back to overfull lines when nothing fits, but the frozen
 result cannot yet represent them (see below).
@@ -831,16 +844,3 @@ result cannot yet represent them (see below).
   adjustment ratio, badness or over-/underfull status is recorded per line.
 - Fill precedence, finite stretch/shrink and largest-remainder rounding are
   implemented as designed. See [FREEZE.md](FREEZE.md#frozen-publication).
-
-### Parameter Cleanup
-
-The unused `Baselineskip`, `Lineskip`, `Lineskiplimit`, `Hyphenchar` (formerly
-`Hypenchar`) and `Minhyphenlength` fields and defaults have been removed from
-`khipu.Params`. Vertical line spacing belongs to future line-placement work;
-replacement material belongs to the script-sensitive discretionary provider.
-A future minimum-length policy needs to define both the constrained fragment
-and the unit of measurement before exposing a parameter.
-
-`EmergencyStretch` was retained and subsequently activated by the emergency-pass
-work above, with zero as the constructor default and 50 bp in the tolerant
-profile. Over-/underfull freezing support remains separate work.

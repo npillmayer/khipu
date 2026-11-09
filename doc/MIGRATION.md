@@ -10,8 +10,6 @@ func (kq *Khipukamayuq) EncodeParagraph(
 ```
 
 The former `EncodeParagraphStreaming` method was renamed, not wrapped.
-[RETIRE-METRICS.md](RETIRE-METRICS.md) records the three-step retirement,
-coverage migration and required sibling dependency fixes.
 
 ## Public Construction And Configuration
 
@@ -108,10 +106,10 @@ fixtures survive independently of deleted metric tests. See
 [TESTING.md](TESTING.md) for evidence and commands.
 
 The corpus keeps its line-width regression guarantees. Migration exposed and
-fixed sibling cords bounded-reader and iterator defects; those fixes must be
-retained or released alongside khipu. They are not part of a khipu-only commit.
-Full dependency suites have unrelated existing failures documented in
-[RETIRE-METRICS.md](RETIRE-METRICS.md).
+fixed defects in the sibling `cords` module: `cordext.ByteRangeBounded` read
+empty spans after the first chunk, `BoundedReader.Read` under-reported bytes,
+and btree iteration ignored early stop. Those fixes must be released together
+with khipu; they are not part of a khipu-only commit.
 
 Validation uses the local sibling replacements selected by go.mod. Published
 dependency compatibility, real font adapters, visual proofs, freezing and final

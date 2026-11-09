@@ -12,7 +12,7 @@ for the interfaces they implement.
 
 `EncodeParagraph(ctx, para)` is the sole encoder; `Config{}` supplies synthetic
 font, style and streaming defaults. Metric-only helpers have been removed.
-See [the retirement inventory](../doc/RETIRE-METRICS.md).
+See [the migration guide](../doc/MIGRATION.md).
 
 | Helper | Constructor | Zero value |
 | --- | --- | --- |

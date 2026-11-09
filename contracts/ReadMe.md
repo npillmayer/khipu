@@ -3,7 +3,7 @@
 Streaming shaping and style resolution are integrated into paragraph encoding
 and discretionary reshaping. The metric-only `Shaper` has been removed;
 `RuneReader` remains the streaming input contract. See
-[metric retirement](../doc/RETIRE-METRICS.md).
+[the migration guide](../doc/MIGRATION.md).
 
 `github.com/npillmayer/khipu/contracts` defines the font, shaping, and style
 services used by khipu. Implement an adapter against this package when providing

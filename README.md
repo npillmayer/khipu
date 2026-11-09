@@ -139,7 +139,7 @@ remain future work. See the [testing guide](doc/TESTING.md) for helper policies.
 The metric encoder, `Config.Shaper`, `FixedWidthShaper` and `KnotStyler` have
 been removed. The sole encoding entry point is `EncodeParagraph(ctx, para)`;
 there is no width-adaptation replacement hook. See
-[the retirement inventory](doc/RETIRE-METRICS.md).
+[the migration guide](doc/MIGRATION.md).
 
 ## Package Structure
 

@@ -1,278 +1,74 @@
-# Lazy Discretionaries: Implementation And Ownership
+# Discretionaries and Hyphenation
 
-Reviewed against the code on November 4, 2026.
+Reference for discretionary breaks: alternatives that split one textbox into a
+`PreBreak` and a `PostBreak` fragment. It covers the data model, how the
+paragraph owner discovers and shapes alternatives, how the line breakers use
+them, and how selected breaks map back to the source. Breaker-specific details
+are in [KNUTH+PLASS.md](KNUTH+PLASS.md#lazy-discretionaries) and
+[FIRSTFIT.md](FIRSTFIT.md#discretionary-rescue).
 
-## Streaming Bridge: Design And Next Steps
 
-The streaming encoder now produces the same width/penalty/flag planes consumed
-by both linebreakers, plus textbox shaping storage. Ordinary breaking requires
-no glyph-aware algorithm. Narrow-width integration tests cover actual wrapping,
-trimming, forced breaks and unchanged base knots. Lazy streaming lookup supports
-explicit U+00AD and automatic alternatives for structurally eligible source
-segments in one retained textbox/context. Configure the Khipukamayuq as the
-breaker's `DiscretionaryProvider`. Ineligible boxes return no alternatives;
-streaming lookup never falls back to metric shaping.
-`ErrStreamingDiscretionariesUnsupported` guards missing streaming configuration
-when fragment shaping is needed.
+## Overview
 
-### Initial Request Scope
+A discretionary is a replacement pair for an original textbox. The line breaker
+never inserts a hyphen glyph itself: fragment text, glyphs and metrics are
+prepared upstream by the paragraph owner (`Khipukamayuq`). This keeps the model
+open beyond Western hyphenation, for example to spelling changes at a break.
 
-The private `Khipu.automaticHyphenationEligible` predicate now implements the
-structural prerequisite for automatic streaming discovery. It requires
-an ordinary, non-discardable textbox with retained original shaping storage,
-consistent byte/scalar source coordinates, and a source range contained in one
-retained context. Both endpoints must coincide with original UAX#29 word hints
-(paragraph edges count), with no internal word hint hidden by a shaped cluster.
-It never uses the line-break penalty or `breakAfter` as a word-boundary proxy.
+Alternatives are discovered **lazily**: only when a breaker asks for a
+particular textbox. Two kinds of request exist:
+- **explicit**: the textbox contains a soft hyphen (U+00AD);
+- **automatic**: the textbox is a complete word eligible for hyphenation by a
+  `Hyphenator` policy.
 
-A style or bidi boundary inside a word is not a word boundary. Both partial
-textboxes are declined, even when their fonts happen to agree; no neighbors are
-concatenated. A style boundary at an actual word boundary is acceptable.
-Glyphless source gaps must not truncate the source segment. Boxes containing
-U+00AD are reserved for explicit discovery, avoiding competing variant namespaces.
-Manually constructed nodes without provenance and generated replacement boxes are not eligible here.
 
-True means one complete default word *segment*, not proven linguistic
-hyphenatability. Punctuation and numbers may also form complete segments, and
-default UAX#29 is not dictionary segmentation for all scripts. The downstream
-hyphenator must decide whether any alternatives exist; no Western letter test
-or minimum word length is imposed by this metadata-only predicate. Feature
-mapping and fragment validity are separate checks after structural eligibility.
-
-The predicate allocates no text, invokes no collaborators and changes no state.
-The provider now applies it before automatic requests. Explicit markers take
-precedence and never fall back to automatic discovery, even when declined.
-
-Automatic requests read only the bounded original textbox and pass a local
-parameter copy using its retained Language, Script and BidiDir. The policy must
-return complete replacement strings with known interior original-byte splits at
-UTF-8 scalar boundaries. Unknown, endpoint, out-of-range or malformed splits
-fail the batch; replacement lengths cannot supply a missing split. Invalid UTF-8
-and recursive soft-hyphen material also fail. Empty replacement halves are
-skipped after validation. No new
-Western character-count minimum is imposed; script-specific validity remains
-with the policy.
-
-Nonzero policy variant IDs are retained and duplicates rejected. Zero IDs receive
-the lowest unused positive IDs in response order, reserving all supplied IDs
-first. Exhausting the uint16 identity space is an error. All response metadata
-is validated before any shaping; all shaped alternatives are staged before
-publication. Failures leave arena/cache unchanged and can be retried.
-
-Extending a request across boxes requires a separate design: the current breaker
-substitutes one knot with PreBreak/PostBreak. A multi-box replacement would need
-source-range identity and corresponding width/bookkeeping changes in both
-breakers, not merely a larger string passed to the hyphenator.
-
-### Source Mapping Must Be Explicit
-
-`HyphenationFragment.SourceSplit` now carries an optional original split offset.
-Its `ByteOffset` uses UTF-8 bytes relative to the requested text; `Valid`
-distinguishes unknown from a known zero. `DiscretionaryCandidate.SourceSplit`
-uses original paragraph-relative UTF-8 bytes instead. Automatic policies must supply a valid split; replacement lengths are never a fallback.
-
-The private `prepareDiscretionaryInput` foundation validates UTF-8, original
-byte/scalar ranges and the explicit split at a scalar boundary. It separates
-replacement strings and local scalar counts from original paragraph provenance.
-The two provenance intervals partition the request, not the replacement input.
-Tests cover changed spellings, multibyte input, a removed soft-hyphen marker,
-known zero, empty fragments, invalid metadata and large coordinates. Endpoint
-splits are valid provenance, not automatically eligible hyphenation opportunities.
-The explicit provider now connects this helper to shaping and publication.
-
-Keep replacement text and original provenance separate. The fragment shaper's
-scalar clusters describe its replacement input, not the original paragraph.
-For range-limited OpenType features, arbitrary replacement text also needs a
-mapping or explicit feature-resolution policy. A split offset alone is not
-enough to map all internal feature positions. Whole-fragment settings can be
-supported first; ambiguous mappings must be rejected rather than guessed.
-
-### Shape, Cache And Select
-
-The private `shapeDiscretionaryInput` stage is now implemented independently of
-the owner provider. It accepts validated replacement input and explicit pre/post
-run parameters, creates a fresh stream for each side, and returns an owned pair
-only after both streams and width conversion succeed. Producers run in
-goroutines; the caller consumes glyphs and cancels/joins on failure. Empty and
-glyphless fragments retain their input and provenance with zero width.
-
-Each result retains replacement text, original-source provenance, shaping
-context, glyph IDs, advances and offsets. Cluster anchors are local replacement
-scalar positions, nondecreasing and in range; repeated anchors retain cluster
-groups. No per-character mapping back to original text is inferred. Horizontal
-advances are accumulated in fractional DU and rounded once per fragment using
-the ordinary candidate-width rules. Current fragment widths are fixed
-(`W == MinW == MaxW`); offsets do not contribute to advance.
-
-Only features with both bounds nonpositive (whole-input settings) are accepted.
-Positive bounds are conservatively rejected before factory invocation, even if
-they happen to cover the original run. Prepared-run feature extraction/rebasing
-is not implemented here. Each result owns its feature slice; font/scale services
-remain shared immutable objects. The function inserts no hyphen itself.
-
-Shaping itself does not write to the arena or candidate cache. The separate
-private `Khipu.publishDiscretionary` stage now stores a successful pair and its
-candidate atomically with respect to returned errors. It validates both sides,
-their source partition, metrics and target textbox before appending anything.
-Duplicate variant IDs are rejected rather than replacing existing records.
-Publication is single-owner, not concurrent-safe; allocation failures are not
-recoverable transaction errors. The provider stages every alternative privately
-before committing a complete batch. A failure in a later fragment leaves both
-arena and cache unchanged, allowing a clean retry.
-
-Candidates retain optional private `preBox`/`postBox` arena IDs. Zero means a
-metric-only candidate. Ordinary knot associations and metrics remain unchanged.
-Replacement boxes retain generated input separately from original provenance;
-their glyphs, cluster ranges and context ranges use replacement-local coordinates.
-Empty replacement input is distinct from an ordinary box and may have no glyphs.
-Glyph/feature slices are copied; IDs remain stable across append-only arena growth.
-Streaming fragment `KnotCore.Pos/Len` describe original source spans (Pos includes
-the paragraph offset), not replacement spelling. The selected `(Source, Variant)`
-still identifies the candidate carrying both metrics and stored box references.
-
-These stages themselves do not discover markers; the explicit provider now
-connects marker preparation, shaping and batch publication. Renderer-facing
-access remains future work.
-
-1. Recover original text, word bounds and the retained font/scale/direction/
-   script/language context from the requested box. Do not reconstruct it from
-   the owner's unrelated metric defaults.
-2. Query the hyphenator lazily, validate source split coordinates and replacement
-   strings, and apply upstream fragment filtering and penalty policy.
-3. Create fresh streaming shapers through the configured factory. Shape the
-   replacement fragments directly; do not run whole-paragraph knotting or append
-   paragraph-fill knots. Reuse the producer lifecycle and width-conversion rules.
-4. Build fragment metrics and owned replacement-input/glyph/context records
-   privately. Publish a complete batch to the arena/cache only after every
-   required shaping operation succeeds. Keep IDs stable and immutable.
-5. Candidate storage now has optional pre-/post-break box references while
-   preserving the metric PreBreak/PostBreak payload expected by the breakers.
-   A selected `(Source, Variant)` must resolve both metrics and stored fragments.
-6. Explicit and automatic streaming lookup are enabled and covered end to end.
-
-Ordinary break results remain knot indices. Downstream line extraction and bidi
-splitting must consult retained exact break provenance, not `Pos + Len`;
-discretionary choices must use their explicit original split position. No
-renderer helpers are needed for this bridge.
-
-### Suggested PR Sequence
-
-Explicit fragment preparation is now available privately through
-`Khipukamayuq.prepareExplicitDiscretionaries`. For one caller-established
-textbox/context it requests `Hyphenator.Discretionaries("\u00ad", params)` once.
-This special request supplies break material rather than discovering word
-boundaries: PreBreak is appended to the left text, PostBreak prepended to the
-right. For example, material `"-"`/`""` produces `"co-"`/`"operate"`, which are
-shaped as complete fragments by the existing common stage. There is no implicit
-ASCII-hyphen default. Nil policy or no returned alternatives declines preparation;
-one alternative with empty material still represents an explicit opportunity.
-
-All soft-hyphen markers are removed from replacement strings. Original source
-splits remain after their selected marker, including it in pre-break provenance.
-Markers with no remaining text on either side are ignored. Returned material
-must be valid UTF-8 and contain no recursive soft-hyphen markers. Variants are
-numbered by source position then material order, independently of policy variant
-IDs; they must not yet be merged with a separate automatic-variant namespace.
-Penalties follow the existing owner policy and default fallback. This simple
-attachment mechanism does not implement contextual spelling changes.
-
-Public streaming encoding now implements the no-break side of U+00AD. A reader
-filters markers before shaping; it does not discard glyphs afterward. Compatible
-contiguous bidi intersections separated only by markers are coalesced within an
-original style span and direction, so a marker does not itself interrupt shaping.
-Style changes, direction changes and source gaps remain separate. Transient
-scalar maps restore backend anchors to original paragraph coordinates before
-cluster assembly, including clusters spanning markers. Feature ranges are mapped
-to surviving input scalars for submission; retained contexts keep original ranges.
-
-The retained source-boundary table flags explicit markers even inside clusters,
-but suppresses their ordinary penalties and knot-partition hints. Original byte
-and scalar endpoints remain unchanged. Ordinary spaces and mandatory breaks
-immediately preceding markers retain their own break positions. Marker-only
-input produces no text glyphs. This changes only streaming encoding, not the
-standalone synthetic shaper's character policy.
-
-Provider wiring is now active. K&P requests retained explicit opportunities when
-pass 2 reaches their textbox, before evaluating its cached variants. Firstfit
-requests them on overflow; an explicit marker may salvage a first word without
-an earlier plain checkpoint. Its existing fit and MinHyphenGain rules still
-apply. K&P retains its pass-1 acceptance and demerit policies, so an explicit
-marker is available, not mandatory. Neither breaker uses an ordinary penalty-only
-break at a marker. Selected variants retain their source split and arena IDs.
-
-The provider reads only the target textbox's bounded source, reuses its retained
-font/scale/direction/script/language, and normalizes features covering the whole
-box to whole-fragment settings. Interior feature boundaries are rejected rather
-than guessed. Provider methods still lack a context parameter; internal shaping
-uses Background with cancellation/joining on failure, not caller cancellation.
-Successful nonempty and empty/declined results are cached for owned encoded
-paragraphs. Errors remain retryable; see the ownership contract below.
-Cross-style/multi-box replacements and repeated breaks within one original box
-are not supported. Multiple markers currently supply alternative single splits.
-
-- Source split/replacement-input contracts, structural single-segment/context
-  eligibility and automatic provider wiring are implemented and tested. Richer
-  feature mapping remains future work.
-- Pursue explicit U+00AD opportunities before automatic streaming hyphenation,
-  initially in one context. Automatic discovery must not cross structural/style
-  boundaries or hyphenate their partial-word boxes. Cross-style manual breaks
-  require a later multi-box replacement design.
-- Fragment shaping, batch publication, explicit/automatic provider integration
-  and both breakers' selection paths are implemented and tested. Cross-style
-  explicit replacements remain a separate extension.
-- Add cache lifetime/invalidation rules before supporting mutable input.
-
-Apart from the source-input, shaping and storage foundations above, this section
-is a proposal. It does not enable streaming hyphenation or imply
-that default Unicode word segmentation alone handles Thai or other scripts
-requiring language-specific analysis.
-
-## Current Contract
-
-`Khipukamayuq` owns discretionary discovery and shaping. A discretionary is a
-replacement pair for an original textbox: `PreBreak` and `PostBreak`.
-The linebreaker never inserts a hyphen glyph. Fragment content and metrics are
-prepared upstream, allowing the model to evolve beyond Western hyphenation.
-
-`Khipu` owns two sparse maps keyed by knot index:
-
-- `DiscretionaryCandidates` caches discovered alternatives.
-- `SelectedDiscretionaries` records only applied choices from linebreaking.
-
-The base SOA includes `Flags` and `KFDiscardable`; this is implemented, not a
-proposed extension. Both modern linebreakers consume those flags.
-
-## Implemented Interfaces
-
-The base package declares:
+## Data Model
 
 ```go
-type HyphenationFragment struct {
-    Variant   uint16
-    PreBreak  string
-    PostBreak string
-    Penalty   Penalty
-    SourceSplit SourceSplit // request-relative original UTF-8 bytes
+type HyphenationFragment struct {   // returned by a Hyphenator
+    Variant     uint16
+    PreBreak    string
+    PostBreak   string
+    Penalty     Penalty
+    SourceSplit SourceSplit         // request-relative original UTF-8 bytes
 }
 
 type Hyphenator interface {
     Discretionaries(word string, params *Params) ([]HyphenationFragment, error)
 }
 
-type DiscretionaryCandidate struct {
-    Variant   uint16
-    PreBreak  KnotCore
-    PostBreak KnotCore
-    SourceSplit SourceSplit // paragraph-relative original UTF-8 bytes
+type DiscretionaryCandidate struct { // stored on the Khipu, read by breakers
+    Variant     uint16
+    PreBreak    KnotCore
+    PostBreak   KnotCore
+    SourceSplit SourceSplit         // paragraph-relative original UTF-8 bytes
 }
 
 type DiscretionarySelection struct {
-    Source  int
+    Source  int                     // knot index of the split textbox
     Variant uint16
 }
 ```
 
-Each modern linebreaker defines its own structurally compatible provider:
+`SourceSplit` is an explicitly optional original-text position: `Valid=false`
+means unknown, and `ByteOffset=0` with `Valid=true` is a known split at the
+start. It is provenance, never derived from the length of replacement text.
+
+The `Khipu` holds two sparse maps keyed by knot index:
+- `DiscretionaryCandidates`: discovered alternatives (a cache);
+- `SelectedDiscretionaries`: the choices applied by the last successful
+  line-breaking run.
+
+Owner-produced candidates also carry private references to shaped fragment
+boxes in the paragraph's arena: replacement text, glyphs, shaping context and
+original provenance. Candidates added by hand (`AddDiscretionaryCandidate`)
+carry only metrics and are usable by breaker tests, but cannot be mapped back to
+the source.
+
+
+## Discovery
+
+Both breakers call a `DiscretionaryProvider`:
 
 ```go
 type DiscretionaryProvider interface {
@@ -280,177 +76,208 @@ type DiscretionaryProvider interface {
 }
 ```
 
-`(*Khipukamayuq).DiscretionaryCandidates` implements that method.
-The linebreaker need not know the `Hyphenator` or `StreamingShaper`.
-Without a provider, breakers can consult candidates already stored on `Khipu`.
+`(*Khipukamayuq).DiscretionaryCandidates` implements it. The breakers know
+neither the `Hyphenator` nor the shaper. Without a provider, they use only
+candidates already cached on the `Khipu`.
 
-Widths travel directly in `KnotCore.W/MinW/MaxW`; no extra transport or adapter
-type was introduced. The streaming shaper supplies logical-order glyphs with
-scalar anchors and font-unit positioning; the owner scales advances to DU and
-stores original-source provenance separately from replacement text.
+For a request, the owner
+1. validates the paragraph, the knot index and its own ownership of the `Khipu`;
+2. returns cached candidates, or nothing if the knot is known to have none;
+3. decides the kind of request: explicit if the textbox contains a soft
+   hyphen, otherwise automatic if the textbox is eligible, otherwise none;
+4. asks the `Hyphenator`, validates the answer, shapes all fragments, and
+   publishes the complete batch.
 
-## Lazy Roundtrip
+### Explicit Requests
 
-The owner validates paragraph/index/ownership, reuses cached candidates, and
-otherwise uses the shared pipeline described above:
-bounded source access, retained contexts, full-fragment streaming shaping and
-atomic batch publication. Explicit boxes request marker material; eligible
-unmarked boxes request complete-word alternatives. The existing breaker triggers
-are unchanged for automatic lookup: K&P's bad-line pass-2 requests and firstfit's
-loose-line overflow requests after an earlier checkpoint. This does not add an
-automatic first-word rescue to firstfit or revise K&P's geometric screening.
+For a textbox containing soft hyphens, the owner calls
+`Hyphenator.Discretionaries("­", params)` once. This special request asks
+for **break material**, not for word segmentation: the returned `PreBreak` is
+appended to the text left of a marker, `PostBreak` is prepended to the text
+right of it. With material `"-"`/`""`, `co­operate` yields `co-` and
+`operate`. Empty material is valid; returning no alternatives declines the
+request. No ASCII hyphen is assumed.
 
-A nonzero fragment penalty is used directly; zero currently means fallback to
-`Params.Hyphenpenalty`. Thus an explicit zero override cannot presently be
-distinguished from an unspecified penalty.
+Each marker with text on both sides yields one alternative per returned
+material; all markers are removed from the replacement strings. The owner
+assigns the variants (by source position, then material order) and the source
+splits (after the marker); `Variant` and `SourceSplit` from the policy are
+ignored. Several markers in one textbox offer alternative single splits, not
+multiple splits of the same box.
 
-Currently shaped fragments have fixed widths: `MinW == W == MaxW`.
-The roundtrip does not yet obtain script-specific adjustment capacities or
-penalty hints from the shaper.
+Explicit requests take precedence: a textbox with a marker never falls back to
+automatic discovery, even if the explicit request is declined.
 
-## Knuth-Plass Integration
+### Automatic Requests
 
-Pass 1 runs without discretionary lookup. If the first result is unacceptable
-or unavailable, pass 2 uses `Tolerance` and permits local lookup.
-If positive finite `EmergencyStretch` is configured, pass 2 cannot use fallback;
-failure starts a fresh final pass 3 with the same tolerance and provider.
-Otherwise pass 2 remains final. Only the first complete pass publishes selected
-discretionaries, and provider errors stop the sequence rather than triggering
-another pass.
+A textbox is **eligible** for automatic discovery if it is a complete default
+word segment within one shaping context:
+- an ordinary, non-discardable textbox with retained shaping data and
+  consistent source coordinates;
+- both ends coincide with UAX#29 word boundaries (paragraph edges count), and
+  no word boundary is hidden inside one of its clusters;
+- its source lies within one retained shaping context; a style or bidi change
+  inside a word makes both parts ineligible;
+- no soft hyphen (those boxes are explicit).
 
-During pass 2, evaluations with `badness > PreTolerance` can trigger lookup,
-including candidates which still pass `Tolerance`. Overfull evaluations also
-get a rescue attempt before retirement, even without shrink capacity. This is
-a badness/geometric gate, not a demerit threshold.
-Pass 3 uses the same gate with emergency-adjusted badness. Virtual stretch may
-therefore suppress additional automatic discovery, but overfull rescue and
-explicit-marker requests remain independent of that threshold. Paragraph-owned
-positive/empty caches survive passes, and newly reached textboxes can still
-require new provider calls. See [PASS3.md](PASS3.md).
-Loose lines scan forward for a textbox; tight lines scan backward, skipping
-flagged discardables and stopping at other retained material.
-At forced glue/kern boundaries, last-box discovery starts before that marker;
-its trimming flags are not changed. Newly discovered successors are scored
-through the current forced boundary before old origins are discarded.
+Eligibility means "one complete word segment", not linguistic hyphenatability:
+numbers and punctuation can be segments, and default UAX#29 is not dictionary
+segmentation (for example for Thai). The `Hyphenator` decides whether
+alternatives exist; no minimum word length or letter test is imposed.
 
-Internal `BreakRef{At, Variant}` values identify ordinary boundaries (variant
-zero) and discretionary alternatives (nonzero variant). Different variants
-can coexist at a source knot. Path construction evaluates the pre-break
-fragment and seeds the next line with the post-break fragment.
-The immutable rescan seed contains only that fragment; the live segment also
-contains knots already consumed after its source box. Retired targets cannot
-be resurrected by late discovery. Lazy provider minima must be nonnegative and
-fit the pruning pass's conservative accumulation bound; cached unsafe manual
-variants disable pruning before the pass. See [RETIREMENT.md](RETIREMENT.md).
+The policy receives the textbox's original text and a copy of the owner's
+`Params` whose `Language`, `Script` and `BidiDir` come from the textbox's
+shaping context. It must return complete replacement strings with a valid
+interior `SourceSplit` at a scalar boundary. Unknown, endpoint, out-of-range or
+malformed splits, invalid UTF-8 and soft hyphens in the replacements fail the
+whole request. Empty replacement halves are skipped after validation.
 
-Local cost uses `PreBreak.Penalty`. `FirstHyphenDemerits` adds cost when the
-discretionary line starts at the root. `FinalHyphenDemerits` adds cost on the
-terminal transition if the break starting the final line is discretionary.
-Both are implemented. Consecutive-discretionary demerits remain deferred; the
-unused `DoubleHyphenDemerits` parameter has been removed.
+Nonzero variant IDs are kept and must be unique; zero IDs get the lowest unused
+positive IDs in response order.
 
-The unused `Params.Hyphenchar` and `Params.Minhyphenlength` fields have also
-been removed. Replacement text remains the provider's script-sensitive decision,
-not a universal injected character. A future minimum-length policy needs an
-explicit definition of which fragments it constrains and how length is measured;
-no generic count threshold is currently imposed by these parameters.
+### Penalties
 
-## Firstfit Integration
+A nonzero fragment penalty is used as given. Zero means "unspecified" and falls
+back to `Params.Hyphenpenalty`; an explicit zero penalty can therefore not be
+expressed. The breakers read the result as `PreBreak.Penalty`.
 
-Firstfit has a separate, greedy policy with no second pass. When an overflowing
-textbox would otherwise force a break at an earlier feasible checkpoint, it
-can request candidates for that textbox.
+### Shaping and Publication
 
-A candidate must fit according to minimum width and increase the line's
-natural width over the plain checkpoint by at least `MinHyphenGain`.
-Among survivors it chooses the greatest resulting natural width, breaking
-ties by lower `PreBreak.Penalty`. The next line starts with `PostBreak`.
+Fragments are shaped as complete strings with a fresh streaming shaper each,
+using the textbox's retained font, size, direction, script and language. No
+whole-paragraph knotting happens, and no paragraph fill is appended.
 
-Tight-line rescue, consecutive-hyphen limits, and global demerit ranking are
-outside its current scope. See [FIRSTFIT.md](FIRSTFIT.md).
+- Glyph cluster anchors refer to the replacement text, not to the original.
+- Widths are accumulated as for ordinary textboxes and rounded once per
+  fragment. Fragments currently have fixed widths (`MinW == W == MaxW`).
+- Font features covering the whole original textbox apply to both fragments.
+  Features limited to part of the textbox are rejected, since their positions
+  cannot be mapped onto changed text.
+- Fragment `KnotCore.Pos/Len` describe the original source span, not the
+  replacement spelling.
 
-## Committed Result
+All alternatives of one request are validated and shaped before anything is
+stored. A failure leaves arena and cache unchanged, so the request can be
+retried. Arena IDs stay stable as the arena grows.
 
-Both modern breakers return knot indices and store applied discretionary
-selections separately in `Khipu`. Reruns clear stale choices.
-Candidate caches are not pruned to the winning alternatives.
+### Caching
 
-For Knuth-Plass, the winning `[]BreakRef` is authoritative for selection
-write-back. Firstfit commits each greedy choice directly. The resulting
-`Source` and `Variant` identify the chosen cached candidate.
+Successful results are cached per paragraph and knot:
+- non-empty results in `DiscretionaryCandidates`;
+- empty results (declined, ineligible, or all alternatives filtered out) in a
+  private set, so "asked, none" is distinguished from "not asked yet".
 
-`Khipu.BreakpointPositions(breakpoints)` now maps these decisions to exclusive
-UTF-8 byte endpoints in the original paragraph. Call it before another breaker
-run replaces the selections. It resolves the selected `Source`/`Variant` to its
-cached `SourceSplit`, not to a replacement length. Ordinary streaming breaks use
-retained boundary provenance, including glyphless gaps; the terminal fill maps
-to paragraph end. Positions are paragraph-relative, without `paragraph.Offset`.
-Source whitespace remains included, independently of line-edge trimming.
+Errors are never cached. Requests without discovery (no `Hyphenator`, not a
+textbox, or a `Khipu` without owner) leave no cache entry. A manually added
+candidate takes precedence over an empty entry. Releasing a `Khipu` clears the
+caches. Caches survive breaker passes and repeated breaking runs.
 
-The mapper accepts increasing knot indices, including partial or empty lists;
-it does not certify path feasibility. Missing/ambiguous candidates, unknown or
-invalid splits, or decreasing source endpoints return an error and no partial
-result. It neither discovers alternatives nor changes the paragraph. Manually
-constructed knots without retained provenance cannot be mapped, even if their
-Pos/Len fields appear to describe source spans.
+The cache assumes stable source text, knots, shaping contexts and policy for the
+lifetime of the paragraph. To change the policy, create a new owner and encode
+again; there is no invalidation for mutable input.
 
-The next consumer is planned line-local bidi ordering and freezing, followed by
-box creation and later rendering. No bidi splitting, line materialization, or
-renderer-specific helpers are included in this mapper. See [FREEZE.md](FREEZE.md).
+Provider methods take no context: fragment shaping runs with
+`context.Background()`, with internal cancellation on failure, but cannot be
+cancelled by the caller.
 
-## Ownership And Deferred Work
 
-Fragment validity and length filtering belong to `Khipukamayuq`, with
-script/shaping knowledge supplied by its collaborators. Storage allows empty/silent
-fragments and separates replacement text from original source spans; original
-spans must fit the KnotCore length field. Preparation validates UTF-8. Explicit discovery requires nonempty surrounding text, but
-permits empty break material. A complete script-sensitive validity policy is
-still missing. Breakers should not impose Western character-count rules.
+## Line Breaking
 
-The cache assumes stable base knots, shaping context, variant identities, and
-collaborator policy within a paragraph instance. Parameters are snapshotted by
-the owner; retained service implementations must keep their policy stable.
-Use a new owner and encode again for a changed policy. Mutable-input invalidation
-remains future work. Streaming explicit and automatic population is transactional
-across the full request batch.
+Both breakers treat a discretionary as a break inside textbox `At`, identified
+internally by `BreakRef{At, Variant}`. The line ending at it contains the
+material up to the textbox plus `PreBreak`; the next line starts with
+`PostBreak`. The breakers read only `KnotCore` metrics; glyph access is not
+part of their interface.
 
-Successful empty discovery is recorded in a private per-paragraph set keyed by
-knot index, separate from `DiscretionaryCandidates`. This distinguishes unqueried
-from successfully declined without adding empty entries to the public map. It
-also covers structural declines and alternatives filtered out during preparation.
-The marker is checked before source extraction, policy calls, or shaping, and
-survives breaker passes/reruns. Equal words at different knots and different
-paragraphs do not share results. Owner validation still precedes cache lookup.
+- **Knuth-Plass** requests alternatives in passes 2 and 3: for every textbox
+  with a soft hyphen when the scan reaches it, and for one textbox per bad or
+  overfull line (the next box for a loose line, the last box on the line for a
+  tight one). Costs use `PreBreak.Penalty` plus `FirstHyphenDemerits` and
+  `FinalHyphenDemerits`. See [KNUTH+PLASS.md](KNUTH+PLASS.md#lazy-discretionaries).
+- **First-fit** requests alternatives for a textbox that makes the line
+  overflow, and picks the widest fitting alternative. See
+  [FIRSTFIT.md](FIRSTFIT.md#discretionary-rescue).
 
-Errors at any stage are never cached. Disabled discovery, non-textbox requests,
-and ownerless/manual Khipus do not acquire negative-cache entries. A manually
-added candidate takes precedence and `AddDiscretionaryCandidate` removes an old
-empty marker. Releasing a Khipu clears the set. This is owner-provider caching,
-not a new obligation on arbitrary implementations of the breaker provider
-interfaces; the linebreakers' request/scoring loops remain unchanged.
+Neither breaker uses an ordinary break at a soft hyphen: the encoder prohibits
+breaks there, and the marker is only reachable as a discretionary.
 
-Manually supplied metric-only candidates remain usable by breaker fixtures but
-have no implicit source mapping. Owner-produced candidates retain owned glyphs, replacement strings, contexts
-and original-source provenance through private arena references. Their explicit
-`SourceSplit` is independent of replacement spelling and is exposed for selected
-breaks through `BreakpointPositions`. Applying those positions to bidi resolution
-and materializing line contents remain downstream integration tasks.
+Fragments returned lazily to Knuth-Plass must have nonnegative minimum widths
+within a safe range; see [KNUTH+PLASS.md](KNUTH+PLASS.md#retirement).
 
-There is no separate explicit-hyphen cost model in the new path. The producer
-supplies the candidate penalty; richer script metadata and shaper feedback
-can be added when their concrete requirements are known.
 
-## Why This Design Was Chosen
+## Selection and Source Mapping
 
-The removed `HyphenateTextBoxes` path performed eager hyphenation and
-imported its concrete hyphenation dependency. The modern path uses an interface
-and requests candidates only when a breaker needs them.
+A successful breaker run replaces `SelectedDiscretionaries` with the choices of
+its result; a failed run leaves the previous choices. The candidate cache is
+not pruned to the chosen alternatives.
 
-Of the original storage options, sparse in-`Khipu` tables were chosen because
-opportunities can be discovered lazily while applied decisions remain attached
-to the paragraph for subsequent processing. Neither penalties packed with
-flag bits nor a separate consumer view was introduced.
+`Khipu.BreakpointPositions(breakpoints)` maps a breaker result to exclusive
+UTF-8 byte positions in the original paragraph (paragraph-relative, without
+`paragraph.Offset`). Call it before another breaking run replaces the
+selections.
+- Ordinary breaks map through the retained source-boundary provenance,
+  including glyphless gaps; source whitespace stays included regardless of
+  trimming.
+- Selected discretionaries map through their `SourceSplit`, never through the
+  length of the replacement text.
+- The paragraph fill maps to the paragraph end.
 
-Tests cover storage, shaping and cache reuse, provider invocation, multiple
-variants, discretionary costs, and selection persistence. Full script-sensitive
-freezing and box creation are not established by those tests.
+The mapper accepts increasing knot indices and does not check that the path is
+feasible. Missing or ambiguous candidates, unknown splits or decreasing
+positions return an error and no partial result. Knots without retained
+provenance (hand-built knots) cannot be mapped; `Pos`/`Len` are not used as a
+fallback.
+
+Later stages (logical lines, bidi ordering, freezing) consume these positions;
+see [FREEZE.md](FREEZE.md).
+
+
+## Soft Hyphens During Encoding
+
+The encoder removes U+00AD from the text before shaping, so markers do not
+disturb ligatures or joining, and maps glyph anchors back to original
+positions. The source-boundary table keeps the marker positions but prohibits
+ordinary breaks there and suppresses their word-boundary hints. Ordinary spaces
+and mandatory breaks right before a marker keep their own break positions.
+Marker-only input produces no glyphs. Encoding never discovers alternatives.
+
+
+## Design Decisions
+
+**Lazy discovery through an interface.** Hyphenating every word up front would
+shape many alternatives that are never used, and tied the package to a
+concrete hyphenation library. Breakers request alternatives only where they
+need them; the policy is an interface.
+
+**Storage in the `Khipu`.** Candidates and selections are sparse tables on the
+paragraph, not an external cache or a breaker-specific view: choices must
+survive into freezing, and discovered alternatives are reused across passes
+and breakers.
+
+**Provenance separate from spelling.** Replacement text may differ from the
+original (spelling changes, inserted hyphens). Source positions are therefore
+carried explicitly (`SourceSplit`) instead of being inferred from fragment
+lengths.
+
+**Whole-batch publication.** All alternatives of a request are published
+together or not at all, so a failed request leaves no partial state and can be
+retried.
+
+
+## Limits
+
+- One split per textbox; no replacements spanning several textboxes (for
+  example across a style change). Both would need a multi-box replacement model
+  in the breakers.
+- Fragments have fixed widths; no script-specific adjustment capacity (such as
+  kashida) is obtained from the shaper.
+- No complete script-sensitive validity policy for fragments. Breakers must not
+  impose Western character-count rules; such policies belong to the
+  `Hyphenator`.
+- Features limited to part of a textbox prevent its alternatives.
+- An explicit zero fragment penalty cannot be expressed.
+- No minimum fragment length. A future policy must first define which fragment
+  it constrains and how length is measured (characters, clusters or width).
+- No cancellation by the caller during discovery.
+- No consecutive-hyphen demerits or limits (see
+  [KNUTH+PLASS.md](KNUTH+PLASS.md#known-limits-and-deviations-from-tex)).

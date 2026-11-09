@@ -28,7 +28,7 @@ UTF-8 byte endpoints. The metric-only shaping path has been removed.
 The next decisions concern a public freeze/result contract and future
 script-sensitive realization, not another encoder migration. See
 [the public result contract draft](FROZEN-API.md),
-[the overall algorithm](khipu-algorithm.md#line-local-bidi-ordering) and
+[the overall algorithm](KHIPU_ALGORITHM.md#phase-3-line-local-bidi-ordering) and
 [discretionary ownership](HYPHENATION.md).
 
 LineShape and both side skips now live in the existing Params, shared by
