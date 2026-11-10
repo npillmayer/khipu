@@ -906,6 +906,58 @@ So the first implementation may be simple and mostly self-contained, but the
 ownership boundary should already assume that some scripts will require a
 roundtrip through shaping.
 
+### Downstream Visual Glyph Ordering
+
+Freezing and rendering preparation operate at different levels:
+
+| Operation | Owner |
+| --- | --- |
+| Resolve line-local bidi order and arrange knots in physical order | `khipu`, during freezing |
+| Convert logical glyph records within a directional textbox to visual order | Downstream rendering adapter |
+| Accumulate glyph advances, apply offsets and draw glyphs | Downstream renderer |
+
+No additional glyph-ordering pass is planned for `Freeze`. `FrozenText.Glyphs`
+retains logical shaping order, including for RTL text. The frozen knot sequence
+is already in physical order; downstream code must not reverse it again.
+Integration with OpenType belongs in a downstream module, not an OpenType import
+in `khipu`.
+
+The OpenType backend's `otshape.VisualOrder` can perform the intra-textbox
+conversion. It accepts a complete horizontal directional run or a layout-selected
+line fragment in logical shaping order. For RTL it reverses all glyph records,
+including records within the same cluster; LTR order is unchanged. Complete
+records move together, without negating or recomputing advances and offsets.
+It does not resolve bidi levels, arrange runs, choose breaks or position glyphs.
+
+Recommended downstream procedure:
+
+1. Traverse frozen lines and their knots in stored physical order.
+2. Obtain each textbox's detached snapshot with `CopyText`.
+3. Read the shaping direction from `text.Context.Params.Direction`, not the
+   paragraph's base direction.
+4. Adapt `contracts.ShapedGlyph` to the backend's glyph representation and apply
+   visual ordering exactly once to the complete textbox fragment. The slices
+   cannot be passed directly: `otshape.VisualOrder` accepts `[]otshape.GlyphRecord`.
+5. Accumulate advances and apply offsets for drawing, using the retained font
+   scale. Glyph metrics remain in font units; frozen knot widths are layout units.
+
+Do not apply reversal independently to arbitrary streaming chunks: reversing
+chunks does not reverse the complete fragment. Calling `VisualOrder` twice on
+RTL output restores logical order. Its attachment diagnostic indices retain
+their original shaping meaning and are not remapped to visual indices.
+
+`FrozenText.Clusters` indexes the logical snapshot's glyph slice. Reversing that
+slice without remapping cluster indices makes the snapshot inconsistent. Prefer
+a separate backend visual sequence while keeping the logical snapshot intact;
+if a visual-indexed cluster representation is needed, explicitly rebuild its
+index mapping. Replacement-local coordinates and original source provenance
+must retain their existing meanings, not be inferred from visual indices.
+
+The downstream adapter should establish and test this conversion first. A
+backend-neutral visual-glyph iterator in `khipu` remains a possible later helper
+if multiple consumers need it, not a prerequisite or a change to the frozen
+result contract.
+
 ## Implementation Plan
 
 The most realistic path looks incremental.
