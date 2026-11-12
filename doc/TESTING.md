@@ -1,401 +1,414 @@
-# Testing
+# Testing Khipu Knotting
 
-How khipu is tested: which guarantees the test suites establish, the dependency
-policy for tests, the deterministic default services, and planned test
-infrastructure. Benchmarks and measurements are described in
-[PERFORMANCE.md](PERFORMANCE.md).
+## Purpose and Status
 
-## Purpose and Scope
+Clients should be able to exercise the complete supported encoding and
+linebreaking path without installing a typography backend or implementing
+dependencies they do not yet understand. Adapter authors should be able to
+verify that their implementations satisfy the same contracts.
 
-Clients can exercise public encoding, line breaking and freezing
-without installed fonts: `Config{}` enables synthetic streaming shaping. The
-synthetic tests establish layout, ownership and lifecycle contracts, not real
-typography. Hand-built knot fixtures remain useful as independent line-breaker
-tests. Backend integration needs separate font-backed tests. Reusable adapter
-conformance suites, visual proofs and a shared testing package are proposals
-(see [Reusable Test Fixtures and Contract Tests](#reusable-test-fixtures-and-contract-tests)).
+This document records the testing strategy and reusable default implementations.
+`SyntheticFont`, `FixedWidthShaper`, `DefaultStyleResolver`, and
+`SyntheticStreamingShaper` are available APIs. Proposed packages and future
+integration work are identified separately.
 
-## Existing Guarantees and Evidence
+The implementations live in `github.com/npillmayer/khipu/helpers`; their service
+interfaces and associated value types live in `github.com/npillmayer/khipu/contracts`.
+Unqualified helper and service names below refer to those packages. The root
+retains compatibility aliases, but examples use the canonical package paths.
 
-- `pipeline_integration_test.go` runs EncodeParagraph -> either public breaker
-  -> Freeze without internal test bridges. It checks source endpoints, contiguous
-  output traversal, width/residual conservation, retained glyph advances, empty
-  paragraphs, fixed spaces, finite shrink/overstretch, unavoidable overfull words,
-  fill precedence and mixed LTR/RTL ordering without glyph-array reversal.
-  Automatic and explicit discretionary cases check applied replacement strings,
-  no additional shaping/discovery during freezing, warm cache reuse and survival
-  of frozen results after a later layout clears the input's selections.
-  `ExampleKhipukamayuq_Freeze` is an executable public-pipeline example.
-- `frozen_result_test.go` checks nil/zero queries, detached records, allocation
-  metadata, glyph/cluster/feature copy independence, replacement-local coordinates,
-  silent material, captured source offsets, bounded readers and concurrent queries
-  after elastic-input release. `freeze_api_test.go` tests public cancellation,
-  deadlines, validation, unsupported adjustment and retry with both breakers in
-  LTR/RTL. `freeze_cancellation_test.go` checks cancellation at internal stages.
-- `linebreak/firstfit/cleanup_test.go` checks disabled debug/info guards,
-  unchanged results across logging levels, forced-textbox exclusion from rescue,
-  and paragraph-level kern flag/interior/carry semantics. Benchmark workload
-  tests assert cold discovery/selection counts and warm reuse without policy calls.
-- `firstfit_fitting_integration_test.go` checks ordinary checkpoints and carry
-  through freezing: positive slack, exact natural/minimum widths, finite shrink,
-  one-DU overflow and fixed-space input. It verifies breakpoints, unchanged text
-  widths, space adjustment, fil/fill allocation, exact line totals and unchanged
-  input width planes. `linebreak/firstfit/fitting_test.go` pins discretionary fit
-  at the same shrink boundary, including fixed glue and one-DU excess.
-- `linebreak/firstfit/discretionary_policy_test.go` checks prohibited variants at
-  and above the sentinel, mixed/all-prohibited lists, exact and zero gain
-  thresholds, width-first ranking, finite-penalty and candidate-order ties, and
-  unchanged candidate storage. Public tests cover provider/cache lookup and both
-  overflow-rescue branches, including publication of only eligible selections.
-- `linebreak/firstfit/ownership_test.go` covers early/late provider errors in both
-  rescue branches, unchanged nil/populated selections during callbacks and after
-  failure, cache retention and retry, successful stale-selection clearing,
-  validation errors, independent defaults and nil/explicit-default equivalence.
-- `linebreak/knuthplass/uniform_test.go` compares automatic ordinary
-  state compaction with baseline paths, quality and completion across shapes,
-  passes, providers, forced boundaries, rewards, emergency recovery and fallback.
-  Unknown shapes stay unoptimized. `uniform_public_test.go` compares the real
-  public API against an identical-width opaque shape across all passes, cold/warm
-  discovery and selection publication. `BenchmarkUniformPublic` times complete
-  calls with fresh owners and candidate caches, excluding paragraph encoding.
-- `linebreak/knuthplass/parameters_test.go` pins both independent profile values
-  and pass counts, checks constructor isolation, and verifies that mutations to
-  one profile cannot affect nil-parameter calls. Provider-error tests
-  capture logging to verify that pass-2/pass-3 failures are returned unchanged,
-  without retry, selection publication or duplicate error-level logging.
-- `penalties_test.go` checks Unicode-to-layout translation at both sentinels and
-  integer extremes. `boundary_preparation_test.go` checks neutral spaces, ZWSP
-  and CJK opportunities alongside mandatory/prohibited boundaries and CRLF
-  precedence. `linebreak/knuthplass/penalty_translation_test.go` checks the real
-  encoder/breaker roundtrip has no ordinary-break rewards while intentional
-  negative penalties still affect ranking. Corpus quality expectations use
-  neutral opportunities; the leading-space materialization fixture no longer
-  expects a rewarded empty first line.
-- `linebreak/knuthplass/evaluation_cache_test.go` checks boundary/penalty scoping,
-  scratch independence, zero warm allocations, invalidation on successful writes
-  (but not losing proposals), changed seeds/new line counts, forced-boundary
-  successors and error cleanup. Cached and uncached runs agree after every knot
-  on working tables, seeds, horizon, retirement and predecessor history, as well
-  as final paths/quality, across provider modes, variable shapes and forced or
-  overlong lines. The matrix includes active emergency stretch; replacement and
-  new-successor fixtures include lines accepted only through virtual capacity.
-  Pass 1 allocates no evaluation cache.
-- `discretionary_cache_test.go` checks successful empty automatic/explicit and
-  filtered responses, paragraph/knot isolation, owner validation, manual
-  overrides, release, disabled/manual requests, and retry after policy,
-  validation or shaping failure. `TestEmptyDiscoveryCachePreservesPassWork`
-  checks cold-pass scoring/history counts against pre-cache baselines and warm
-  paragraph reuse without further policy calls or changes to the best path.
-- `linebreak/knuthplass/geometry_test.go` checks shared ordinary/discretionary
-  classification at exact fit, shrink and tolerance boundaries, zero capacities
-  and badness saturation, including overfull lines hidden by cubic rounding.
-  Lookahead and seed-replay scoring agree, ranking extras stay separate, and
-  local classification does not retire working states; boundary commit does.
-- `linebreak/knuthplass/emergency_geometry_test.go` checks virtual finite stretch,
-  wide arithmetic, unchanged fill/saturation and shrink behavior, nonpositive-E
-  equivalence, ordinary/discretionary agreement and cached scoring. It verifies
-  that virtual capacity does not enter knots, fragments or seeds, and that
-  only explicit pass configuration activates virtual capacity.
-- `linebreak/knuthplass/emergency_pass_test.go` checks pass policy/defaults,
-  validation before search, disabled/negative E, loose emergency recovery,
-  unavoidable fallback, first-success ordering and internal quality context.
-  It verifies new pass-3 discovery, provider-error propagation without retries,
-  winner-only publication and unchanged real width planes.
-- `linebreak/knuthplass/emergency_discovery_test.go` checks positive/empty owner
-  cache reuse from pass 2 into pass 3 for automatic and explicit requests,
-  including policy and shaping-stream counts. It covers emergency-adjusted
-  discovery thresholds, explicit requests independent of automatic lookup,
-  warm-run quality/path stability and final selection ownership.
-- `linebreak/knuthplass/emergency_stability_test.go` checks equal-cost variant
-  ordering over fresh and warm runs, unchanged knot/candidate storage, and
-  physical-only post-break seeds during emergency retroactive rescans with and
-  without evaluation caching.
-- `linebreak/knuthplass/emergency_benchmark_test.go` asserts that its workloads
-  require pass 3, distinguish successful recovery from unavoidable fallback,
-  and exercise productive or cached empty discovery as intended. Instrumented
-  diagnostics match the production coordinator; timed public/isolated calls
-  verify results and provider work. See the emergency workload baseline below.
-- `linebreak/knuthplass/boundary_test.go` covers zero-capacity lines, rescue at
-  terminal/internal forced boundaries, final-pass-only fallback, normal pass
-  failure versus provider errors, per-line retirement, rejected resurrection,
-  immutable fragment seeds, canonical fallback costs and negative/overflow
-  opt-outs. Pruned and unpruned runs match paths/quality on rectangular and
-  varying shapes with and without hyphenation, while peak live work decreases.
-- `linebreak/knuthplass/hyphenation_benchmark_test.go` checks that the pass-2
-  workload discovers and shapes real discretionary candidates, reuses successful
-  provider lookups, and creates discretionary predecessor history. An isolated
-  overlong origin demonstrates the capped-badness gate and seed-rescan case even when
-  splitting its last word cannot rescue the line. No timing assertions are used.
-- `linebreak/knuthplass/scratch_test.go` checks buffer reuse, growth, smaller and
-  empty results, independence across breakers, and nested pass-2 candidate
-  processing without overwriting outstanding ordinary evaluations. Horizon
-  snapshots stay sorted and independent of live membership changes. Fixed
-  fixtures verify zero steady-state allocations for scoring and snapshots
-  after warmup with diagnostic logging disabled.
-- `linebreak/knuthplass/index_test.go` checks breakpoint-bucket isolation,
-  multiple line counts, distinct discretionary variants, line-specific rescan
-  seeds, missing buckets, and replacement without altering sibling states.
-  Rectangular and varying-shape corpus results pin exact breakpoints and
-  quality. Final working-state/seed assertions verify that forced-boundary
-  retirement leaves only terminal work while preserving historical predecessors.
-- `linebreak/knuthplass/logging_test.go` checks that disabled hot-loop debug
-  calls and final info dumps never reach the tracer. Enabled dumps remain
-  available, and ordinary/discretionary paths, costs and predecessor tables
-  remain identical across error, info and debug levels.
-- `stream_shaper_test.go` checks the shared paragraph/replacement lifecycle:
-  buffered output draining, producer and terminal errors, cancellation, joining
-  on consumer failure, and rejection before producer launch. The existing
-  paragraph and discretionary integration tests exercise both callers.
-- `linebreak/knuthplass/path_test.go` checks canonical equal-cost predecessor
-  replacement, synchronized live seeds, and terminal selection by cost then
-  line count. `service_integration_test.go` checks rectangular LineShape behavior
-  and canonical contracts/helpers integration through encoding;
-  `khipu_test.go` checks allocation sizing and slice growth beyond capacity.
-- `layout_params_test.go` checks complete independent default profiles, shared
-  Params across breaking/freezing, explicit zero-skip overrides, firstfit's fil
-  ragged-right behavior, finite shrink, terminal fill precedence and physical
-  right skips in RTL paragraphs. Invalid/nil shapes and invalid skip bounds
-  fail before querying the shape or changing breaker selections. Configuration
-  tests distinguish value snapshots from shared LineShape service lifetime.
-- `logical_lines_test.go` covers complete-path validation, source coverage,
-  retained-neutral trimming, selected-fragment carry, silent replacements,
-  arena lifetime and atomic errors. `logical_lines_integration_test.go` consumes
-  ordinary and explicit/automatic discretionary results from both breakers.
-  The materializer stays internal; `export_test.go` provides a test-only bridge
-  so integration coverage does not require a premature public freeze API.
-- `line_ordering_test.go` checks the trailing-source-glue L1 approximation before
-  trimming, actual LTR/RTL resets, successive line splits inside an isolate,
-  nonzero paragraph offsets, style-split and multibyte glue, empty/final lines,
-  discretionary barriers, source gaps, invalid input and repeatable ordering
-  without consuming the original resolution. NBSP, internal tabs and omitted
-  controls explicitly record accepted approximation limits. These tests do not
-  claim full UAX#9 L1 conformance or visual knot permutation.
-- `knot_ordering_test.go` checks the partial permutation of original source-backed
-  knots: LTR/RTL/mixed segments, nested isolates, source gaps, trimmed segments,
-  style-split RTL boxes and unchanged glyph storage. It also checks local index
-  semantics, neutral source-backed knots, invalid/ambiguous spans and atomic
-  errors. Original zero-source items remain unresolved at this mapping stage;
-  generated placement and visual construction are tested separately.
-- `knot_ordering_fragments_test.go` checks selected fragment placement by source
-  provenance, mixed directions, shaped LTR/RTL consecutive alternatives, silent
-  replacements, preserved glyph/context/identity data and atomic rejection of
-  ambiguous or zero-source fragments. The provider-backed changed-spelling
-  fixture in `knot_ordering_test.go` is also placed, not deferred. No reshaping or
-  generated-fill placement is part of this stage.
-- `generated_placement_test.go` completes partial mappings with the explicitly
-  marked final fill at the paragraph's trailing physical edge. It checks both
-  directions, contrary-direction text runs, empty/all-space and wrapped lines,
-  discretionary carry, finite custom fill, invalid mappings and unchanged input.
-  Paragraph direction is passed explicitly; side skips and public visual-line
-  construction are not implemented by these tests.
-- `visual_lines_test.go` checks the integrated internal constructor: authoritative
-  `ParagraphDirection()`, nested isolates, empty/all-space input, independent knot
-  slices, retained arena lifetime, retry safety and no partial result on later-line
-  failure. `visual_lines_integration_test.go` asserts visual sequences through
-  both breakers, including mixed directions and forced RTL line breaks. Existing
-  logical integration cases also run through visual construction for trimming and
-  automatic/explicit choices; fragment tests exercise silent and consecutive
-  alternatives through the complete pipeline. Width allocation and side skips
-  remain out of scope.
-- `line_geometry_test.go` covers the subsequent elastic geometry stage: one-based
-  target snapshots, exact skip values and physical edge slots, signed delta,
-  final-fill accounting, negative finite skips, malformed widths, overflow,
-  input independence and later-line failure/retry. `line_geometry_integration_test.go`
-  uses both breakers with varying targets and nonzero skips; existing logical
-  integration fixtures also verify geometry for empty, trimmed and discretionary
-  lines. This geometry stage does not allocate widths or check capacity.
-- `width_allocation_test.go` covers the pure allocator's exact conservation,
-  proportional quotas, deterministic remainder ties, symbolic fill precedence,
-  finite shrink, signed widths and near-limit arithmetic. `width_outcomes_test.go`
-  covers finite overstretch, exhausted shrink, zero capacity, physical diagnostics,
-  deterministic rounding and successful publication of imperfect lines. A
-  deterministic randomized suite checks 2,000 feasible finite cases. Kind
-  independence includes hypothetical textboxes without implying glyph realization.
-  `width_plan_test.go` checks geometry adaptation, side skips, LTR/RTL final fill,
-  competing fills, stale geometry and unchanged glyphs. Target-width reshaping
-  remains unimplemented; numeric textbox proposals are not glyph realization.
-- `frozen_test.go` checks final SOA alignment, exact target conservation, finite
-  glue stretch/shrink, side skips/fill, unchanged metadata/glyphs, independent
-  output planes, retained arena lifetime, selected changed-spelling and silent
-  fragments, empty/trimmed input, unsupported non-glue elasticity, and later-line
-  failure/retry without partial publication. `frozen_integration_test.go` covers
-  both breakers, varying targets, nonzero skips and LTR/RTL final-fill placement.
-  Construction is internal, with only a test bridge for external integration.
+Policy review: November 5, 2026. **Implemented** describes behavior available in
+the current code. **Draft contract** describes an existing interface that is
+not wired into the encoder. **Proposed policy** records a concrete choice for
+the next implementation; it is not a claim that the behavior is available or
+tested. These policies apply to the simple defaults, not to every real backend.
 
-- `encoding_stream_test.go` and `encoding_stream_internal_test.go` cover defaults,
-  configuration snapshots, repeated calls, fresh factories, retained glyphs,
-  cancellation, errors and explicit-zero parameters/fill.
-- `encoder_integration_test.go` covers scalar anchors, repeated-anchor width
-  accumulation, zero advances, invalid anchors, invalid UTF-8, overflow and
-  atomic failure.
-- `paragraph_regression_test.go` preserves corpus line-width assertions and
-  verifies whitespace classification after cord chunk boundaries.
-- `run_preparation_test.go`, run-resolution and producer tests cover logical
-  bidi/style intersections, original scalar coordinates, parameter ownership
-  and producer completion. See the corresponding source/test files.
-- Boundary, cluster, candidate and shaping-storage tests isolate each pipeline
-  stage. Final paragraph publication occurs only after successful completion.
+The current implementation already provides part of this foundation:
 
-`breakpoint_positions_test.go` covers original-source endpoint mapping for
-encoded paragraphs: multibyte text, nonzero paragraph offsets,
-whitespace, empty/final fills, glyphless gaps, pre-marker breaks, selected
-changed-spelling alternatives, and invalid or missing provenance. Unknown
-discretionary splits fail instead of using replacement lengths.
-Both public breaker integration suites verify mapped explicit/automatic
-split positions; ordinary narrow-line contract tests check source coverage too.
+- `Config{}` selects a fresh `FixedWidthShaper`, default parameters, and
+  disabled lazy hyphenation.
+- Public examples and integration tests exercise encoding and both linebreakers
+  without loading a font.
+- Tests use scripted cluster metrics to exercise boundaries and failures.
+- `NewSyntheticFont()` and the zero value of `SyntheticFont` provide fixed font
+  metrics and immutable scaling without loading a font or requiring a backend.
+- `DefaultStyleResolver` and `SyntheticStreamingShaper` implement the default
+  policies below, with focused tests and a combined external-package example.
+- `StreamingShaper`, `StyleResolver`, and the font interfaces are draft
+  boundaries. The current encoder does not use them.
+- Freezing, final glyph placement, and rendering remain future work; see
+  [Freezing](FREEZE.md) and the [documentation guide](README.md).
 
-`discretionary_eligibility_test.go` covers the metadata-only automatic-streaming
-eligibility prerequisite: complete source segments, multibyte/combining/RTL text,
-style boundaries at word ends, rejected style/direction/control-gap word fragments,
-clusters spanning multiple word segments, explicit-marker exclusion, absent or
-invalid metadata, and unchanged source/caches. Numbers and punctuation test the
-distinction between structural eligibility and linguistic hyphenatability.
-The provider applies this gate before automatic discovery.
+The strategy distinguishes three needs: convenient defaults for clients,
+demanding fixtures for correctness tests, and integration with real backends.
+No single implementation needs to serve all three.
 
-`discretionary_automatic_test.go` covers lazy automatic lookup, retained run
-language/script/direction, changed-spelling provenance, unique variant assignment,
-malformed response rejection before shaping, batch failure/retry, cached results,
-and rejected partial-word requests. Explicit and automatic requests coexist in
-one paragraph without sharing fragment identity or discovery routes.
-`stream_automatic_linebreak_test.go` exercises selection and cache reuse through
-both breakers under their existing lookup policies, plus wide-line no-lookup
-behavior and unchanged base knots. Policies must provide SourceSplit for
-automatic alternatives.
+## Existing Guarantees and Their Evidence
 
-`stream_explicit_linebreak_test.go` exercises public streaming encoding through
-both breakers with the owner configured as provider: wide lines avoid discovery,
-explicit variants can split a first word or extend a preceding line, multiple
-markers offer alternative splits, non-fitting variants stay unselected, caches
-are reused and selections are cleared on a later run. Base knots remain unchanged.
-`discretionary_provider_test.go` verifies retained replacement boxes, batch
-atomicity/retry after a later factory failure, feature-policy rejection, cache
-reuse and declining marker-edge boxes without automatic fallback.
+| Status | Guarantee or boundary | Source and verification |
+| --- | --- | --- |
+| Implemented | `Config{}` creates a fresh metric shaper per owner. Supplied shapers and hyphenators are retained; parameters and paragraph-fill values are copied. Explicit zero configuration values are honored. | [Config](../config.go), [owner tests](../khipukamayuq_test.go), [parameter snapshot test](../config_internal_test.go), [public configuration tests](../config_test.go) |
+| Implemented | Metric clusters use nondecreasing run-relative byte offsets. Repeated offsets accumulate widths; zero-width metrics still identify starts. EOF carries no metric. | [Shaper](../contracts/shaping.go), [metric validation and tests](../encoding_metrics_test.go) |
+| Implemented | Encoding preserves original UTF-8 source spans, rejects invalid input and metric overflow, and returns no partial paragraph on error. Every paragraph has a non-discardable final fill/forced-break knot. | [Encoder](../encoding.go), [integration tests](../encoder_integration_test.go), [migration contract](MIGRATION.md#soa-encoder-to-breaker-contract) |
+| Implemented | Both breakers consume encoded paragraphs and return line-ending knot indices. Their policies may select different breaks; neither freezes or renders lines. | [Public examples](../example_test.go), [paragraph regressions](../paragraph_regression_test.go) |
+| Implemented | `SyntheticFont` supplies fixed metrics and immutable scales. Its zero value works; invalid em sizes fail, and signed fractional conversions are retained without clamping to `dimen.DU`. | [Implementation](../helpers/synthetic_font.go), [tests and example](../helpers/synthetic_font_test.go) |
+| Implemented helper / draft integration | `DefaultStyleResolver` validates and copies complete defaults for nil style, rejects non-nil styles, and isolates feature storage. Font scaling follows resolution; bidi analysis is separate. | [Style interface](../contracts/style_resolver.go), [resolver tests](../helpers/default_style_resolver_test.go); no active encoder integration yet |
+| Implemented helper / draft integration | Synthetic streaming glyphs use scalar IDs and signed font-unit positions, with producer/consumer lifecycle rules. | [Streaming interface](../contracts/shaping_stream.go), [synthetic tests and example](../helpers/synthetic_streaming_shaper_test.go); a reusable adapter conformance suite remains step 3 |
+| Implemented helper / future pipeline | Run intersection keeps byte and scalar coordinates, including gaps for omitted bidi controls. Prepared-run records describe future metadata publication. | [Intersection tests](../run_intersection_test.go), [prepared-run declarations](../prepared_run.go); neither establishes a working streaming encoder |
 
-`stream_nobreak_test.go` covers public streaming U+00AD suppression, unchanged
-natural width versus marker-free text, original glyph anchors and marker source
-positions, multiple/leading/trailing/marker-only inputs, mixed directions,
-ligature-like clusters spanning markers, feature-range remapping, invalid backend
-anchors and preservation of style boundaries and pre-marker space/hard breaks.
-The encoding stage does not discover candidates; that happens lazily during line breaking.
+The table records evidence, not exhaustive coverage. The
+[metric helper tests](../helpers/fixed_width_shaper_test.go) and streaming tests cover
+every zero-width exception below, plus representative controls that remain cells.
 
-`discretionary_explicit_test.go` covers private U+00AD preparation: marker-only
-policy requests, complete left/right replacement strings, multiple positions
-and material variants, UTF-8 provenance, empty material, owner penalty fallback,
-declined requests and invalid/error results. A recording backend verifies that
-the common shaper receives `co-`, not an isolated hyphen. End-to-end explicit
-linebreaking and no-break suppression are covered separately above.
+The internal run-parameter preparation stage now resolves contributing style
+spans once, obtains scales, and produces independently owned feature ranges for
+their bidi intersections. `run_preparation_test.go` uses the synthetic font and
+default resolver alongside private failure fixtures. Feature coordinates in
+resolver input/output are original style-span scalar positions; preparation
+clips and rebases them, preserving control gaps. This is preparation-only
+coverage, not a streaming encoder integration guarantee.
 
-`discretionary_input_test.go` covers explicit source splits independently of
-replacement spelling. `discretionary_stream_test.go` covers standalone fragment
-pair shaping: fresh streams, buffered/unbuffered output, local scalar anchors,
-original provenance, empty/silent fragments, retained glyph positions, fractional
-width accumulation, owned features/glyphs, whole-input feature policy, backend
-failures, invalid output and cancellation with producer joining. Failure of the
-second fragment returns no pair. This is private-stage coverage, not arena
-publication, soft-hyphen discovery or active provider integration.
-
-`discretionary_storage_test.go` separately covers private pair publication into
-the arena/cache: original versus replacement coordinates, byte/scalar clusters,
-retained metrics and penalties, independent glyph/feature ownership, stable IDs
-after arena growth, selection lookup, empty/silent fragments and arena teardown.
-Malformed second fragments and duplicate variants leave the existing arena and
-cache unchanged. Manually supplied metric-only candidates retain absent box references. Discovery
-and active provider integration remain outside this coverage.
-
-`stream_linebreak_contract_test.go` checks both breakers at narrow widths using
-streaming-encoded paragraphs: increasing legal knot indices, terminal trailer,
-forced breaks, trimmed minimum widths, no discretionary choices and unchanged
-base knots. It includes repeated spaces, bidi, NBSP and fixed typographic spaces.
-The discretionary bridge is described in [HYPHENATION.md](HYPHENATION.md).
-
-`knotting_regression_test.go` covers mandatory
-breaks inside clusters, omitted newline glyphs, silent runs, trailing source
-gaps, and style changes without new break opportunities. Public breaker tests
-also cover CRLF, repeated newlines, mixed direction, NBSP, typographic spaces,
-zero-width space and combining marks. Boundary preparation preserves UAX#14
-hard-break precedence between consecutive hard separators, with CR LF counting
-as one separator. `ErrUnrepresentableMandatoryBreak` documents rejected inputs
-whose required breaks need cluster splitting or glyphless blank-line support.
-Real-font/backend adapter integration remains a separate validation gap.
-
+`KnotStyler`, which currently adjusts knot width bounds, is distinct from the
+draft `StyleResolver`. The existing fixed shaper ignores `SetStyle`; this does
+not mean that the encoder ignores style boundaries or knot adaptation.
 
 ## Dependency Policy
 
-`contracts` owns service interfaces and value types; it imports neither the root
-engine nor helpers. `helpers` imports contracts, not the root engine, and requires
-no installed fonts. Root encoding composes them. Paragraph-specific `Hyphenator`
-and linebreaker provider interfaces remain with their consumers.
+### Package Ownership
 
-Core tests must not require OpenType adapters, external executables or font
-discovery. Backend integration belongs in adapter-specific suites with pinned
-fonts and explicit expected shaping. Test metric arithmetic independently from
-linguistic policy. Do not weaken line-width or source-coverage assertions to
-accommodate a broken dependency.
+The root engine imports `contracts` for service definitions and `helpers` to
+construct its default metric shaper. `helpers` imports `contracts`, never the
+root engine. `contracts` imports neither the root nor helper implementations.
+Both may use `dimen` and the accepted dependencies below.
 
-### Dependency Release Checks
+`contracts` owns `FontLoader`, `FontFace`, `FontScale`, `RuneReader`, `Shaper`,
+`StreamingShaper`, and `StyleResolver`, together with their parameter/result
+types and constants. `helpers` owns the four deterministic implementations and
+their focused tests. `KnotStyler` and `Hyphenator` remain with the root paragraph
+model; the linebreakers retain their own consumer interfaces.
 
-The repository uses sibling `cords` and `uax` replacements. Tests exercise those
-checkouts, not necessarily published dependency versions. Encoding regressions
-depend on corrections in `cords`: `cordext.ByteRangeBounded` read empty spans
-after the first chunk, `BoundedReader.Read` under-reported bytes, and btree
-iteration ignored early stop. These fixes must be available in the released
-dependency used with khipu; they are not part of a khipu-only commit.
+`contracts.ErrIllegalArguments` is shared with `khipu.ErrIllegalArguments`.
+`helpers.ErrShaperBusy` and `helpers.ErrShaperClosed` retain their corresponding
+root error identities. Root type aliases and forwarding constructors are
+collected in [compat.go](../compat.go), with
+[compatibility coverage](../compat_test.go).
 
-Before release, verify compatible published dependency versions without local
-replacements. Local test success does not establish that compatibility. Real-font
-adapters and visual proofs also require separate integration checks; synthetic
-materialization/freezing tests do not establish font-backed typography quality.
+Helpers' external-package tests import `contracts` and `helpers`. The example
+combining a helper with the engine is a root `khipu_test` example. Future testing
+support that needs whole paragraphs belongs in `khiputest`, which may import
+both packages without reversing the production dependency direction.
+
+### Core Packages
+
+Accepted dependencies for ordinary core packages are:
+
+- `cords`, including `styled`
+- `uax`, including `bidi`
+- `schuko` and its subpackages
+- Go standard library and extended modules
+
+Core encoding and linebreaking should depend on khipu-owned interfaces for
+external font and shaping services. Concrete backend types should not cross
+those boundaries. Backend adapters may depend on concrete implementations.
+
+### Backend Integration Tests
+
+Concrete font implementations, including `opentype/ot` and `opentype/otquery`,
+are appropriate dependencies for adapter integration tests. Such tests check
+agreement about units, source mappings, cluster semantics, errors, and ownership.
+They should supplement the deterministic core suite.
+
+Avoiding backend imports in core packages and excluding backend dependencies
+from the core module are different policies. If module-level isolation is
+required, put these tests with the adapter or in a separate integration module.
+Build tags alone do not create a separate module dependency boundary.
 
 ## Useful Default Implementations
 
-The [helper guide](../helpers/ReadMe.md) documents constructors, units, exact
-character policy and lifecycle; [contracts](../contracts/ReadMe.md) documents the
-adapter boundary. Executable examples live in root and helper test files.
+### Public Construction
 
-| Service | Implemented policy | Evidence |
+| Helper | Construction | Zero value |
 | --- | --- | --- |
-| `SyntheticFont` | 1000 units/em, ascent 800, descent -200; immutable signed fractional scaling, positive em size required | `helpers/synthetic_font_test.go` |
-| `DefaultStyleResolver` | Nil styles only; validates complete defaults and copies feature storage; does not infer script/language | `helpers/default_style_resolver_test.go` |
-| `SyntheticStreamingShaper` | Logical-order scalar glyphs; fresh one-shot stream; 500-unit ordinary advance; no real font shaping | `helpers/synthetic_streaming_shaper_test.go` |
+| `helpers.SyntheticFont` | `helpers.NewSyntheticFont()` | Ready to use |
+| `helpers.FixedWidthShaper` | `helpers.NewFixedWidthShaper(cellWidth)` returns a pointer and error; width must be positive DU | Ready to use, 5 pt cells |
+| `helpers.DefaultStyleResolver` | `helpers.NewDefaultStyleResolver()` | Ready to use |
+| `helpers.SyntheticStreamingShaper` | `helpers.NewSyntheticStreamingShaper(outputCapacity)` returns a pointer and error; capacity must be nonnegative | Ready to use, unbuffered output |
 
-At 10 pt em, ordinary cells measure 5 pt. At 14 pt they measure 7 pt. The
-constructor's default spacing is elastic; explicit run defaults may select fixed
-spacing. U+0020 uses Params stretch/shrink percentages. Other spaces follow
-[WHITESPACE.md](WHITESPACE.md). A supplied `StreamingConfig` is complete, not
-merged with synthetic defaults.
+Use pointers to the mutable shapers and do not copy them during use. A zero
+explicit cell width is invalid; select the default by using the zero-value
+metric shaper or `Config{}`. For streaming, zero capacity explicitly selects an
+unbuffered channel. Positive capacities buffer that many output glyphs, never
+input scalars. Drain concurrently with `Shape` even when using buffered output;
+a run may exceed the buffer. Constructors do not start goroutines.
 
-Zero-advance controls are U+000A, U+000D, U+000B, U+000C, U+0085, U+2028,
-U+2029, U+200B and U+2060. They still emit anchors. All other scalars use a cell,
-including NBSP, tabs, combining marks and join controls. Tabs do not expand.
-The standalone helper also gives U+00AD a cell; paragraph encoding removes it
-before shaping and retains its source position. Shared character expectations
-live in `helpers/fixtures_test.go`.
+The [metric example](../helpers_example_test.go) demonstrates configuration of
+the existing encoder. The [streaming example](../helpers/synthetic_streaming_shaper_test.go)
+combines resolution, the synthetic face, scaling, concurrent production/draining,
+and terminal error checking. Streaming helpers remain independent of `Config`.
 
-Synthetic glyph IDs are scalar value plus one, not font-outline identifiers.
-Only synthetic faces, LTR/RTL direction, empty feature lists, supported flush
-modes and zero input-buffer limits are accepted. Invalid scalar reads, cluster
-overflow and unsupported options fail explicitly.
+### Synthetic Font and Fixed-Width Shaping
 
-### Ownership and Streaming Lifecycle
+Prefer a synthetic font over loading Courier for the default environment. A
+synthetic face needs no font discovery or file loading and gives tests simple,
+fully specified arithmetic.
 
-- Font faces/scales and the default resolver are immutable and shareable.
-- The owner is not concurrency-safe. Configuration/default feature storage and
-  Params are copied; service objects and factories are retained.
-- The factory returns a fresh stream for each paragraph or replacement fragment.
-  Completed or failed streams cannot be reused.
-- Shape is synchronous and may block on output. Encoding runs the producer in a
-  goroutine while the calling path drains glyphs. Output capacity does not
-  eliminate the need for concurrent draining.
-- Successful Shape leaves output open for more runs. Finish closes after the
-  final run. Accepted errors/cancellation close output and retain terminal Err.
-- A consumer stopping early cancels and joins the producer. Cancellation need not
-  interrupt an already executing source read. Do not publish partial output.
-- Concurrent Shape calls and Finish/SetInitialCluster during Shape are rejected.
-  Glyphs and Err may be queried concurrently. Do not copy an active stream.
+`SyntheticFont` implements `FontFace` with the metrics below. Its zero value and
+`NewSyntheticFont()` are ready to use. `SyntheticStreamingShaper` is its matching
+shaper with a 500-font-unit ordinary advance. `FixedWidthShaper` is the separate
+metric implementation, which directly reports DU widths.
 
-Tests cover buffered/unbuffered backpressure, cancellation, repeated Finish,
-reader errors, rejected concurrent operations and terminal-state stability.
-Run the race suite as well as ordinary tests when changing this protocol.
+| Property | Value |
+| --- | ---: |
+| Units per em | 1,000 |
+| Ascent | 800 |
+| Descent | -200 |
+| Line gap | 0 |
+| Ordinary glyph advance (synthetic streaming shaper) | 500 font units |
+
+At `EmSize = 10*dimen.PT`, an ordinary glyph advances by `5*dimen.PT`.
+`FontFace` provides metrics and scaling, but no glyph-advance query; the
+synthetic shaper therefore owns the advance policy. A real shaping adapter must
+reject a synthetic face it cannot interpret.
+
+The Go face has no outlines, glyphs, character map, or font file. Its scaling
+can be used independently of the draft streaming path:
+
+```go
+face := helpers.NewSyntheticFont()
+scale, err := face.Scale(10 * dimen.PT)
+if err != nil {
+    // Nonpositive sizes return an error wrapping contracts.ErrIllegalArguments.
+    return err
+}
+advance := scale.ToDU(500) // float64 DU: exactly 5*dimen.PT
+```
+
+See the executable [synthetic font example and tests](../helpers/synthetic_font_test.go).
+The current encoder's fixed-width shaper remains independent of this face.
+
+**Implemented:** the face and scale obey the immutable-query contracts.
+Nonpositive em sizes return no scale and an error wrapping
+`ErrIllegalArguments`. `ToDU(u)` computes `float64(u) * float64(emSize) / 1000`;
+it preserves signs and fractional values subject to floating-point precision.
+It does not invert axes, round to integer DU, clamp, or reject a result outside
+the `dimen.DU` range. The caller accumulates fractions, then owns rounding and
+range checks. Tests cover negative descent, fractional conversion, independent
+scales from one face, and results outside the integer dimension range.
+
+The metric shaper directly produces `dimen.DU` widths and does not use a font.
+Its configurable public implementation preserves the existing `Config{}`
+behavior and does not depend on streaming integration.
+
+### Fixed-Width Character Policy
+
+**Implemented:** the metric shaper emits one metric per successfully read rune.
+`SetSource` resets its byte offset to zero; `SetStyle` does nothing. The complete
+zero-width set is:
+
+| Code points | Meaning |
+| --- | --- |
+| U+000A, U+000D | Line feed and carriage return |
+| U+000B, U+000C | Vertical tab and form feed |
+| U+0085 | Next line |
+| U+2028, U+2029 | Line and paragraph separators |
+| U+200B, U+2060 | Zero-width space and word joiner |
+
+Every other successfully read rune receives the selected cell width (by default
+`5*dimen.PT`). This includes ordinary
+space, NBSP, tab, NUL, soft hyphen, combining marks, join controls U+200C/U+200D,
+variation selectors, and bidi controls not listed above. Tab is one cell, not a
+tab stop. The implementation does not use a general Unicode control or
+default-ignorable classification. CRLF produces two zero-width metrics; line
+breaking policy determines the resulting break, not the number of metrics.
+
+This is an arithmetic model. For example, decomposed `e\u0301` measures two
+cells, while precomposed `é` measures one. No normalization, ligatures, kerning,
+mark attachment, or visual reordering occurs. A zero width does not itself
+authorize a break, and a nonzero width does not prohibit one. Segmentation and
+penalties remain the encoder's responsibility.
+
+**Implemented:** the exported metric `FixedWidthShaper` retains those
+rules, allowing a positive caller-selected cell width in `dimen.DU`. Its
+default width remains `5*dimen.PT`; zero and negative explicit widths are
+errors rather than requests for defaults. Zero-width and malformed cases needed
+by tests belong in scripted fixtures. `NewFixedWidthShaper` reports invalid
+widths with an error wrapping `ErrIllegalArguments`.
+
+### Synthetic Streaming Policy
+
+**Implemented:** `SyntheticStreamingShaper` uses the following deliberately
+limited model. It implements `StreamingShaper` separately from the active
+`Shaper` interface; `Config{}` still uses metric shaping.
+
+| Concern | Implemented behavior |
+| --- | --- |
+| Accepted face | `SyntheticFont` values and non-nil `*SyntheticFont` pointers only; reject nil or foreign faces rather than guessing from their metrics |
+| Glyph generation | One record for every valid input Unicode scalar, including the zero-width set; no scalars are omitted by this shaper |
+| Glyph identity | `GlyphID = uint32(rune) + 1`; reserve zero. These are synthetic identifiers, not indices into an outline table or font file |
+| Advances | `XAdvance = 500` font units except for the exact zero-width set above; `YAdvance = 0` |
+| Positioning | `XOffset = YOffset = 0`; combining marks remain independent 500-unit records |
+| Clusters | One scalar per cluster, anchored at the initial base plus its original input scalar index; never use a byte offset or emitted-record count as a substitute |
+| Direction | Accept LTR and RTL. Emit both in logical source order with positive ordinary X advances; reject mixed or neutral directions, since the caller must supply a uniform run |
+| Script and language | Preserve caller metadata; they do not change the synthetic output. Do not infer scripts, select fallback fonts, or perform bidi analysis |
+| Features | Accept only an empty list. Reject every nonempty list, including disabled feature entries, so feature support is never implied by a successful call |
+| Normalization | None; preserve scalar identity and source accounting |
+
+No glyph omission is needed for this baseline. Scripted fixtures will cover
+omitted scalars, shared clusters, ligatures, and positioned marks. If run
+preparation omits bidi controls before shaping, it must account for those source
+gaps when setting cluster bases; the shaper cannot infer text it never receives.
+
+For valid UTF-8, each successful read must describe one scalar and its correct
+byte length. The streaming default rejects invalid scalar values or
+inconsistent lengths, including a one-byte decoding-error U+FFFD. A literal
+U+FFFD encoded in three bytes remains valid input. The active encoder already
+validates UTF-8 before using its metric shaper; the standalone metric helper
+delegates reading to its source and does not add these streaming checks.
+
+An empty run emits no records and leaves the cluster base unchanged. Count
+cluster positions in a wider internal type: a final scalar may use
+`math.MaxUint32`, but the exclusive next base must not wrap. A subsequent
+nonempty run fails unless `SetInitialCluster` supplies a representable base.
+Reject overflow before emitting an unrepresentable record. Earlier records may
+remain drainable on failure; paragraph publication still requires success.
+
+At 10 pt em size, the streaming model and current metric shaper have matching
+total widths for the same supplied scalars. They still have different output
+types, units, coordinate systems, and lifecycles. Neither is a reference oracle
+for real typography.
+
+### Default Style Resolution
+
+The initial idea of a `VoidStyleResolver` returning constructor-time values
+needs reconciliation with the current interface contract. `ResolveStyle` says
+nil style means no overrides of caller-supplied defaults; an uninterpretable
+style must produce an error.
+
+**Implemented:** the stateless `DefaultStyleResolver`:
+
+- returns a complete copy of validated caller defaults for nil style
+- rejects every non-nil style, even when it appears equal to a preceding style;
+  this resolver has no knowledge of application-defined style representations
+- requires a non-nil usable font, positive em size, and either `SpacingFixed`
+  or `SpacingElastic`; it does not install a font or repair invalid defaults
+- preserves script, language, spacing, and feature values without inference;
+  script and language zero values are preserved rather than guessed
+- clones the feature slice so later caller changes cannot alter the returned
+  result, and does not mutate inputs or retain per-run state
+
+The resolver does not check backend feature support or acquire a scale.
+Run preparation requests `Font.Scale(EmSize)` and propagates its errors;
+the shaper rejects unsupported faces or features. A nil style with a nonempty
+feature list can therefore resolve successfully and subsequently fail with the
+synthetic shaper. These are separate responsibilities.
+
+Put the synthetic font and selected em size in the caller's default
+`ResolvedRunStyle`. Supply inherited defaults independently for every run;
+never use the preceding run's resolved result as implicit inheritance. No
+constructor-time font or size overrides the supplied defaults.
+
+`VoidStyleResolver` and `ConstantStyleResolver` are deferred. Ignoring all styles
+and returning constructor-time values would need an explicit contract change.
+Fixed spacing and an empty feature list remain valid explicit values, not
+missing-value sentinels. Neither the resolver nor `SpacingElastic` chooses
+numerical glue stretch/shrink capacities; that is a separate layout policy.
+
+### Ownership and Construction
+
+Convenient constructors should produce a coherent environment without mutable
+global defaults. Immutable faces and scales may be shared; mutable shapers must
+have the ownership required by their contracts.
+
+| Object | Ownership and lifetime policy | Status |
+| --- | --- | --- |
+| `SyntheticFont`, returned `FontScale` | Immutable; safe to share. Creating another scale does not change existing scales | Implemented |
+| `Config.Shaper`, `Config.Hyphenator` | Retained, not cloned. Serialize owner operations and access to mutable collaborators; a default metric shaper is private to its owner | Implemented |
+| `Config.Params`, `Config.ParFillSkip` | Copy at construction; later caller changes do not configure the owner | Implemented |
+| Paragraph and discretionary state | Keep source and shaping context stable while caches are used. Breaker runs replace selections; copy selections when comparing runs | Implemented |
+| Default resolver result | Independent feature-slice storage per result; font may be shared under its immutable contract | Implemented |
+| Prepared-run metadata | Resolve and publish before corresponding glyphs can arrive; retain an owned feature copy and immutable source mappings during consumption | Draft contract |
+| Synthetic streaming instance | One producer, one draining consumer, several sequential runs, then terminal completion; fresh instance for later shaping work | Implemented helper; owner integration remains proposed |
+
+**Proposed construction policy:** use a factory for streaming instances when
+wiring the owner. Allocate a fresh instance for each paragraph shaping stream
+and each later discretionary shaping operation. Several runs may share one
+stream before `Finish`; a completed or failed stream is never recycled.
+Do not share a mutable stream globally or between owners.
+
+Caller-owned source and feature data must stay stable during a synchronous
+`Shape` call. The default does not retain its reader or borrowed feature
+storage after the call. Consumers read value records, and cancel the producer's
+context if they stop draining. Backend resource disposal remains the adapter
+and caller's responsibility; these interfaces have no `Close` operation.
+
+Not every interface needs a new default type. Nil already disables lazy
+hyphenation, and rectangular paragraph shapes already have a constructor.
+A table-based hyphenator is more useful as a fixture for selected test words.
+
+### Streaming Lifecycle Decisions
+
+The existing draft requires backpressure, terminal failure reporting, and
+non-disruptive rejection of `Finish` or `SetInitialCluster` during `Shape`.
+The following choices are **implemented by the synthetic default**:
+
+- Use one stable, bounded output channel per instance. Output capacity is a
+  construction concern, independent of input `ShapeBufferOptions`.
+- Accept zero-valued input buffering options and both declared flush modes.
+  Each scalar is already a complete synthetic cluster; neither mode inserts
+  completion markers. Reject unknown flush values and nonzero watermark or
+  maximum-buffer requests initially rather than pretend to implement buffering.
+- Once an idle instance accepts a `Shape` operation, invalid parameters, reader
+  errors, or cancellation terminate it. Close output once and retain the first
+  terminal error in `Err`. EOF is successful completion of that run, not an
+  error and not the end of the stream.
+- Reject overlapping `Shape` calls and lifecycle changes during an active call
+  without disturbing it. Such rejected calls do not become the stream's `Err`.
+- `Finish` on an idle healthy stream closes output successfully. Repeating it
+  is harmless; after failure it returns the retained terminal error. `Err`
+  remains nil after successful completion.
+- Reject `Shape` and `SetInitialCluster` after successful completion or failure;
+  do not reopen output or replace the terminal result. Before completion, an
+  idle `SetInitialCluster` changes only the next base.
+
+Check cancellation while sending to a blocked output channel and between reads.
+It need not interrupt a source read already in progress. Failure may leave
+previous records in the channel; the consumer drains or discards them, while
+future streaming encoder integration must publish no partial paragraph. The
+[streaming tests](../helpers/synthetic_streaming_shaper_test.go) cover lifecycle
+rejections, terminal errors, cancellation under backpressure, and scalar overflow.
+The current metric shaper has no channels or context-cancellation contract.
+
+Busy operations return `ErrShaperBusy`, and operations on a completed or failed
+stream return `ErrShaperClosed`. Invalid accepted arguments and scalar overflow
+wrap `ErrIllegalArguments`; reader and context errors propagate. `Err` records
+only an accepted shaping operation's terminal failure. `Finish` returns that
+failure after the stream has failed and nil after successful completion.
+
+### Acceptance Examples for the Defaults
+
+These examples define the default behavior; the focused helper tests and
+executable examples exercise the policies. Widths below assume the metric default or a 10 pt em size
+for synthetic streaming. Byte and scalar anchors are relative to an initial
+base of zero, before paragraph knot aggregation.
+
+| Input or operation | Expected result |
+| --- | --- |
+| `aéz` | Metric anchors `0, 1, 3`; streaming anchors `0, 1, 2`; total width 15 pt |
+| `e\u0301` versus `é` | Two records and 10 pt versus one record and 5 pt; no normalization |
+| `a\u200Bb` | Three records, advances 5/0/5 pt; the zero-width record remains a cluster anchor |
+| `a\tb` | Three equal-width records, total 15 pt; no tab-stop expansion |
+| `a\r\nb` | Four records, advances 5/0/0/5 pt; break opportunities are a separate encoder assertion |
+| Hebrew `אב` in an RTL run | Streaming emits alef then bet, scalar anchors 0 then 1, each with advance 500; no reversal or negative advances |
+| Runs `aé`, then `z` | Metric offsets restart at zero per run; streaming anchors continue `0, 1`, then `2` |
+| Nil style with fixed spacing and no features | Resolver preserves these explicit values and the supplied font and size |
+| Nil style with enabled `liga` feature | Resolver copies the feature; synthetic streaming rejects the nonempty feature list |
+| Non-nil application style | Default resolver fails; no fallback to constructor-time or previous-run values |
+| Caller changes the original feature slice after resolution | Returned resolver result is unchanged |
+| Cancellation while output is full | Streaming `Shape` returns cancellation, closes output, and records terminal failure without requiring further sends |
+
+Lifecycle, invalid-input, control-exception, and overflow cases have focused
+tests. Step 3 will extract reusable fixtures and adapter conformance tests.
+The baseline does not replace fixtures for more realistic glyph clusters.
 
 ## Reusable Test Fixtures and Contract Tests
 
@@ -431,11 +444,15 @@ example of a conforming adapter.
 
 ### Coordinate and Lifecycle Contracts
 
-`StreamingShaper` cluster IDs are continuing original Unicode scalar indices,
-not UTF-8 byte offsets: for `aéz` with initial base zero, the anchors are
-`0, 1, 2` (byte offsets would be `0, 1, 3`). Test this explicitly, including
-multiple runs, initial-cluster overrides, omitted output, and
-representable-range limits. Streaming cluster
+The existing and proposed shaper APIs use different coordinates:
+
+| API | Cluster coordinate | Example anchors for `aéz` |
+| --- | --- | --- |
+| `Shaper` | Run-relative UTF-8 byte offset | `0, 1, 3` |
+| `StreamingShaper` | Continuing original Unicode scalar ID | `0, 1, 2` with initial base zero |
+
+Test this distinction explicitly, including multiple runs, initial-cluster
+overrides, omitted output, and representable-range limits. Streaming cluster
 IDs advance by input scalar count, not emitted glyph count. Cluster boundaries
 alone do not authorize line breaks.
 
@@ -478,9 +495,9 @@ leave control-only gaps even though encoded paragraph spans preserve the source.
 
 Firstfit and Knuth-Plass should satisfy shared structural invariants, but they
 need not choose the same breaks. Use algorithm-specific expected results where
-their policies differ. Freeze tests separately check line materialization and
-conservation of assigned width; script-sensitive glyph realization still needs
-its own future backend contracts and coverage.
+their policies differ. Future freeze tests should separately check line
+materialization and conservation of assigned width; these are not current
+capabilities.
 
 ### Real-Backend Integration
 
@@ -506,14 +523,8 @@ diagnostics from actual glyph rendering.
 
 ### Structural Diagnostics Without a Font Backend
 
-`khipu-cli view` now emits a frozen-result SVG using the reusable
-`debug.WriteFrozenSVG` writer. Tests cover deterministic XML, escaping, width
-guides, writer errors, both breakers, LTR/RTL, explicit soft hyphens, empty input,
-file/stdin paths, invalid input and cancellation without output replacement.
-See [the CLI guide](../khipu-cli/README.md). Synthetic metrics establish structural
-contracts, not typography. Machine-readable dumps remain future work.
-
-A future elastic-input view could additionally show:
+Start with a CLI that emits SVG and a machine-readable dump. A useful first
+diagram would show:
 
 - textboxes at their measured natural widths
 - distinct glue regions with stretch/shrink capacities
@@ -526,9 +537,9 @@ use its ordinary UI font for those labels; the diagram does not require khipu
 to load a font or shape glyphs. Represent special fill capacities symbolically
 rather than drawing them as enormous finite widths.
 
-An elastic-input view must not imply final justified positions or visual bidi
-order. The current frozen view does use final widths and physical knot order,
-but deliberately does not assign page origins or font-derived heights.
+Initially, show elastic widths and break decisions. Do not imply that these are
+final justified positions or visual bidi order. A standalone CLI artifact is a
+smaller first step than a web application and can accompany a failing test.
 
 ### Glyph Proofs Later
 
@@ -540,28 +551,32 @@ When those stages exist, add proofs using pinned fonts and renderer settings.
 Keep numerical and structural assertions authoritative; images explain failures
 and reveal visual issues but should not be the only correctness oracle.
 
+## Proposed Implementation Sequence
 
-## Performance
-
-Benchmarks, their workloads, reproduction commands and current measurements
-are described in [PERFORMANCE.md](PERFORMANCE.md). Benchmark workloads are
-also checked by ordinary tests (for example `TestEmergencyBenchmarkWorkloads`
-and `TestFirstfitBenchmarkWorkloads`), which pin work counts without timing
-assertions.
-
-## Validation and Next Work
-
-Run from the repository root:
-
-```sh
-go test ./... -count=1 -timeout=60s
-go test -race ./... -count=1 -timeout=90s
-go vet ./...
-go build ./...
-go mod tidy -diff
-git diff --check
-```
-
-Next testing infrastructure work is an adapter conformance suite and reusable
-scripted fixtures. Font-backed proofs and target-width shaping tests follow when
-those integrations exist.
+1. **Document existing guarantees and proposed policies — documented November
+   5, 2026.** The evidence inventory and policies above specify metrics, exact
+   control handling, scalar/glyph identity, feature rejection, style inheritance,
+   ownership, and streaming lifecycle. Acceptance examples make the next work
+   reviewable. Proposed behavior remains unimplemented unless marked otherwise.
+2. **Make deterministic helpers reusable — implemented November 5, 2026.**
+   `FixedWidthShaper` exposes configurable metric shaping while preserving
+   `Config{}`. `SyntheticFont`, `DefaultStyleResolver`, and
+   `SyntheticStreamingShaper` support standalone deterministic streaming tests.
+   Public constructors, zero-value behavior, bounded output capacity, focused
+   tests, and executable external-package examples are available. Encoder
+   integration remains future work. Nonzero input-buffer tuning is deliberately
+   rejected; richer buffering needs its own specified policy.
+3. **Extract reusable fixtures and contract tests — next step.** Build on existing scripted
+   shapers, add table-based hyphenation, and cover byte/scalar coordinates and
+   streaming lifecycle behavior. A downstream adapter should be able to run the
+   applicable suite using its own constructor.
+4. **Expand invariant tests and fuzzing.** Target source mappings, arithmetic,
+   cluster boundaries, and failure handling. Retain reproducible regressions
+   found by fuzzing and test each linebreaker's own policies.
+5. **Add structural visual diagnostics.** Produce a useful SVG and structured
+   dump from an encoded paragraph and break decisions without requiring a real
+   font backend or claiming final layout.
+6. **Add real-backend integration and, later, glyph proofs.** Keep backend
+   dependencies isolated according to the module policy, use pinned fixtures,
+   and introduce rendering checks when glyph provenance and line placement are
+   available.
