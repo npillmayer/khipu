@@ -4,7 +4,12 @@ Planning analysis and implementation status, 2026-11-14.
 The stage 1 section records the agreed implementation contract, including
 the resolutions of its remaining design questions. Stage 2 is implemented in
 khipu, stages 3A–3C in typography, and stages 3D–3F in tytui (with shared proof
-walking in typography/render). Intrinsic measurement and later stages remain plans.
+walking in typography/render). Stage 4A ordinary intrinsic measurement is implemented
+in khipu and stage 4B exposes it through typography's prepared paragraph.
+Stage 4C separates invocation-local preparation from accepted results in tytui;
+stage 4D connects CSS intrinsic measurement and bounded auto-width layout.
+Stage 4E adds bounded explicit discretionary measurement and shared preparation
+reuse in khipu/typography. Later integration remains planned.
 Source inspection covered sibling `css-box-layout`, `tytui`, `typography`, and
 `cords` checkouts. The initial review was source-only; implementation checks are
 recorded with the completed stages below.
@@ -417,6 +422,10 @@ khipu. Keep resource loading, discovery and concrete font adaptation at their
 existing boundaries.
 
 #### Initial supported policies
+
+This subsection records the stage 3 boundary. Stage 4D below now supplies an
+intrinsic measurer and permits bounded auto-width inline-blocks; the other
+restrictions recorded here remain in force.
 
 The document bridge initially supports nested inline blocks with definite,
 nonnegative fixed-pixel widths. CSS core determines their completed border sizes
@@ -909,15 +918,680 @@ proof command reproduces the sample SVG byte-for-byte.
 
 ### 4. Add intrinsic measurement and preparation reuse
 
-Factor width-independent prepared material so measurement and layout share shaped
-text while binding different atomic data. Implement ordinary-wrapping measurement,
-then discretionary-aware measurement with explicit handling of the single-split
-limitation. Do not claim broader CSS policy support than the implementation has.
+**Stages 4A–4E implemented.** Ordinary and bounded explicit intrinsic measurement
+are available in khipu and typography. Tytui has an invocation-local preparation
+table and CSS measurement callback for bounded auto-width layout, retaining its
+`NoHyphenation` profile. The stage 1
+API and geometry contracts remain authoritative. Measurement is based on shaped
+material, not estimates, breaker trials or rendering measurements.
 
-Acceptance: widths are independent of breaker scoring and prior selections;
-multi-knot unbreakable sequences are measured together; fill/alignment do not
-inflate bounds; atomic intrinsic ranges remain distinct from elasticity. Verify
-reuse with service-call counts and detached working state.
+Stages 2–3 already supply the preparation abstraction needed here.
+[PreparedParagraph and BindParagraph](../paragraph_input.go) retain immutable
+horizontal material and create fresh working bindings;
+[paragraph.Prepared](../../typography/paragraph/prepared.go) owns the reusable
+paragraph preparation. Do not introduce another encoding abstraction. Base shaping
+is reusable. Stage 4E also shares complete explicit replacement batches between
+measurement and bindings of an `ExplicitHyphenation` preparation. Automatic-mode
+and legacy discovery retain their binding-local caches.
+
+| Module/package | Existing foundation | Stage 4 change |
+| --- | --- | --- |
+| `khipu` | Prepared knot templates, shaping/source metadata, atomic slots and independent bindings | Intrinsic-width evaluation; later, reusable discretionary preparation |
+| `typography/paragraph` | Owner-bound `Prepared` with reusable horizontal preparation and final layout | `MeasureIntrinsic` wrapper and `StageMeasure` |
+| `tytui/documentlayout` | Normalized extraction, final CSS callback and transactional publication | Invocation-local prepared-group table, intrinsic callback and bounded auto-width integration |
+| `css-box-layout` | Recursive intrinsic scheduling, shrink-to-fit selection and descendant resolution | Integration verification; no interface change is currently required |
+| `cords` | Persistent text, style domains and bidi preparation | No anticipated changes |
+
+#### 4A. Implement ordinary intrinsic measurement in khipu
+
+**Implemented.** [Intrinsic measurement](../intrinsic.go) provides the stage 1
+signatures, without target-width or breaker parameters:
+
+```go
+// Package khipu.
+type IntrinsicWidths struct {
+    MinContent dimen.DU
+    MaxContent dimen.DU
+}
+
+type AtomicIntrinsic struct {
+    ID                     contracts.AtomicID
+    MinAdvance, MaxAdvance dimen.DU
+}
+
+type MeasureRequest struct {
+    Atomics []AtomicIntrinsic
+}
+
+func (kq *Khipukamayuq) MeasureIntrinsic(
+    ctx context.Context,
+    prepared *PreparedParagraph,
+    request MeasureRequest,
+) (IntrinsicWidths, error)
+```
+
+Read prepared material directly. Do not bind fabricated atomic widths, invoke a
+breaker, freeze material, reorder it visually or assemble vertical lines. Validate
+context and owner identity. Each request must provide exactly one entry for every
+attached ID, in any order; reject missing, duplicate, zero or foreign IDs, reversed
+endpoints and out-of-domain dimensions. Consume/copy request data without retaining
+caller-owned mutable slices. Atomic endpoints are signed **advances**, including
+caller-resolved horizontal margins, not border dimensions or glue capacities.
+
+The first supported profile is `NoHyphenation`:
+
+- Max-content accumulates natural advances with optional wrapping suppressed.
+- Min-content measures complete spans between supported wrapping opportunities.
+  A span may cross multiple shaping/style knots; a knot boundary is not itself a
+  wrapping opportunity. Use the prepared boundary policy, including atomic overrides.
+- Use atomic `MinAdvance` for min-content and `MaxAdvance` for max-content.
+  Ordinary text/glue contributes natural `W`, not `MinW` or `MaxW` elasticity.
+- Apply layout's leading/trailing discardability semantics. Zero-width atomics
+  remain content and must affect where edge trimming stops.
+- Exclude generated paragraph fill entirely, including a configured nonzero
+  natural fill width. Identify it through the validated preparation/trailer
+  contract or explicit metadata, never a zero-width/zero-source-length heuristic.
+- Alignment/side skips, stretch/shrink capacity, breaker scoring, emergency
+  behavior and previously selected breaks do not contribute.
+- Respect mandatory boundaries represented by supported prepared input. This
+  does not add support for source mandatory breaks, blank lines or whitespace
+  policies that preparation currently rejects.
+
+Use checked `int64` accumulation, permitting signed intermediate contributions
+and avoiding assumptions that prefix widths grow monotonically. Apply the agreed
+normalization only after complete candidate-span evaluation:
+
+```text
+MinContent = max(0, rawMin)
+MaxContent = max(MinContent, rawMax)
+```
+
+Require both published widths to be below `dimen.Fil`; reject overflow rather than
+saturating. Do not clamp each negative atom or knot independently. The effective
+max-content floor is consistent with the CSS sizing definitions, including negative
+margins: [CSS Sizing terminology](https://www.w3.org/TR/css-sizing-3/#auto-box-sizes).
+Successful measurement does not promise that every later chosen line can be frozen:
+negative completed layout widths retain the existing `ErrUnsupportedPolicy` behavior.
+
+Initial implementation should live with prepared material and source metadata in
+khipu. Reuse or factor narrowly scoped edge-treatment logic where useful, with
+cross-checks against both breakers and freezing; do not import a breaker into the
+measurement layer or change breaker scoring to implement intrinsic sizing.
+
+Acceptance:
+
+- Hand-calculated text-only and mixed widths, including words split across
+  multiple style/shaping knots, adjacent atoms and prohibited atomic boundaries.
+- Leading/trailing versus internal whitespace, retained neutral material,
+  zero-width atoms, empty/all-discardable input and object-only groups.
+- Ordered and permuted atomic requests; all ID, range, ownership and context errors.
+- Signed contributions, completed-span normalization, checked accumulation and
+  values near the finite bound; no per-atom clamping.
+- Nonzero natural paragraph fill and changes in glue elasticity do not change
+  intrinsic widths. No target width, alignment or breaker dependency is introduced.
+- Measurements before and after layouts with both breakers are identical for the
+  same request. 4A initially rejected `ExplicitHyphenation`; 4E now supports
+  its bounded explicit profile;
+  `AutomaticHyphenation` measurement remains deferred beyond 4E. Neither silently
+  returns ordinary-wrapping widths under an enabled hyphenation policy.
+
+Implementation and verification:
+
+- The evaluator scans immutable prepared knots and their source/atomic metadata
+  directly. Candidate spans use the same first/last-content trimming rule as
+  logical line materialization; accumulation remains signed and checked in
+  `int64`. Only the validated generated trailer is excluded. Queries have linear
+  cost in knots plus atomic occurrences and do not retain caller request storage.
+- [Unit tests](../intrinsic_test.go) cover hand-calculated widths, style-spanning
+  words, mandatory boundaries, signed ranges and normalization, finite-domain and
+  accumulator overflow, retained neutral material, fill/elasticity exclusion,
+  request/owner validation, cancellation and recovery, and unsupported modes.
+  Service counters and preparation snapshots check that queries neither shape nor
+  hyphenate nor mutate preparation. Neutral trimming is cross-checked against
+  logical line materialization.
+- [Integration tests](../intrinsic_integration_test.go) bind, break and freeze the
+  same preparation with both breakers at wide and narrow widths. Measurements
+  remain identical across layouts and working-plane mutations; changed atomic
+  ranges are consumed afresh. Frozen geometry and copied glyphs remain unchanged,
+  and natural frozen width agrees with max-content for the wide fixture.
+- No typography or tytui API is added by 4A. Their measurement wrapper, preparation
+  table and CSS callback remain stages 4B–4D. Discretionary measurement remains 4E.
+  Glyph coverage remains caller-owned; no new validation or relocation of existing
+  checks is included.
+- Verified with khipu `go test ./... -count=1`, `go test -race ./... -count=1`,
+  `go build ./...` and `go vet ./...`; downstream regressions passed with
+  typography `go test ./paragraph/... -count=1` and tytui
+  `go test ./documentlayout/... -count=1`. Broader cross-module stage 4 validation
+  remains part of the later integration increments below.
+
+#### 4B. Expose measurement through typography's prepared paragraph
+
+**Implemented.** The [prepared-paragraph wrapper](../../typography/paragraph/measure.go)
+delegates to khipu's ordinary intrinsic measurement. The API and error stage are:
+
+```go
+// Package paragraph.
+func (p *Prepared) MeasureIntrinsic(
+    ctx context.Context,
+    request khipu.MeasureRequest,
+) (khipu.IntrinsicWidths, error)
+
+const StageMeasure Stage = "measure"
+```
+
+The wrapper delegates to the retained khipu owner/preparation. It requires no
+atomic heights, alignment, line-height values, paragraph strut measurement or
+rendering services. These remain final-layout concerns. Preserve `StageInput`
+for invalid handles/nil contexts and cancellation already present at entry;
+measurement-request validation/evaluation and unsupported modes use `StageMeasure`.
+Preserve `errors.Is` for argument, policy, cancellation and backend causes.
+
+Acceptance uses instrumented resolver, shaper and hyphenator services over:
+
+```text
+Prepare -> Measure -> Measure -> Layout(A) -> Layout(B) -> Measure
+```
+
+Base shaping occurs only during preparation. Changing atomic ranges changes the
+answer without reshaping text; measuring ordinary material does not discover
+discretionaries or query vertical metrics. Test both breakers, detached request
+storage, failure/cancellation followed by retry, and earlier frozen/vlist results
+remaining unchanged. Keep source coordinates and private feature domains intact.
+
+Implementation and verification:
+
+- `Prepared.MeasureIntrinsic` validates the handle and entry context, then calls
+  the retained khipu owner/preparation directly. It introduces no duplicate width
+  evaluator, geometry conversion, result cache or assembly dependency. Failure
+  returns zero widths with the original cause wrapped at the agreed stage.
+- [Owning tests](../../typography/paragraph/measure_test.go) instrument resolver,
+  shaper, hyphenator and font metrics across repeated measurement and both breakers.
+  Ordinary measurements consult none of these services; changing atomic ranges takes
+  effect without reshaping, and earlier frozen geometry/glyphs and vlist material
+  remain unchanged. Tests cover invalid handles/requests, entry and evaluation
+  cancellation, signed normalization, retry, and rejection of automatic intrinsic
+  hyphenation without damaging later layout. Stage 4E adds the explicit cases.
+- The [OpenType preparation regression](../../typography/adapter/opentype/prepared_test.go)
+  measures before and after layouts with both breakers and both paint policies,
+  retaining its glyph-ID/cluster assertions for private feature domains and source
+  coordinates. Base shaping still occurs once per preparation.
+- No tytui callback or preparation table is introduced; those remain 4C–4D.
+  Coverage validation is unchanged and its relocation remains deferred.
+- Typography and tytui both pass `go test ./... -count=1`,
+  `go test -race ./... -count=1`, `go build ./...` and `go vet ./...`.
+  These include the generic-package dependency audit, OpenType service tests and
+  tytui's retained proof/replay compatibility checks. The 4A khipu implementation
+  is unchanged by this increment.
+
+#### 4C. Separate preparation from accepted layout results in tytui
+
+**Implemented.** The invocation-local adapter retains a private entry:
+
+```go
+type preparedGroup struct {
+    input     InlineGroup
+    paragraph *paragraph.Prepared
+}
+```
+
+A private helper validates group/owner identity, extracts the group, itemizes its
+text and prepares it once. Both measurement and final layout use this helper.
+The prepared entry retains the same extraction, anchors, source associations,
+paint and inherited owner context for both operations. Markup is consumed during
+preparation, as it is today. No partial preparation is inserted on failure.
+
+Keep separate invocation-local tables for completed preparations, accepted final
+paragraph results and final-layout callback tracking. Measurement followed by
+layout is valid; measurement must not trip the repeated-final-layout guard or
+populate the accepted-result table. Repeated final callbacks remain unsupported.
+
+Preparation reuse contracts:
+
+- Cache preparations, not measurement answers, initially. A group may be measured
+  with different atomic intrinsic ranges; group BoxID alone cannot key an answer.
+- Group/owner identity is scoped to one immutable normalized document and one
+  invocation's stable services and policies. Reject foreign tree/owner requests.
+- Serialize operations on each prepared handle/owner. Retain no invocation-scoped
+  CSS view; copy the needed dimensions during each callback.
+- Reuse is invocation-local. Independent `Document.Layout` calls still construct
+  fresh preparations. Cross-invocation resize caching needs a separate lifetime
+  and invalidation contract; do not add it implicitly to `Document`.
+- Completed private preparations may survive another callback's failure until
+  the invocation is discarded. No preparation handle escapes in published results.
+- Publish CSS geometry, accepted paragraphs, source maps and paint together only
+  after the whole flow succeeds. Cancellation/failure leaves older snapshots intact.
+
+Acceptance: measurement then layout prepares a group once; repeated measurements
+with changed atomic ranges reuse shaping but recompute widths; layout-only groups
+still prepare on demand. Exercise failure after earlier groups were prepared,
+retry behavior, owner/identity mismatches and unchanged final-callback rejection.
+
+Implementation and verification:
+
+- [Group preparation](../../tytui/documentlayout/preparation.go) extracts,
+  itemizes and prepares each requested group once, retaining its source/paint
+  envelope and inherited owner context. Both misses and hits validate the exact
+  normalized node and OwnerID. A final cancellation check precedes insertion;
+  failed attempts leave earlier complete entries intact and insert no partial
+  entry. The helper neither accepts a paragraph result nor marks a final callback.
+- [The invocation](../../tytui/documentlayout/layout.go) owns separate `prepared`,
+  `groups` and `started` tables. Final layout consumes the cached preparation and
+  copies primitive dimensions from its current callback views. All final attempts
+  retain the no-repeat rule, including failures after successful preparation.
+  Only accepted paragraph results and completed CSS geometry are published.
+  Preparations, tracking state and CSS request views do not escape in `Result`.
+- [Preparation tests](../../tytui/documentlayout/preparation_test.go) measure
+  through the private helper and `paragraph.Prepared.MeasureIntrinsic`, then run
+  final CSS layout under both breakers. They check exact intrinsic answers for
+  changed atomic ranges, unchanged service counts on cache hits/measurement,
+  layout-only preparation on demand, multibyte marker/source correspondence,
+  retained source/paint/results, and fresh shaping on independent resize calls.
+  Other cases exercise identity mismatches before and after caching, late backend
+  failure and retry, cancellation, preserved older snapshots, and the distinction
+  between preparation retry and forbidden repeated final callbacks.
+- This increment does not implement CSS `MeasureInline` or enable auto-width
+  inline-blocks. Stage 4D will use the same helper for its callback. No measurement
+  answer cache, cross-invocation preparation cache, new coverage validation or
+  changes to khipu/typography are introduced.
+- Tytui passes `go test ./... -count=1`, `go test -race ./... -count=1`,
+  `go build ./...` and `go vet ./...`, including existing nested fixed-size,
+  retained-proof, publication/cancellation and replay compatibility controls.
+
+#### 4D. Connect the CSS intrinsic callback and bounded auto-width path
+
+**Implemented.** The invocation adapter implements the existing CSS interface:
+
+```go
+func (i *invocation) MeasureInline(
+    request box.InlineMeasureRequest,
+) (box.IntrinsicWidths, error)
+```
+
+For each extracted atomic occurrence, look up intrinsic **border** endpoints in
+`IntrinsicAtomicsView` and horizontal margins in `ResolvedEdgesView`. Convert each
+primitive separately with the established checked px/DU conversion, then form
+minimum and maximum advances using checked sums. Do not round a pre-summed CSS
+margin box. Call the prepared paragraph's measurement operation and convert only
+the final summary back to CSS pixels, checking float32 narrowing and endpoint order.
+
+Do not add padding/borders again, add the group's owner edges, or recurse into
+atomic interiors. [CSS intrinsic scheduling](../../css-box-layout/layout/intrinsic.go)
+already owns nested bounds, shrink-to-fit selection and descendant used-value
+resolution. No CSS interface change, recursive callback or new cords representation
+is anticipated. Owning-library fixes, if exposed by tests, remain with that library.
+
+Pass the invocation adapter as both layouter and intrinsic measurer to `FlowLayout`.
+Once callback tests pass, remove tytui's specific rejection of `width:auto` on
+inline-blocks. Keep other unsupported policies unchanged, including relative box
+lengths, richer whitespace/wrapping and automatic CSS hyphenation. Fixed-width flow
+must retain its existing behavior and must not acquire unnecessary measurement work.
+
+Acceptance:
+
+- View/identity validation, arbitrary BoxID ordering, exact-once margin addition
+  and primitive rounding budgets, including negative margins and finite limits.
+- A simple auto-width atomic fixture exercises measure -> shrink-to-fit -> final
+  binding/layout -> publication, checking widths below, inside and above the
+  intrinsic interval. A measured group is prepared once and laid out finally once.
+- Different atomic measurement inputs reuse preparation without stale answers.
+- Measurement failure/cancellation after earlier successful preparations publishes
+  no document or accepted paragraph table and preserves older complete results.
+- Existing fixed-width, retained-proof and replay tests remain unchanged controls.
+
+Implementation and verification:
+
+- [The measurement callback](../../tytui/documentlayout/measure.go) uses the 4C
+  helper, validates required views and atomic identity, and copies border endpoints
+  and horizontal margins per occurrence. It rejects reversed border ranges before
+  quantization, converts primitives separately, and checks completed signed
+  `int64` sums before narrowing. Only border bounds plus horizontal margins are
+  passed to typography; padding/borders and owner edges are not added again.
+- Final summaries use the existing checked big-point/CSS conversion, including
+  float32 narrowing and ordered endpoints. No request view or measurement answer
+  is retained, no final callback is marked, and no accepted paragraph is inserted
+  during measurement. Context is checked at entry, during evaluation and before
+  summary return; failures return zero bounds and preserve completed preparations.
+- [Document flow](../../tytui/documentlayout/layout.go) supplies the same invocation
+  as both CSS callbacks. The specific auto-width inline-block rejection is removed;
+  relative box lengths, broader whitespace/wrapping and automatic hyphenation
+  remain unsupported. CSS core owns recursive bounds, shrink-to-fit selection and
+  descendant resolution. No sibling engine API change was needed.
+- [Callback tests](../../tytui/documentlayout/measure_test.go) cover arbitrary
+  BoxID/AtomicID ordering, independent half-DU rounding, exact-once margins,
+  signed contributions and wide intermediate sums, missing/invalid views,
+  mismatched identities, finite limits and float32 narrowing, changed requests
+  without reshaping, cancellation and retained output ownership.
+- [Auto-width tests](../../tytui/documentlayout/auto_test.go) observe the real CSS
+  callback schedule and hand-calculated intrinsic/shrink-to-fit widths below,
+  inside and above the interval under both breakers. A measured group prepares
+  once and receives one final callback; every frozen line receives the selected
+  CSS target. Public publication agrees with observed flow. Empty auto boxes,
+  late measurement failure/cancellation, fresh-invocation retry and preservation
+  of older snapshots are covered. A fixed-width control makes zero intrinsic
+  callbacks. Existing fixed-size/proof/replay controls remain intact.
+- Natural intrinsic bounds do not prescribe breaker scoring or guarantee a fitting
+  result under every layout policy. The existing zero-side-skip Knuth–Plass policy
+  can select overfull output at min-content width; this increment preserves that
+  behavior and checks the selected target independently of line-count choices.
+- Typography and tytui pass `go test ./... -count=1`,
+  `go test -race ./... -count=1`, `go build ./...` and `go vet ./...`.
+  Khipu and CSS core pass full ordinary test suites. These checks include dependency
+  boundaries, backend services and the retained fixed-width proof/replay controls.
+  No new glyph coverage validation is introduced.
+
+Stage 5 then broadens nested-auto-sizing, resize, conversion and lifetime evidence;
+it should not need another callback architecture or preparation abstraction.
+
+#### 4E. Explicit discretionary measurement and preparation reuse
+
+**Remark:**
+I am not a fan of testing hyphenation opportunities to find out about minimum width.
+Hyphenation is a fairly expensive operation and the chances that all (or even most)
+of these will ever be used in the final layout are slim. Super-narrow columns may
+be needed in a browser environment with tables and narrow screen real-estate, but
+not really needed in other typesetting environments. I can, however, imagine circumstances
+where very long "words" will have to be broken up, e.g., a web URL. Therefore I can
+imagine that we would want soft-hyphens to be respected for minimum width calculation.
+This should be no expensive operation and suffice for most but the very unusual cases.
+Users in typesetting environments may be inclined to fix these through manual intervention,
+i.e., applying soft-hyphens. (End of new remark)
+
+**Implemented.** Support authored
+U+00AD opportunities without running automatic word hyphenation to obtain intrinsic
+widths. Automatic intrinsic hyphenation is deferred indefinitely and is not a
+stage 4 completion requirement. Existing lazy automatic hyphenation during layout
+remains available and unchanged.
+
+The remark above records the motivation. Finding explicit marker positions avoids
+linguistic word segmentation, but accurate measurement may still require shaping
+both replacement halves: ligatures, joining and break material can change widths.
+Reuse completed explicit preparation instead of paying that cost again for each
+measurement or binding. Do not assume that slicing existing glyphs and adding a
+hyphen width is sufficient, or claim a performance gain without service-call evidence.
+
+The implemented measurement profiles are:
+
+| Prepared policy | Intrinsic measurement |
+| --- | --- |
+| `NoHyphenation` | Existing ordinary-wrapping evaluation; unchanged. |
+| `ExplicitHyphenation` | Include supported authored soft-hyphen replacements under the single-split restrictions below. |
+| `AutomaticHyphenation` | Continue returning `ErrUnsupportedPolicy`; no automatic discovery or fallback to explicit-only/ordinary widths. |
+
+Layout-only automatic discovery stays lazy; the shared explicit cache does not
+cause eager discovery of unmarked words.
+
+This is a deliberately bounded typesetting policy, not full CSS hyphenation
+conformance. CSS includes enabled hyphenation opportunities in min-content sizing
+([CSS Text hyphenation](https://www.w3.org/TR/css-text-3/#hyphenation)). The retained
+single-split limitation can prevent supporting those semantics for multiply marked
+text. Accept that limitation explicitly; do not silently claim unrestricted CSS
+min-content results. A sizing policy that ignores automatic opportunities while
+layout uses them would need a separately named/documented contract, outside 4E.
+
+For URL-like text, distinguish a hyphenation hint from an optional break without
+inserted hyphen material. U+00AD's rendering depends on the break policy and
+language/script; U+200B supplies a break opportunity without intrinsic width
+([Unicode layout controls](https://www.unicode.org/versions/Unicode17.0.0/core-spec/chapter-23/)).
+URL analysis and any additional caller-supplied break representation are separate
+work; 4E does not introduce them or assume an ASCII hyphen for every explicit break.
+
+Required work:
+
+1. Enumerate eligible authored soft-hyphen positions from prepared source metadata,
+   independently of breaker rescue heuristics or earlier selected/discovered breaks.
+   Use the existing explicit provider request for break material (`"\u00AD"`),
+   not automatic requests containing whole words. Unmarked text needs no discovery.
+   Preserve existing eligibility and feature/provenance restrictions; do not join
+   unrelated styled boxes to invent complete hyphenation words.
+2. Retain completed immutable explicit replacement material with the preparation,
+   under owner control. Current candidates contain binding-local arena references;
+   they cannot simply be copied into another binding's candidate map. Import
+   replacement records when a binding's provider is asked for that textbox,
+   without mutating cached data or eagerly exposing candidates during binding.
+   Selected decisions and working arrays remain local to each binding.
+3. Evaluate replacement paths with their surrounding unbreakable material.
+   Pre-break material contributes together with preceding content; post-break carry
+   contributes together with following content. The maximum of isolated fragment
+   widths is not a sufficient paragraph measurement algorithm. Max-content retains
+   the no-break material; scoring/tolerance does not determine intrinsic answers.
+4. Add an internal context-aware explicit preparation/shaping path. Preserve the existing
+   public breaker-provider API. The synchronous `Hyphenator` call keeps its existing
+   cancellation limit; check context around it and pass context to fragment shaping.
+5. Publish only complete immutable cache entries, including successful empty
+   explicit discovery. Errors remain retryable. Completed entries may survive a later failed
+   request, but partial batches and selected layout decisions may not.
+
+**Retained split limitation:** no successive splits of one textbox are added in
+4E. Existing layout may choose one of several alternative explicit split positions,
+but each candidate replaces the whole original textbox with a pre-break/post-break
+pair; remaining markers are removed from those replacements. These alternatives
+cannot be chained into several successive breaks of the same original word.
+
+Keep the planned measurement restriction: reject a textbox with multiple distinct
+eligible explicit split positions with `ErrUnsupportedPolicy`, rather than compute
+a width assuming successive splits that layout cannot realize. Several independent
+textboxes may each have one supported split. Multiple material variants at the same
+position are restricted as specified below. Do not change existing layout-only handling
+of multiply marked text. Successive splitting is a possible future extension,
+requiring a shared representation and changes to both measurement and layout;
+it is neither part of 4E nor a prerequisite for completing the bounded stage 4 scope.
+
+Settled design decisions for implementation:
+
+| Decision | Resolution |
+| --- | --- |
+| Multiple variants at one split | Measurement supports at most one break-permitting material variant at the sole eligible position. Reject two or more with `ErrUnsupportedPolicy`, even if their dimensions or spelling happen to match. Do not choose by provider order, penalty, local fragment width or breaker result. Existing layout-only variant selection is unchanged. |
+| Cache representation | Each `ExplicitHyphenation` preparation owns a private, lazily populated map keyed by original template knot index. Entries contain complete immutable shaped replacement pairs, variant/penalty metadata and original source splits, without binding-local arena IDs. Reuse existing `shapedDiscretionaryInput`-style records and reconstruct local storage on import. |
+| Cache consumers | Both measurement and lazy explicit discovery from bindings of that preparation use the same owner-controlled cache. Bindings keep a private association with their preparation but import a batch only at the normal provider request point. `BindParagraph` does no discovery, shaping or eager candidate-map population. |
+| Explicit eligibility | Use retained textbox source/context and the current explicit-marker rules. Ignore markers lacking non-marker text on either side within that textbox. Count distinct structurally eligible source split positions before consulting the provider; more than one is unsupported for measurement regardless of what the provider might return. Never concatenate neighboring textboxes to recover a split. |
+| Context propagation | Add an internal context-bearing cache/preparation operation. Measurement passes its context through fragment shaping and checks around synchronous policy calls. Keep the public provider signatures unchanged; their existing contextless layout path retains its cancellation limits. Do not install a mutable current-context field on the owner. |
+| CSS policy mapping | No CSS hyphenation mapping change in 4E. Tytui stays on `NoHyphenation`; mapping `hyphens:none`/`manual`, handling per-span differences and choosing document break-material services are a separate integration increment. Automatic CSS hyphenation remains unsupported. |
+
+The existing public `MeasureIntrinsic`, `PrepareOptions`, `Hyphenator` and
+breaker-provider signatures suffice. Typography's existing prepared wrapper
+continues to delegate and wrap evaluation failures at `StageMeasure`. No new
+public cache, measurement-mode override, provider interface or renderer API is
+introduced. Automatic-mode preparations and legacy encoding retain their current
+binding-local discovery/cache behavior; 4E's shared explicit cache is scoped to
+`ExplicitHyphenation` preparations only.
+
+**Eligibility, material and error rules.** Apply the source-position restriction
+even if layout has already cached alternatives: prior layout must not change
+whether measurement succeeds. Leading/trailing markers, marker-only text and
+unmarked text contribute their ordinary no-break material and require no material
+provider call. Consecutive interior markers with distinct source splits count as
+multiple positions, even if stripping them produces identical replacement strings.
+
+For a sole eligible position, use the existing marker-only material request and
+validate the entire response using existing UTF-8, provenance and feature rules.
+The owner still assigns variants and the split after U+00AD; provider-supplied split
+coordinates and variant IDs do not override these explicit-source identities.
+An empty response declines the break and is cached as a successful empty result.
+Empty inserted material is valid: `PreBreak:""` and `PostBreak:""` mean a silent
+break with the original left/right text still present, not an empty response.
+No default ASCII hyphen or fallback material is invented.
+
+Resolve zero/unspecified penalties through the existing owner default. A variant
+with effective `PreBreak.Penalty >= MaxPenalty` does not authorize a measurement
+break. Zero permitting variants therefore means ordinary measurement; one means
+the explicit split is included; two or more mean `ErrUnsupportedPolicy`. Finite
+penalty preferences, tolerance and gain filters do not affect intrinsic widths.
+This filtering must not delete variants from a complete layout batch or change
+the layout-only provider's response. Malformed material, backend failures and
+existing feature/provenance errors preserve their original causes, rather than
+being treated as an empty response. Range-limited replacement features remain
+unsupported under the existing rules. No new glyph coverage checks are added.
+
+**Deterministic width evaluation.** For min-content, take all supported ordinary
+opportunities and the sole permitting explicit split in each supported textbox.
+At that split, replace the original textbox contribution with its complete
+pre-break fragment, close the current span, and begin the next span with the
+complete post-break fragment. Include neighboring unbreakable knots and atomic
+minimum advances on the appropriate side. Preserve the original after-textbox
+boundary policy after the post-break fragment; its storage defaults must not
+invent an extra break. Apply the ordinary first/last-content trimming rule to
+each completed span, retaining zero-width content. Do not sum original and
+replacement advances together or use the maximum of isolated fragment widths.
+
+For example, a nonbreaking prefix of width 3 followed by a pre-break fragment of
+width 7 contributes 10 to one candidate span; a post-break fragment of width 4
+followed by a nonbreaking suffix of width 6 contributes 10 to the next. Measuring
+only the replacement halves would incorrectly report 7 instead of 10 for this
+two-span fixture. Separate supported textboxes may each contribute a split;
+successive splits within one original textbox remain excluded.
+
+Max-content uses original no-break text/glue and atomic maximum advances, with
+mandatory boundaries retained and no explicit replacement material inserted.
+Both evaluations retain stage 4A's paragraph-fill exclusion, checked signed
+`int64` accumulation, edge treatment and final normalization
+`MinContent = max(0, rawMin)`, `MaxContent = max(MinContent, rawMax)`.
+No target width, fake binding, breaker trial or selected-discretionary state is
+an input to measurement. Signed intermediate sums may exceed the finite DU range;
+published endpoints must remain below `dimen.Fil`, without saturation.
+
+**Cache ownership and publication.** Keep base prepared knots and shaping records
+immutable. The new memoization index may grow only under serialized owner
+operations; each inserted entry and its glyph/feature/source storage is immutable.
+The key is preparation-local, so it needs no text hash, BoxID or atomic width.
+Provider and font/scale services remain borrowed under the stable-lifetime
+contract. Copy provider-owned material slices before retaining any data.
+
+Cache a complete per-textbox batch, not a paragraph-wide measurement answer.
+Absent, successful-empty and complete-shaped entries are distinct states. Perform
+all fallible validation/shaping and a final context check before inserting a
+complete batch. A failed or cancelled batch leaves no partial entry; earlier
+complete batches survive. Unsupported multiplicity is an evaluation error, not
+an empty-result cache entry. Reject it before expensive shaping when detectable;
+already complete batches from layout remain valid and untouched. Errors are
+retryable, although unchanged unsupported input will still be rejected.
+
+Bindings request/import cached pairs lazily, even when measurement populated the
+cache before `BindParagraph`. Reconstruct independent local candidate records,
+arena indexes and any mutable glyph/cluster/feature storage using existing
+publication validation; do not pass a shared cached arena into an importer that
+relocates it in place. Imports validate the binding's owner and original
+source/context association and commit a whole local batch only after validation.
+They consult no shaper or material provider on a cache hit. Bindings created
+before the cache was populated can reuse it on a later normal provider request.
+Binding selections, public/manual candidates and working-plane edits never feed
+back into prepared cache entries. Manual-candidate precedence remains local.
+Releasing/unwiring a binding must clear its preparation association.
+
+This lazy visibility rule preserves the breaker's existing discovery schedule.
+Measurement must not make additional candidates visible earlier in a breaker
+pass, affect selection through a prefilled working map, or import unrelated
+textboxes. A layout-first request may populate the shared cache with a full batch,
+including variants or multiple positions that measurement rejects; measurement's
+restriction must not limit existing layout-only behavior. Cache imports preserve
+stable variant order, source splits, glyph clusters and private feature domains.
+
+For measurement, check context during source scanning/evaluation, before and after
+the synchronous material provider, during fragment shaping and before publication
+and final return. A provider call itself remains non-interruptible. Do not retain
+request contexts in cache entries. Layout calls through the existing contextless
+provider retain their current cancellation behavior; extending that public
+boundary is deferred rather than being hidden in this implementation.
+
+Acceptance for the bounded explicit profile must cover pre/post replacement
+contributions across neighboring knots, repeated calls and prior layout independence,
+explicit discovery/shaping counts, cache imports into multiple bindings, successful
+empty material responses, late backend failure/cancellation, and explicit rejection
+of multiple distinct eligible split positions. Assert that unmarked words trigger
+no discovery and `AutomaticHyphenation` measurement fails without consulting the
+provider. Verify that existing layout-only automatic and multiple-marker behavior
+is unchanged. Frozen output from earlier bindings must remain unchanged. The
+eventual accepted algorithm needs hand-calculated or independently enumerated
+replacement-path oracles, not widths inferred from the breaker's chosen result.
+
+Concrete acceptance cases also include:
+
+- Leading/trailing, marker-only and consecutive markers; an empty provider
+  response versus empty inserted material; all-prohibited variants, one permitted
+  plus prohibited variants, and two permitted variants at one position. Reject
+  unsupported multiplicity consistently before and after layout, without changing
+  the variants available to layout-only callers.
+- The adjacent-content oracle above, several separately marked textboxes in an
+  otherwise unbreakable span, mandatory boundaries, zero-width content and signed
+  atomic contributions. Max-content must retain no-break glyph advances.
+- Both `Prepare -> Measure -> Bind/Layout -> Measure` and
+  `Prepare -> Bind/Layout -> Measure -> Bind/Layout`. Successful explicit batches
+  invoke the material provider and fragment shaping only once per preparation
+  and textbox; successful empty responses are likewise reused. Repeated queries
+  with different atomic ranges recompute widths without reshaping replacements.
+- A binding made before measurement, fresh bindings made afterward, and manual
+  local candidate edits. Imports do not alias cache records, repeated requests do
+  not duplicate local variants, and binding release does not invalidate another
+  binding, the preparation or an earlier frozen result.
+- With identical final parameters, measurement inserted before layout must leave
+  break positions, selected variants, frozen glyph/source geometry and typography
+  vlist placements identical under both breakers. In particular, cache hits must
+  not change when a breaker first sees candidates.
+- Provider failure, pre-/post-fragment shaping failure and cancellation before
+  commit publish no partial batch or widths. Retrying preserves prior complete
+  entries. Errors remain detectable with `errors.Is`, including through
+  typography's `StageMeasure` wrapper; document layout remains on its existing
+  `NoHyphenation` profile.
+
+These choices settle the stage 4E scope and behavior. Internal helper names and
+record layout may follow repository conventions without reopening these contracts.
+Successive splits, ambiguous variant-path optimization, automatic intrinsic
+hyphenation, CSS manual/per-span policy mapping and a context-bearing public
+provider API remain explicit future work, not unresolved 4E prerequisites.
+
+**Implementation record (4E).** Public signatures are unchanged.
+
+- `intrinsic.go` evaluates explicit pre/post fragments in logical min-content spans,
+  preserving surrounding unbreakable material and the original after-box boundary.
+  Max-content still reads base material. Both use the ordinary checked signed
+  span evaluator and final finite-domain normalization.
+- `discretionary_prepared.go` owns the preparation-local complete-batch cache and
+  lazy binding import. `PreparedParagraph` retains immutable shaped pairs; bindings
+  retain a private association, cleared by unwiring. Import uses existing staged
+  publication to allocate detached local arenas. Manual candidates retain priority.
+- `discretionary_explicit.go` shares structural marker eligibility between layout
+  and measurement and adds internal context propagation. No public provider or
+  automatic discovery boundary changed. Whole-input feature mapping still uses
+  the existing restrictions, with original byte/scalar provenance preserved.
+- Typography's existing delegation needs no algorithm change. Its measurement
+  comments, README and tests now describe/verify explicit preparation reuse and
+  `StageMeasure` error propagation. No tytui or CSS core code changes are required;
+  the document callback deliberately remains on `NoHyphenation`.
+- Owning tests cover the hand-calculated neighboring-content and signed-atomic
+  oracles; style-split textboxes without invented breaks; markers/material/penalty
+  restrictions; empty and full cache batches; failure/cancellation/retry; detached
+  glyph/cluster/feature imports, source coordinates, local overrides and release.
+  Both-breaker regressions compare layout-first and measure-first break choices,
+  frozen glyphs/source geometry and typography vlist placements, with service-call
+  counts proving one successful material request and two fragment shapes per
+  single-variant textbox/preparation.
+
+Validation completed: `go test ./... -count=1`, `go test -race ./... -count=1`,
+`go build ./...` and `go vet ./...` in khipu, typography and tytui; ordinary
+`go test ./... -count=1` in css-box-layout. These include generic dependency audits,
+OpenType adapter regressions and existing retained document proof/replay controls.
+After the final feature-error precedence refinement, khipu's full ordinary suite,
+focused explicit measurement/cache race tests and typography's paragraph suite
+were rerun successfully. No proof/replay fixtures were regenerated.
+
+#### Stage 4 completion and validation boundaries
+
+4A–4D provide ordinary wrapping; 4E completes the bounded stage 4 objective with
+explicit discretionary measurement and preparation reuse. Automatic intrinsic
+hyphenation and successive textbox splitting are deferred extensions,
+not completion requirements. No claim of general CSS min-content/hyphenation
+conformance follows from supporting this bounded subset.
+
+Run focused owning measurement/cache tests, then typography and tytui ordinary/race
+suites, build and vet, plus khipu and CSS core regressions. Preserve generic package
+dependency audits, backend-service tests and the stage 3 retained proof/replay
+controls. With identical final constraints and atomic dimensions, inserting an
+intrinsic query must not change the resulting final layout or source correspondence.
+Use service-call counts to establish reuse before making performance claims.
+
+Glyph coverage remains the caller's responsibility. Add no new validation and
+leave relocation of the existing itemizer checks to its separately deferred task.
+Global caches, concurrent operations on one prepared owner, speculative final
+callbacks, broader whitespace/inline policies and document replay are not added.
 
 ### 5. Verify nested auto sizing and result lifetime
 
@@ -1071,9 +1745,10 @@ boundary rules are translated by the adapter into this neutral table.
 Hyphenation mode is fixed for the prepared paragraph and used consistently by
 measurement and layout. NoHyphenation disables discovery even if a provider is
 configured; the other modes require the appropriate provider. Missing services
-are errors. Initial intrinsic implementation may support NoHyphenation only;
-other measurement policies then return ErrUnsupportedPolicy, never silently
-downgrade. Existing EncodeParagraph retains its compatibility behavior.
+are errors. Intrinsic measurement supports `NoHyphenation` and stage 4E's bounded
+`ExplicitHyphenation` profile. Unsupported multiplicity and `AutomaticHyphenation`
+return `ErrUnsupportedPolicy`, never silently downgrade. Existing EncodeParagraph
+retains its compatibility behavior.
 
 ### Intrinsic query and final binding
 
@@ -1128,8 +1803,8 @@ sharing only immutable shaping records. Each bound atom has
 then consume that working Khipu and the same resolved geometry.
 
 Measurement takes no target width, line shape, breaker or alignment options and
-does not modify working selections. Detailed discretionary measurement remains
-stage 4 work; prior layout discoveries must not determine the answer.
+does not modify working selections. Stage 4E supplies bounded explicit
+discretionary measurement; prior layout discoveries do not determine the answer.
 
 ### Frozen object identity
 

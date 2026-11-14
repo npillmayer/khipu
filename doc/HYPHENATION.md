@@ -162,7 +162,7 @@ retried. Arena IDs stay stable as the arena grows.
 
 ### Caching
 
-Successful results are cached per paragraph and knot:
+Working results are cached per bound paragraph and knot:
 - non-empty results in `DiscretionaryCandidates`;
 - empty results (declined, ineligible, or all alternatives filtered out) in a
   private set, so "asked, none" is distinguished from "not asked yet".
@@ -176,9 +176,48 @@ The cache assumes stable source text, knots, shaping contexts and policy for the
 lifetime of the paragraph. To change the policy, create a new owner and encode
 again; there is no invalidation for mutable input.
 
-Provider methods take no context: fragment shaping runs with
-`context.Background()`, with internal cancellation on failure, but cannot be
-cancelled by the caller.
+`ExplicitHyphenation` preparations additionally own a lazy cache of complete
+immutable shaped replacement pairs, keyed by original textbox index. Measurement
+and layout share these pairs, including successful empty responses. Binding does
+not populate candidate maps: a binding imports a batch only when its provider is
+asked, reconstructing independent glyph/cluster/feature storage and arena IDs.
+Manual candidates and selected decisions stay local. A binding created before
+measurement can import newly cached pairs later. Releasing a binding clears its
+preparation association without affecting the cache or other bindings.
+
+A failed or cancelled batch publishes nothing; earlier completed batches remain
+reusable. Automatic-mode preparations and legacy encoding keep their original
+binding-local caches. Provider methods still take no context: layout fragment
+shaping uses `context.Background()` with internal cancellation on failure, and
+cannot be cancelled by the caller. Intrinsic measurement passes its request context
+through explicit source scanning and fragment shaping and checks around the
+synchronous, non-interruptible material-provider call.
+
+### Intrinsic Measurement of Explicit Breaks
+
+`MeasureIntrinsic` supports ordinary wrapping and bounded `ExplicitHyphenation`.
+Count eligible source positions before calling the material provider. More than
+one position in a textbox (including consecutive interior markers) is unsupported,
+even if the provider would decline. Leading/trailing, marker-only and unmarked
+text require no provider call. At one eligible position, validate the complete
+response; zero effective break-permitting variants means ordinary measurement,
+one permits the split, and two or more return `ErrUnsupportedPolicy`. A variant
+permits a break only when its effective penalty is below `MaxPenalty`; zero uses
+the owner's default. Empty inserted material is a valid silent break, distinct
+from an empty response. No default hyphen is invented.
+
+Min-content combines the complete pre-break fragment with preceding unbreakable
+material, closes that span, and carries the post-break fragment into the next span.
+The original after-textbox break policy is retained. Max-content uses original
+no-break advances. Both keep signed atomic contributions, content-aware trimming
+and paragraph-fill exclusion; widths are normalized only after completed spans.
+
+Layout may cache multiple positions/variants that measurement rejects. Its full
+batch stays available to layout and prior layout cannot change measurement's
+answer. Successive splits of a single original textbox, automatic intrinsic
+hyphenation and CSS manual/per-span policy mapping remain deferred. Typography
+exposes this same contract; tytui's CSS callback continues using `NoHyphenation`.
+Glyph coverage remains the caller's responsibility, with no new validation.
 
 
 ## Line Breaking

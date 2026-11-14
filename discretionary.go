@@ -102,8 +102,10 @@ func (khipu *Khipu) SelectedDiscretionaryAt(breakpoint int) (DiscretionarySelect
 // For owned, encoded paragraphs, successful empty results are also remembered,
 // including alternatives filtered out during preparation. Errors remain
 // retryable. Both caches live with the paragraph and are reused across breaker
-// passes/reruns, not shared across paragraphs or owners. Keep the source and
-// collaborator policy stable; changed policy requires a new owner/encoding.
+// passes/reruns. ExplicitHyphenation preparations additionally memoize complete
+// immutable pairs and import them lazily into each binding; candidate/selection
+// maps remain binding-local. Keep source and collaborator policy stable; changed
+// policy requires a new owner/preparation or encoding.
 // Manually supplied candidates take precedence over an earlier empty result.
 // Streaming paragraphs support explicit U+00AD and automatic requests for one
 // complete eligible source segment, never metric-shaped substitutes.

@@ -42,6 +42,9 @@ func (k *Khipu) HasExplicitDiscretionary(at int) bool {
 // with internal cancellation/joining on failure. Caller cancellation requires a
 // future provider-interface extension.
 func (kq *Khipukamayuq) streamingDiscretionaryCandidates(k *Khipu, at int) ([]DiscretionaryCandidate, error) {
+	if k.prepared != nil {
+		return kq.importExplicitBatch(k, at)
+	}
 	explicit := k.HasExplicitDiscretionary(at)
 	if !explicit && k.hyphenationPolicy && k.hyphenation != AutomaticHyphenation {
 		return nil, nil
@@ -85,21 +88,10 @@ func (kq *Khipukamayuq) streamingDiscretionaryCandidates(k *Khipu, at int) ([]Di
 	if cfg == nil || cfg.NewShaper == nil {
 		return nil, ErrStreamingDiscretionariesUnsupported
 	}
-	params := run.params
-	features, err := intersectFeatures(params.shaping.Features, run.source.scalarEnd-run.source.scalarStart,
-		s.scalarStart-run.source.scalarStart, s.scalarEnd-run.source.scalarStart)
+	params, err := replacementParameters(run, s)
 	if err != nil {
 		return nil, err
 	}
-	for i := range features {
-		if features[i].Start != 0 || uint64(features[i].End) != s.scalarEnd-s.scalarStart {
-			return nil, fmt.Errorf("%w: replacement has range-limited features", contracts.ErrIllegalArguments)
-		}
-		// A feature covering the entire original box applies to both complete
-		// fragments. Interior feature boundaries cannot be guessed after edits.
-		features[i].Start, features[i].End = 0, 0
-	}
-	params.shaping.Features = features
 	batch := make([]stagedDiscretionary, 0, len(inputs))
 	for _, input := range inputs {
 		pair, err := shapeDiscretionaryInput(context.Background(), input.input, params, params, cfg.NewShaper, cfg.BufferOptions)
@@ -116,4 +108,23 @@ func (kq *Khipukamayuq) streamingDiscretionaryCandidates(k *Khipu, at int) ([]Di
 		k.commitDiscretionary(at, staged)
 	}
 	return k.DiscretionariesAt(at), nil
+}
+
+func replacementParameters(run preparedRun, s runSourceRange) (runParameters, error) {
+	params := run.params
+	features, err := intersectFeatures(params.shaping.Features, run.source.scalarEnd-run.source.scalarStart,
+		s.scalarStart-run.source.scalarStart, s.scalarEnd-run.source.scalarStart)
+	if err != nil {
+		return runParameters{}, err
+	}
+	for i := range features {
+		if features[i].Start != 0 || uint64(features[i].End) != s.scalarEnd-s.scalarStart {
+			return runParameters{}, fmt.Errorf("%w: replacement has range-limited features", contracts.ErrIllegalArguments)
+		}
+		// A feature covering the entire original box applies to both complete
+		// fragments. Interior feature boundaries cannot be guessed after edits.
+		features[i].Start, features[i].End = 0, 0
+	}
+	params.shaping.Features = features
+	return params, nil
 }

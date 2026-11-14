@@ -177,8 +177,46 @@ Request slices may be reused after each call. Frozen `Atomic(index)` returns the
 occurrence ID in visual order; `Knot(index)` supplies its advance/source range and
 `CopyText(index)` returns false. Final negative line totals are unsupported and
 return `ErrUnsupportedPolicy` from Freeze. This API supplies no vertical box
-geometry or intrinsic measurements yet. See the
+geometry. See the
 [pipeline integration plan](doc/PIPELINE_INTEGRATION.md).
+
+### Intrinsic Measurement
+
+Measure the same prepared paragraph before or after layout, without reshaping
+base text or binding atomic widths:
+
+```go
+widths, err := owner.MeasureIntrinsic(ctx, prepared, khipu.MeasureRequest{
+    Atomics: []khipu.AtomicIntrinsic{
+        {ID: 1, MinAdvance: 10 * dimen.PT, MaxAdvance: 20 * dimen.PT},
+    },
+})
+if err != nil { return err }
+// widths.MinContent and widths.MaxContent are natural inline bounds.
+```
+
+Supply exactly one signed range per attached ID, in any order, including resolved
+horizontal margins. Endpoints must be ordered and have magnitude below `dimen.Fil`.
+Min-content takes supported optional breaks; max-content suppresses them. Both
+respect mandatory boundaries and trim edge whitespace using layout's content rules.
+Natural text/glue advances contribute; paragraph fill, side skips and elasticity
+do not. Signed sums are normalized only after complete spans: min-content is at
+least zero and max-content is at least min-content. Overflow returns an error.
+
+`NoHyphenation` uses ordinary wrapping. `ExplicitHyphenation` also measures authored
+U+00AD replacements, supporting one eligible split position and at most one
+break-permitting material variant per textbox. Multiple positions/variants and
+`AutomaticHyphenation` return `ErrUnsupportedPolicy`; successive splits of one
+textbox remain unsupported. No automatic word discovery runs during measurement.
+
+Explicit replacement pairs are shaped lazily and cached per preparation, including
+successful empty responses. Layout imports complete batches only when its provider
+is asked, preserving each breaker's discovery schedule. Repeated measurements and
+bindings reuse these pairs; changed atomic ranges recompute widths. Queries preserve
+base, bound and frozen material, retain no request slices, and use the same owner
+and stable-source lifetime contract as binding. Cancellation and other failures return
+zero widths and leave the preparation reusable. Glyph coverage remains the caller's
+responsibility; measurement adds no coverage validation.
 
 ### Integration And Ownership
 

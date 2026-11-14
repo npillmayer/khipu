@@ -53,6 +53,7 @@ func (k KnotCore) String() string {
 type Khipu struct {
 	owner     *Khipukamayuq
 	paragraph *styled.Paragraph
+	prepared  *PreparedParagraph // Explicit-only lazy cache association; never frozen.
 	W         []dimen.DU
 	MinW      []dimen.DU
 	MaxW      []dimen.DU
@@ -107,6 +108,7 @@ func (kq *Khipukamayuq) allocKhipu(capacity int) *Khipu {
 func unwireKhipu(khipu *Khipu) *Khipu {
 	khipu.owner = nil
 	khipu.paragraph = nil
+	khipu.prepared = nil
 	khipu.W = nil
 	khipu.MinW = nil
 	khipu.MaxW = nil

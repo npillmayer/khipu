@@ -57,8 +57,9 @@ type PrepareOptions struct {
 	Hyphenation      HyphenationMode
 }
 
-// PreparedParagraph is immutable horizontal material with unbound atomic
-// slots, not a working Khipu or a measurement. It belongs to its creating owner.
+// PreparedParagraph retains immutable horizontal material with unbound atomic
+// slots and owner-controlled memoization of complete explicit replacements.
+// It is not a working Khipu or a measurement. It belongs to its creating owner.
 // Operations on the same owner must be serialized. Request slices are consumed
 // during preparation; no caller-owned slice is retained. There is no Close.
 type PreparedParagraph struct {
@@ -66,6 +67,7 @@ type PreparedParagraph struct {
 	owner       *Khipukamayuq
 	atomicCount int
 	hyphenation HyphenationMode
+	explicit    map[int]explicitBatch
 }
 
 // PrepareParagraph validates mixed input and shapes text exactly once. Atomics
@@ -127,8 +129,9 @@ type AtomicAdvance struct {
 // BindParagraph supplies exactly one advance per occurrence, in any order.
 // It neither shapes nor discovers discretionaries. Working planes and caches
 // are independently owned; only immutable shaping records and source are shared.
-// Later discovery/arena growth on one binding cannot affect another binding or
-// the prepared paragraph. Inputs are consumed without retaining caller slices.
+// Explicit replacements may be memoized on the preparation, but become visible
+// in a binding only at its normal provider request point. Local arenas/selections
+// remain independent. Inputs are consumed without retaining caller slices.
 func (kq *Khipukamayuq) BindParagraph(ctx context.Context, prepared *PreparedParagraph, atomics []AtomicAdvance) (*Khipu, error) {
 	if ctx == nil {
 		return nil, ErrIllegalArguments
@@ -153,6 +156,9 @@ func (kq *Khipukamayuq) BindParagraph(ctx context.Context, prepared *PreparedPar
 	k := kq.allocKhipu(len(prepared.knots))
 	k.paragraph = prepared.paragraph
 	k.hyphenationPolicy, k.hyphenation = true, prepared.hyphenation
+	if prepared.hyphenation == ExplicitHyphenation {
+		k.prepared = prepared
+	}
 	for i, core := range prepared.knots {
 		if id := prepared.shaping.sources[i].atomic; id != 0 {
 			w, ok := advances[id]
