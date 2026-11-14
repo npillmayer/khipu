@@ -19,6 +19,17 @@ elastic input and freezing another break decision remains possible.
 No baseline positioning, box construction, glyph reversal, drawing, hit testing,
 or target-width shaping API is introduced by this contract.
 
+Fixed-size atomic inline items are supported through `PrepareParagraph` and
+`BindParagraph`. `Atomic(knotIndex) (contracts.AtomicID, bool)` identifies an
+occurrence in physical visual order; invalid indexes and non-atomic knots return
+false. `Knot` supplies its fixed signed advance and the original three-byte,
+one-scalar U+FFFC source span. `CopyText` returns false for atoms. Atomics remain
+content even with zero advance; their identity and geometry survive later working
+paragraph changes. The caller retains all actual box/payload and vertical geometry.
+Negative completed content or skip-inclusive line totals return
+`ErrUnsupportedPolicy`; individual negative advances are supported. See
+[the mixed-input contract](PIPELINE_INTEGRATION.md#stage-1-api-proposal).
+
 ## Construction
 
 Public signatures, in package `khipu`:

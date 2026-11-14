@@ -26,6 +26,12 @@ type KnotCore struct {
 	Flags         KnotFlags
 }
 
+// IsContent reports material that shelters adjacent spaces from line-edge
+// trimming. Atomic content counts even when its advance is zero or negative.
+func (k KnotCore) IsContent() bool {
+	return !k.IsDiscardable() && (k.Kind == KTTextBox || k.Kind == KTAtomic)
+}
+
 func (k KnotCore) String() string {
 	switch k.Kind {
 	case KTGlue:
@@ -59,6 +65,9 @@ type Khipu struct {
 	// retained shaping output (including manually constructed knots).
 	boxRefs []shapedBoxID
 	shaping shapingArena
+	// Legacy EncodeParagraph leaves this gate unset for compatibility.
+	hyphenationPolicy bool
+	hyphenation       HyphenationMode
 
 	DiscretionaryCandidates map[int][]DiscretionaryCandidate
 	SelectedDiscretionaries map[int]DiscretionarySelection

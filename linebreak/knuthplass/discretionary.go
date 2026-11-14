@@ -313,6 +313,10 @@ func (kp *linebreaker) evaluateDiscretionaryLine(khp *khipu.Khipu, from BreakRef
 				kp.appendActualKnots(&nextSeed, khp, candidate+1, breakpoint)
 			}
 			segwss := lineBook.effectiveWidth(kp.layout)
+			if err := segwss.Err(); err != nil {
+				kp.arithmeticErr = err
+				continue
+			}
 			if kp.metrics != nil {
 				kp.metrics.discretionary++
 			}

@@ -18,6 +18,7 @@ import (
 // predecessor table retains the history needed for reconstruction.
 // A full BreakRef is the key so discretionary variants never share a bucket.
 type linebreaker struct {
+	arithmeticErr  error
 	compactUniform bool         // automatic for built-in rectangles; tests may disable
 	uniformRemoved int          // diagnostic count of dominated ordinary working states
 	metrics        *workMetrics // optional diagnostics; nil in public breaking calls
@@ -147,12 +148,10 @@ func classifyLineItem(k khipu.KnotCore) lineItemClass {
 	if k.IsDiscardable() {
 		return LICTrimDiscardable
 	}
-	switch k.Kind {
-	case khipu.KTTextBox:
+	if k.IsContent() {
 		return LICContent
-	default:
-		return LICRetainedNeutral
 	}
+	return LICRetainedNeutral
 }
 
 func (book *bookkeeping) appendItem(cls lineItemClass, w linebreak.WSS) {
@@ -207,6 +206,9 @@ func (kp *linebreaker) updatePath(bp BreakRef, idx kinx, k khipu.KnotCore) {
 			trace.Debugf("   --- path of %s/%v = %v", bp.String(), origin{bp, line}, path)
 		}
 		path.appendItem(cls, wss)
+		if err := path.segment.Err(); err != nil {
+			kp.arithmeticErr = err
+		}
 		if debug {
 			trace.Debugf("K&R: extending segment from %s to %v", bp.String(), path.segment)
 		}
@@ -425,6 +427,9 @@ func (kp *linebreaker) evaluateCandidates(bp BreakRef, penalty khipu.Penalty) []
 		}
 		linelen := kp.layout.LineShape.LineLength(int32(line + 1))
 		segwss := path.effectiveWidth(kp.layout)
+		if err := segwss.Err(); err != nil {
+			kp.arithmeticErr = err
+		}
 		if debug {
 			trace.Debugf("    +---%.2f--->    | %.2f", segwss.W.Points(), linelen.Points())
 		}
@@ -456,17 +461,17 @@ func calcAdjustmentRatio(segwss linebreak.WSS, linelen dimen.DU) (float64, bool)
 		return 0, true
 	}
 	if segwss.W < linelen {
-		available := segwss.Max - segwss.W
+		available := int64(segwss.Max) - int64(segwss.W)
 		if available <= 0 {
 			return 0, false
 		}
-		return float64(linelen-segwss.W) / float64(available), true
+		return float64(int64(linelen)-int64(segwss.W)) / float64(available), true
 	}
-	available := segwss.W - segwss.Min
+	available := int64(segwss.W) - int64(segwss.Min)
 	if available <= 0 {
 		return 0, false
 	}
-	return -float64(segwss.W-linelen) / float64(available), true
+	return -float64(int64(segwss.W)-int64(linelen)) / float64(available), true
 }
 
 // calcBadness turns an adjustment ratio into a TeX-style badness value.
@@ -574,6 +579,9 @@ func (kp *linebreaker) buildBreakpointPaths(khp *khipu.Khipu) error {
 	trace := tracer()
 	for last := range len(khp.W) {
 		live, err := kp.processKnot(khp, last)
+		if kp.arithmeticErr != nil {
+			return kp.arithmeticErr
+		}
 		if err != nil || !live {
 			return err
 		}

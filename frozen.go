@@ -62,6 +62,7 @@ type frozenLine struct {
 // replacement material, not alternative break opportunities. Pos/Len alone
 // cannot identify changed-spelling or silent discretionary replacements.
 type frozenOrigin struct {
+	atomic        contracts.AtomicID
 	source        runSourceRange
 	box           shapedBoxID
 	origin        int
@@ -155,7 +156,7 @@ func (p *geometryParagraph) freeze(ctx context.Context) (*FrozenKhipu, error) {
 			result.len = append(result.len, knot.core.Len)
 			result.kind = append(result.kind, knot.core.Kind)
 			result.flags = append(result.flags, knot.core.Flags)
-			result.origins = append(result.origins, frozenOrigin{knot.source, knot.box, knot.origin,
+			result.origins = append(result.origins, frozenOrigin{knot.atomic, knot.source, knot.box, knot.origin,
 				knot.variant, knot.fragment, knot.paragraphFill})
 		}
 		result.lines[i] = frozenLine{content: arenaRange{start, len(result.w)},

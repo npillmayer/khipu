@@ -28,7 +28,11 @@ import (
 func classifyLine(w linebreak.WSS, target dimen.DU, tolerance merits, extraStretch dimen.DU) lineEvaluation {
 	var ratio float64
 	var available bool
-	stretch := absD(target - w.W)
+	difference := int64(target) - int64(w.W)
+	if difference < 0 {
+		difference = -difference
+	}
+	stretch := dimen.DU(min(difference, int64(math.MaxInt32)))
 	if extraStretch > 0 && w.W < target && w.Max < dimen.Fil {
 		// Widen BEFORE subtraction and addition. The virtual denominator may
 		// exceed both DU's range and the fill sentinels without becoming fill.

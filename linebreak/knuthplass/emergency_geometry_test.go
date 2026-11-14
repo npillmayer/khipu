@@ -114,9 +114,9 @@ func TestEmergencyFillCompatibility(t *testing.T) {
 	}
 }
 
-func TestNonpositiveEmergencyStretchPreservesLegacyClassification(t *testing.T) {
-	// Reconstruct the pre-emergency classification from its unchanged helpers,
-	// including extreme summaries. E=0 must not incidentally repair old behavior.
+func TestNonpositiveEmergencyStretchPreservesOrdinaryClassification(t *testing.T) {
+	// Nonpositive emergency capacity does not alter ordinary scoring. Signed
+	// atomic advances require widened, bounded adjustment magnitudes in both.
 	for _, w := range []linebreak.WSS{
 		{},
 		{W: 100, Min: 90, Max: 110},
@@ -132,7 +132,8 @@ func TestNonpositiveEmergencyStretchPreservesLegacyClassification(t *testing.T) 
 					ratio = math.Inf(-1)
 				}
 			}
-			want := lineEvaluation{ratio: ratio, stretch: absD(target - w.W), badness: 10000, disposition: lineOverfull}
+			magnitude := math.Abs(float64(target) - float64(w.W))
+			want := lineEvaluation{ratio: ratio, stretch: dimen.DU(math.Min(magnitude, math.MaxInt32)), badness: 10000, disposition: lineOverfull}
 			if w.Min <= target {
 				want.badness, want.disposition = badnessForRatio(ratio), lineScreenedOut
 				if want.badness <= 200 {

@@ -33,7 +33,7 @@ func checkFrozenGeometry(t *testing.T, got *FrozenKhipu, geometry *geometryParag
 		for j, knot := range original.knots {
 			at := line.content.start + j
 			sum += int64(got.w[at])
-			want := frozenOrigin{knot.source, knot.box, knot.origin, knot.variant, knot.fragment, knot.paragraphFill}
+			want := frozenOrigin{knot.atomic, knot.source, knot.box, knot.origin, knot.variant, knot.fragment, knot.paragraphFill}
 			if got.pos[at] != knot.core.Pos || got.len[at] != knot.core.Len || got.kind[at] != knot.core.Kind || got.flags[at] != knot.core.Flags || got.origins[at] != want {
 				t.Fatal("lost knot identity", at)
 			}

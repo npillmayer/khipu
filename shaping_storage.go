@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/npillmayer/cords/styled"
 	"github.com/npillmayer/khipu/contracts"
 )
 
@@ -36,6 +37,7 @@ type storedGlyphCluster struct {
 // knotSource preserves provenance separately from geometry. A break in omitted
 // text can be beyond the glyph-bearing span. Glue has provenance but no box ID.
 type knotSource struct {
+	atomic     contracts.AtomicID
 	source     runSourceRange
 	breakAfter sourceBoundary
 }
@@ -56,28 +58,37 @@ type shapingArena struct {
 	boundaries []sourceBoundary
 }
 
-// publishCandidateParagraph copies successful internal candidates into a new
-// owned Khipu at the end of EncodeParagraph. The candidate result may
+// preparedMaterial stores compiled knot templates and shaping data. Atomic
+// templates are unbound slots, never a working Khipu with fabricated advances.
+type preparedMaterial struct {
+	paragraph *styled.Paragraph
+	knots     []KnotCore
+	boxRefs   []shapedBoxID
+	shaping   shapingArena
+}
+
+// compileCandidateParagraph copies successful internal candidates into owned
+// immutable material at the end of preparation. The candidate result may
 // be discarded or its slices reused afterward; the original styled paragraph
 // must remain stable. Failure returns no partially published khipu.
-func (kq *Khipukamayuq) publishCandidateParagraph(p *candidateParagraph) (*Khipu, error) {
-	if kq == nil || p == nil || p.paragraph == nil {
+func compileCandidateParagraph(p *candidateParagraph) (*preparedMaterial, error) {
+	if p == nil || p.paragraph == nil {
 		return nil, fmt.Errorf("%w: missing candidate owner or paragraph", contracts.ErrIllegalArguments)
 	}
 	if _, err := newGlyphClusterAssembler(p.runs, p.boundaries); err != nil {
 		return nil, err
 	}
-	k := kq.allocKhipu(len(p.knots))
-	k.paragraph = p.paragraph
+	k := &preparedMaterial{paragraph: p.paragraph, knots: make([]KnotCore, 0, len(p.knots)), boxRefs: make([]shapedBoxID, 0, len(p.knots))}
 	k.shaping.boundaries = slices.Clone(p.boundaries)
 	k.shaping.sources = make([]knotSource, 0, len(p.knots))
 	contexts := make(map[int]int)
-	bad := func() (*Khipu, error) {
+	bad := func() (*preparedMaterial, error) {
 		return nil, fmt.Errorf("%w: inconsistent candidate shaping data", contracts.ErrIllegalArguments)
 	}
 	for _, candidate := range p.knots {
-		k.appendKnot(candidate.core)
-		k.shaping.sources[len(k.shaping.sources)-1] = knotSource{candidate.source, candidate.breakAfter}
+		k.knots = append(k.knots, candidate.core)
+		k.boxRefs = append(k.boxRefs, 0)
+		k.shaping.sources = append(k.shaping.sources, knotSource{atomic: candidate.atomic, source: candidate.source, breakAfter: candidate.breakAfter})
 		if candidate.core.Kind != KTTextBox {
 			continue
 		}
@@ -116,5 +127,22 @@ func (kq *Khipukamayuq) publishCandidateParagraph(p *candidateParagraph) (*Khipu
 		k.shaping.boxes = append(k.shaping.boxes, box)
 		k.boxRefs[len(k.boxRefs)-1] = shapedBoxID(len(k.shaping.boxes))
 	}
+	return k, nil
+}
+
+// publishCandidateParagraph preserves the text-only EncodeParagraph path.
+func (kq *Khipukamayuq) publishCandidateParagraph(p *candidateParagraph) (*Khipu, error) {
+	if kq == nil {
+		return nil, ErrVoidKhipukamayuq
+	}
+	material, err := compileCandidateParagraph(p)
+	if err != nil {
+		return nil, err
+	}
+	k := kq.allocKhipu(len(material.knots))
+	for _, core := range material.knots {
+		k.appendKnot(core)
+	}
+	k.paragraph, k.shaping, k.boxRefs = material.paragraph, material.shaping, material.boxRefs
 	return k, nil
 }

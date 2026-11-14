@@ -104,6 +104,9 @@ func TestAllocateWidthsRejects(t *testing.T) {
 			before := slices.Clone(tc.items)
 			got, _, err := allocateWidths(tc.items, tc.target)
 			want := ErrIllegalArguments
+			if tc.name == "negative total" {
+				want = ErrUnsupportedPolicy
+			}
 			if got != nil || !errors.Is(err, want) || !reflect.DeepEqual(before, tc.items) {
 				t.Fatal(got, err)
 			}

@@ -18,6 +18,9 @@ func (k *Khipu) HasExplicitDiscretionary(at int) bool {
 	if k == nil || at < 0 || at >= len(k.Kind) || k.Kind[at] != KTTextBox || at >= len(k.shaping.sources) {
 		return false
 	}
+	if k.hyphenationPolicy && k.hyphenation == NoHyphenation {
+		return false
+	}
 	s := k.shaping.sources[at].source
 	if s.scalarEnd > uint64(len(k.shaping.boundaries)) {
 		return false
@@ -40,6 +43,9 @@ func (k *Khipu) HasExplicitDiscretionary(at int) bool {
 // future provider-interface extension.
 func (kq *Khipukamayuq) streamingDiscretionaryCandidates(k *Khipu, at int) ([]DiscretionaryCandidate, error) {
 	explicit := k.HasExplicitDiscretionary(at)
+	if !explicit && k.hyphenationPolicy && k.hyphenation != AutomaticHyphenation {
+		return nil, nil
+	}
 	if !explicit && !k.automaticHyphenationEligible(at) {
 		return nil, nil
 	}

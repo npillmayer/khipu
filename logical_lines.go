@@ -3,8 +3,10 @@ package khipu
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"github.com/npillmayer/cords/styled"
+	"github.com/npillmayer/khipu/contracts"
 	"github.com/npillmayer/khipu/dimen"
 )
 
@@ -44,6 +46,7 @@ const (
 // Both replacement halves identify the original knot and selected variant;
 // their glyph coordinates belong to their stored replacement input instead.
 type logicalKnot struct {
+	atomic        contracts.AtomicID
 	core          KnotCore
 	source        runSourceRange
 	box           shapedBoxID
@@ -149,7 +152,7 @@ func (kq *Khipukamayuq) materializeLogicalLines(ctx context.Context, k *Khipu, b
 			if i == at && k.Penalty[i] >= MaxPenalty {
 				return bad()
 			}
-			item := logicalKnot{core: k.KnotByIndex(i), source: k.shaping.sources[i].source, box: k.boxRefs[i], origin: i}
+			item := logicalKnot{atomic: k.shaping.sources[i].atomic, core: k.KnotByIndex(i), source: k.shaping.sources[i].source, box: k.boxRefs[i], origin: i}
 			item.paragraphFill = i == n-1
 			if err := k.validateLogicalKnot(item); err != nil {
 				return nil, err
@@ -197,6 +200,10 @@ func (k *Khipu) logicalReplacement(at int, c DiscretionaryCandidate, pre bool) (
 func (k *Khipu) validateLogicalKnot(item logicalKnot) error {
 	bad := func() error { return fmt.Errorf("%w: invalid logical knot at %d", ErrIllegalArguments, item.origin) }
 	s, c := item.source, item.core
+	if (c.Kind == KTAtomic) != (item.atomic != 0) || (c.Kind == KTAtomic &&
+		(c.IsDiscardable() || c.MinW != c.W || c.MaxW != c.W || c.Len != 3 || s.scalarEnd-s.scalarStart != 1)) {
+		return bad()
+	}
 	if s.byteStart > s.byteEnd || s.byteEnd > k.paragraph.Raw().Len() || s.scalarStart > s.scalarEnd ||
 		c.Pos < k.paragraph.Offset || c.Pos-k.paragraph.Offset != s.byteStart || uint64(c.Len) != s.byteEnd-s.byteStart ||
 		c.MinW > c.W || c.W > c.MaxW || c.W >= dimen.Fil || c.W <= -dimen.Fil {
@@ -227,7 +234,7 @@ func (k *Khipu) validateLogicalKnot(item logicalKnot) error {
 	return nil
 }
 
-// trimAndMeasure mirrors both breakers: only a non-discardable textbox ends
+// trimAndMeasure mirrors both breakers: non-discardable text or atomic content ends
 // leading trim or clears trailing trim. Neutral retained knots (including final
 // fill) survive but do not shelter adjacent discardables. An all-neutral line
 // therefore keeps neutrals and discards every flagged knot. No Unicode guesses
@@ -235,7 +242,7 @@ func (k *Khipu) validateLogicalKnot(item logicalKnot) error {
 func (line *logicalLine) trimAndMeasure() error {
 	first, last := len(line.knots), -1
 	for i, item := range line.knots {
-		if item.core.Kind == KTTextBox && !item.core.IsDiscardable() {
+		if item.core.IsContent() {
 			first, last = min(first, i), i
 		}
 	}
@@ -246,9 +253,16 @@ func (line *logicalLine) trimAndMeasure() error {
 			continue
 		}
 		kept = append(kept, item)
-		width += int64(item.core.W)
+		w := int64(item.core.W)
+		if (w > 0 && width > math.MaxInt64-w) || (w < 0 && width < math.MinInt64-w) {
+			return fmt.Errorf("%w: logical line sum overflow", ErrIllegalArguments)
+		}
+		width += w
 	}
-	if width < 0 || width >= int64(dimen.Fil) {
+	if width < 0 {
+		return fmt.Errorf("%w: negative completed line width", ErrUnsupportedPolicy)
+	}
+	if width >= int64(dimen.Fil) {
 		return fmt.Errorf("%w: logical line width out of range", ErrIllegalArguments)
 	}
 	line.knots, line.naturalWidth = kept, dimen.DU(width)

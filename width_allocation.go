@@ -114,7 +114,10 @@ func allocateWidths(items []KnotCore, target dimen.DU) ([]dimen.DU, widthAdjustm
 			fill = k.MaxW
 		}
 	}
-	if natural < 0 || natural >= int64(dimen.Fil) {
+	if natural < 0 {
+		return nil, widthAdjustment{}, fmt.Errorf("%w: negative natural width", ErrUnsupportedPolicy)
+	}
+	if natural >= int64(dimen.Fil) {
 		return bad("natural width out of range")
 	}
 	delta := int64(target) - natural

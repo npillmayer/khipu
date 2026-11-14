@@ -88,6 +88,16 @@ func (f *FrozenKhipu) KnotCount() int {
 	return len(f.w)
 }
 
+// Atomic returns the occurrence ID of a frozen atomic knot. Invalid indexes,
+// nil results and non-atomic knots return false. CopyText returns false for atoms.
+func (f *FrozenKhipu) Atomic(knotIndex int) (contracts.AtomicID, bool) {
+	if knotIndex < 0 || knotIndex >= f.KnotCount() || f.kind[knotIndex] != KTAtomic {
+		return 0, false
+	}
+	id := f.origins[knotIndex].atomic
+	return id, id != 0
+}
+
 // Line returns a detached record, or false for any invalid zero-based index.
 func (f *FrozenKhipu) Line(index int) (FrozenLine, bool) {
 	if index < 0 || index >= f.LineCount() {

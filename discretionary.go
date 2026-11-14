@@ -118,6 +118,9 @@ func (kq *Khipukamayuq) DiscretionaryCandidates(khp *Khipu, at int) ([]Discretio
 	if khp.owner != nil && khp.owner != kq {
 		return nil, ErrIllegalArguments
 	}
+	if khp.Kind[at] == KTAtomic || (khp.hyphenationPolicy && khp.hyphenation == NoHyphenation) {
+		return nil, nil
+	}
 	if cands := khp.DiscretionariesAt(at); len(cands) > 0 {
 		return cands, nil
 	}

@@ -33,6 +33,12 @@ type candidateParagraph struct {
 func streamCandidateParagraph(ctx context.Context, para *styled.Paragraph, resolver contracts.StyleResolver,
 	defaults contracts.ResolvedRunStyle, params Params, fill KnotCore,
 	shaper contracts.StreamingShaper, options contracts.ShapeBufferOptions) (*candidateParagraph, error) {
+	return streamMixedCandidateParagraph(ctx, para, resolver, defaults, params, fill, shaper, options, nil, nil)
+}
+
+func streamMixedCandidateParagraph(ctx context.Context, para *styled.Paragraph, resolver contracts.StyleResolver,
+	defaults contracts.ResolvedRunStyle, params Params, fill KnotCore,
+	shaper contracts.StreamingShaper, options contracts.ShapeBufferOptions, anchors []contracts.AtomicAnchor, overrides []AtomicBoundary) (*candidateParagraph, error) {
 	if ctx == nil || nilRunService(shaper) {
 		return nil, fmt.Errorf("%w: missing streaming context or shaper", contracts.ErrIllegalArguments)
 	}
@@ -46,7 +52,11 @@ func streamCandidateParagraph(ctx context.Context, para *styled.Paragraph, resol
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	runs, err := prepareParagraphRunsForInput(para, resolver, defaults, boundaries)
+	atomics, err := prepareAtomicAnchors(para, boundaries, anchors)
+	if err != nil {
+		return nil, err
+	}
+	runs, err := prepareMixedRuns(para, resolver, defaults, boundaries, atomics)
 	if err != nil {
 		return nil, err
 	}
@@ -55,6 +65,9 @@ func streamCandidateParagraph(ctx context.Context, para *styled.Paragraph, resol
 	}
 	maps, err := prepareNoBreakRuns(runs, boundaries)
 	if err != nil {
+		return nil, err
+	}
+	if err := applyAtomicBoundaries(boundaries, atomics, overrides); err != nil {
 		return nil, err
 	}
 	assembler, err := newGlyphClusterAssembler(runs, boundaries)
@@ -66,6 +79,22 @@ func streamCandidateParagraph(ctx context.Context, para *styled.Paragraph, resol
 		return nil, err
 	}
 	inputRun := 0
+	atomicIndex := 0
+	pushThrough := func(end uint64) error {
+		for atomicIndex < len(atomics) && atomics[atomicIndex].source.scalarStart < end {
+			if err := accumulator.pushAtomic(atomics[atomicIndex]); err != nil {
+				return err
+			}
+			atomicIndex++
+		}
+		return nil
+	}
+	pushCluster := func(c *glyphCluster) error {
+		if err := pushThrough(c.source.scalarStart); err != nil {
+			return err
+		}
+		return accumulator.push(c)
+	}
 	err = consumeShaper(ctx, shaper, func(ctx context.Context) error {
 		return produceNoBreakRuns(ctx, para, runs, maps, shaper, options)
 	}, func(glyph contracts.ShapedGlyph) error {
@@ -78,7 +107,7 @@ func streamCandidateParagraph(ctx context.Context, para *styled.Paragraph, resol
 			return err
 		}
 		if cluster != nil {
-			return accumulator.push(cluster)
+			return pushCluster(cluster)
 		}
 		return nil
 	})
@@ -90,9 +119,12 @@ func streamCandidateParagraph(ctx context.Context, para *styled.Paragraph, resol
 		return nil, err
 	}
 	if last != nil {
-		if err := accumulator.push(last); err != nil {
+		if err := pushCluster(last); err != nil {
 			return nil, err
 		}
+	}
+	if err := pushThrough(uint64(len(boundaries))); err != nil {
+		return nil, err
 	}
 	knots, err := accumulator.finish()
 	if err != nil {

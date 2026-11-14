@@ -1,0 +1,1302 @@
+# Typesetting Pipeline Integration
+
+Planning analysis and implementation status, 2026-11-14.
+The stage 1 section records the agreed implementation contract, including
+the resolutions of its remaining design questions. Stage 2 is implemented in
+khipu and stages 3A–3C in typography; signatures for later integration and intrinsic
+measurement remain plans.
+Source inspection covered sibling `css-box-layout`, `tytui`, `typography`, and
+`cords` checkouts. The initial review was source-only; implementation checks are
+recorded with the completed stages below.
+
+## Objective and recommendation
+
+Make khipu adaptable to `css-box-layout`'s `InlineLayouter` and
+`IntrinsicMeasurer` through its public API. Khipu need not implement those
+interfaces or import CSS layout types.
+
+Recommended direction:
+
+- Prepare shaped text and horizontal knot material when accurate measurement or
+  layout is first requested; reuse that preparation across the two operations.
+- Add explicit, indivisible atomic inline items with stable identities.
+- Provide a dedicated intrinsic-width operation, separate from line breaking.
+- Keep vertical assembly and atomic placement in `typography/paragraph`.
+- Initially represent objects with U+FFFC anchors in the paragraph cord and a
+  separate typed attachment table; leave the rope storage model unchanged.
+- Build paragraph input from normalized inline groups, using styled-document
+  properties and retaining DOM provenance separately.
+
+## Evidence and baseline boundaries
+
+This section records the source analysis before stage 2. The stage 2 and 3A–3C status
+below describes the implemented changes; subsequent integration work remains planned.
+
+Prefer current source signatures over older integration sketches. In particular,
+the old `AtomicSizer` callback and line-box return contracts are superseded.
+
+| Component | Current behavior | Integration gap |
+|---|---|---|
+| CSS inline layout | Supplies normalized group, owner, definite CSS-pixel content width, used values, and prepared atomic border sizes | Actual typography adapter and placements |
+| CSS intrinsic measurement | Supplies group-local nested atomic min/max border widths and resolved edges | Actual paragraph measurement |
+| Khipu | Shapes, encodes, breaks, reorders, and freezes paragraphs | Atomic input/identity and intrinsic queries |
+| Typography paragraph engine | Orchestrates encode/break/freeze and assembles line heights and a boxed vlist | Mixed input, atomic vertical contributions, and placements |
+| Cords styled text | Stores styled UTF-8 and resolves paragraph bidi | No attachment envelope; storage itself is sufficient for placeholders |
+
+Primary local references:
+
+- [CSS interfaces](../../css-box-layout/layout/interfaces.go),
+  [intrinsic scheduling](../../css-box-layout/layout/intrinsic.go), and
+  [atomic preparation](../../css-box-layout/layout/atomic.go).
+- [CSS integration contract](../../css-box-layout/doc/Document-Layout-Integration.md)
+  and [frozen decisions](../../css-box-layout/doc/Exec-Roadmap.md).
+- [Tytui document exploration](../../tytui/doc/DOCUMENT_LAYOUT_EXPLORATION.md),
+  [pipeline ownership](../../tytui/doc/type-integr.md), and
+  [paragraph engine plan](../../tytui/doc/PARAGRAPH_ENGINE_PLAN.md).
+- [Khipu algorithm](KHIPU_ALGORITHM.md), [frozen API](FROZEN-API.md),
+  [hyphenation](HYPHENATION.md), and [whitespace policy](WHITESPACE.md).
+
+## Ownership and dependency direction
+
+| Owner | Responsibility |
+|---|---|
+| `w3c-dom` | DOM identity, cascade, inheritance, reusable CSS value services |
+| `css-box-layout` | Box normalization, containing constraints, recursive intrinsic scheduling, atomic sizing, authoritative document geometry |
+| Integration adapter | Collect normalized groups, translate supported CSS policy, retain source/BoxID associations, convert units, publish document results |
+| Caller / upstream font preparation | Ensure supplied fonts cover the text assigned to them; arrange any coverage checking and fallback needed before typesetting |
+| Typography resolver/itemizer | Style resolution and script/itemization with supplied fonts; bypass attached objects. Existing coverage checks are transitional, not the intended ownership boundary. |
+| `khipu` | Horizontal preparation, break opportunities, intrinsic advances, breaking, frozen visual material and provenance |
+| `typography/paragraph` | Line-height contributions, baselines, vertical stacking, paragraph-local atomic placements |
+| Rendering/application | Paint, document transforms, inspection, replay and proofs |
+
+Khipu remains independent of DOM, CSS layout, and concrete font backends.
+CSS core continues to prepare nested atomics before delegating the outer group;
+no adapter-initiated recursive sizing callback is needed.
+
+**Glyph coverage is the caller's responsibility.** Khipu and paragraph layout
+trust the supplied text-to-font assignments; they do not perform a coverage
+preflight or search for fallback fonts. Stage 3 introduces no new coverage
+validation, including for callers supplying prepared styled text directly.
+Structural input validation and propagation of shaping/backend errors remain
+unchanged; neither is a promise to verify glyph availability.
+
+The typography itemizer currently performs coverage checks and coverage-driven
+fallback selection. This describes existing behavior, not the intended permanent
+allocation of responsibility. **Future task: walk back coverage checking in the
+itemizer and relocate that functionality to a separate caller-side font-preparation
+facility.** Define its destination/API and the migration of dependent fallback
+behavior separately. Stage 3 does not implement that relocation or expand the
+existing checks; while they remain, attached object markers must bypass them.
+
+```text
+normalized inline group
+    -> adapter + typography itemization
+    -> prepared text knots + atomic anchors
+         -> intrinsic query -> CSS width selection and atomic preparation
+         -> bind final atomic advances -> break -> freeze
+    -> paragraph assembly: line heights + atomic placements
+    -> adapter: extent + BoxID placements, retained typed paragraph result
+```
+
+## Measurement: shape first, defer final layout
+
+The current intrinsic interface returns authoritative bounds with no estimate or
+accuracy indicator. CSS core uses them directly for shrink-to-fit selection:
+
+```text
+usedContentWidth = min(max(minContent, availableContent), maxContent)
+```
+
+Character counts and nominal glyph metrics can disagree with layout because of
+fallback, ligatures, combining marks, font features, and spacing. Do not use them
+as an implicit implementation of this interface. An explicitly approximate API
+could be considered later if a caller demonstrates a need.
+
+Accurate measurement needs shaping and break analysis, but does not need final
+atomic widths, selected lines, visual ordering, freezing, or vertical assembly.
+Thus width-independent knotting should be reusable; a fully bound working
+`Khipu` need not be the public measurement prerequisite.
+
+The existing [performance measurements](PERFORMANCE.md) show synthetic encoding
+costing substantially more than ordinary breaking. Reuse is therefore the first
+optimization to pursue. These measurements were not rerun for this analysis.
+
+### Intrinsic semantics
+
+- Max-content uses natural advances with optional wrapping suppressed and forced
+  breaks respected.
+- Min-content evaluates supported wrapping opportunities, including supported
+  discretionary replacements.
+- Generated paragraph fill and alignment stretch do not contribute.
+- Measurement and layout use the same whitespace and break policy.
+- Style/shaping boundaries do not automatically introduce line breaks: an
+  unbreakable sequence can span several knots.
+- Atomic min/max contributions are supplied separately from final advances.
+
+`MinContent`/`MaxContent` must not reuse `KnotCore.MinW`/`MaxW`: those fields
+describe line-fitting elasticity. Summing them, finding the widest knot, or
+running a very wide/zero-width paragraph is not an intrinsic measurement
+algorithm. Breaker scoring, emergency behavior and mutable selections are not
+part of intrinsic sizing.
+
+The ordinary-wrapping case can scan legal boundaries and natural advances with
+the appropriate edge treatment. Discretionary replacement paths require their
+own evaluation; they cannot be inferred from previously selected breaks.
+
+### Hyphenation limitation
+
+Discovery is currently lazy. Intrinsic measurement must discover the alternatives
+required by its policy rather than depend on a previous layout's cache contents.
+The current model allows one split per textbox: multiple soft hyphens offer
+alternative single splits, not successive splits of the remaining fragment.
+
+First establish exact measurement under an explicitly selected ordinary-wrapping
+profile. Add discretionary-aware measurement as a separate substep. Before
+claiming general CSS min-content support, extend repeated splitting consistently
+in measurement and layout, or explicitly reject unsupported cases. Do not silently
+disable hyphenation in measurement while retaining it in final layout.
+
+CSS references: [intrinsic sizes](https://www.w3.org/TR/css-sizing-3/#intrinsic-sizes)
+and [hyphenation](https://www.w3.org/TR/css-text-3/#hyphenation).
+
+## Atomic input and source coordinates
+
+U+FFFC is Unicode's **OBJECT REPLACEMENT CHARACTER**, intended to mark the
+position of an embedded object in a text stream, with its object/formatting data
+held separately. This standard meaning directly matches our proposed atomic
+anchors; the character itself supplies neither dimensions nor object identity.
+It is distinct from U+FFFD REPLACEMENT CHARACTER (`�`), used for unknown or
+unrepresentable characters. See the [Unicode Standard, Chapter 23](https://www.unicode.org/versions/Unicode17.0.0/UnicodeStandard-17.0.pdf).
+
+Recommended initial representation:
+
+```text
+Logical items: Text("Hello ") -- Atomic(id=7) -- Text(" world")
+Cord:          "Hello \uFFFC world"
+Attachment:    paragraph anchor -> item 7
+Adapter:       item 7 -> CSS BoxID
+```
+
+The attachment, not the character alone, establishes object semantics. A literal
+U+FFFC without an attachment must have an explicit documented interpretation.
+Each attached object occupies one scalar/three UTF-8 bytes in the prepared
+paragraph, even when its dimensions are zero. Adjacent objects have distinct
+anchors and identities.
+
+The marker participates in paragraph bidi analysis but is not text requiring a
+font glyph: it bypasses shaping and any existing upstream coverage checks.
+Object boundaries split text shaping/itemization; no glyph cluster
+may absorb an attached marker. Preserve paragraph byte/scalar coordinates and
+feature-domain mappings when omitting markers from shaper input.
+
+The paragraph source is the prepared stream, including markers. It is not the
+original HTML. Extend adapter provenance with an object association rather than
+fabricating text-node ranges containing the object's descendants. Preserve the
+existing meaning of frozen source ranges as ranges in the supplied paragraph.
+
+Inline-block interiors are bidi-independent from surrounding text; the outer
+item participates neutrally. See [atomic-inline bidi treatment](https://www.w3.org/TR/css-writing-modes-3/#bidi-atomic-inlines).
+
+Zero-byte attachments are less suitable initially: they require ordering multiple
+items at one offset, explicit bidi participation, and new line/source mapping.
+Current [generated-material placement](../generated_placement.go) only accepts
+the validated source-less paragraph trailer.
+
+### Separate intrinsic, horizontal, and vertical data
+
+| Operation | Atomic data |
+|---|---|
+| Preparation | Stable ID and anchor; supported resolved boundary policy |
+| Intrinsic measurement | Minimum/maximum inline contribution |
+| Final horizontal layout | One definite advance |
+| Paragraph assembly | Border dimensions, margins, alignment/baseline data |
+
+Once prepared by the caller for final layout, an atom is fixed-width:
+`MinW == W == MaxW`. Its intrinsic range is not permission for the line breaker
+to resize it.
+
+Keep attachments outside font/style payloads. Put the minimal shared input
+vocabulary in a dependency-light contract usable by both itemization and encoding;
+stage 1 selects the existing `khipu/contracts` package. A convenience builder may later belong in
+`cords/styled`, but changing `CordEx`, chunks, or tree summaries is not required.
+
+## DOM, styled document, and normalized group extraction
+
+The DOM supplies provenance; the styled document supplies effective properties;
+the normalized layout tree determines formatting participation and paragraph
+groups. One DOM element may generate several boxes/groups.
+
+The adapter walks the supplied normalized group in order. It traverses ordinary
+inline descendants, reads referenced text and effective typography, and emits one
+anchor at each atomic boundary while skipping that boundary's entire subtree.
+The interior is handled by independently scheduled groups.
+
+[Tytui extraction](../../tytui/htmlinput/extraction.go) provides useful inheritance,
+whitespace, bidi and provenance behavior, but its selected-subtree eligibility
+rules cannot define document paragraph boundaries.
+
+Normalize whitespace across the complete ordered text/object sequence. Separate
+normalization of each text fragment would erase meaningful spaces beside objects.
+Preserve inline structure associations needed for edges, empty inline elements,
+and later fragments. Initially restrict ordinary inline margins/padding/borders
+to an explicit supported subset; reject unsupported contributions instead of
+silently omitting them.
+
+## Required changes inside khipu
+
+1. Add a direct non-glyph candidate path. The current
+   [candidate accumulator](../candidate_knots.go) is driven by shaped clusters;
+   objects must enter the ordered sequence directly, including object-only input.
+2. Add an explicit atomic knot kind and private identity references. Do not
+   disguise atoms as textboxes, whose validation requires shaping records and
+   whose classification participates in discretionary discovery.
+3. Treat atoms as content for line-edge trimming. Both breakers and
+   [logical materialization](../logical_lines.go) currently recognize only
+   `KTTextBox` as content protecting adjacent spaces. A custom retained-neutral
+   knot would not suffice. Share the content classification across these paths.
+4. Carry atomic identity through materialization, visual permutation, width
+   allocation, and freezing. Expose typed frozen atomic access; `CopyText` remains
+   false for atoms. Zero-sized atoms must survive exactly once.
+5. Apply resolved object boundary policy before knot grouping. Both sides may
+   introduce opportunities; do not mutate penalties after text has already been
+   grouped across a required boundary.
+6. Keep atoms indivisible and ineligible for hyphenation. Preserve source coverage,
+   cancellation, validation, and atomic publication behavior.
+
+Raw UAX classification is not the complete CSS boundary policy. CSS specifies
+particular behavior around atomic items and NBSP, word joiners, and related
+classes. The adapter resolves supported CSS behavior into neutral input policy;
+khipu need not parse CSS strings. See [line-breaking details](https://www.w3.org/TR/css-text-3/#line-break-details).
+
+## Paragraph assembly and CSS adaptation
+
+`typography/paragraph` must include atomic vertical contributions and retain
+placements. Merely exposing horizontal object knots cannot satisfy the layout
+interface. Existing assembly either ignores non-text material for font metrics
+or treats it as source-styled space; atoms need a separate branch.
+
+For the initial horizontal, bottom-margin-edge alignment policy:
+
+```text
+advance = borderWidth + marginLeft + marginRight
+borderX = visualPenX + marginLeft
+borderY = lineBaseline - marginBottom - borderHeight
+```
+
+Include the object's margin-box contribution in line extents. Preserve signed
+margins and test overflow and aggregate geometry limits. Core already supplies
+border dimensions including padding/borders: do not add these again. Return
+border origins after margin/alignment effects; core must not add margins again.
+
+`PreparedAtomic` currently has W/H only. This supports the bounded policy already
+proposed by the CSS integration notes, but full inline-block baseline behavior
+needs an internal baseline contribution. Define that later through core preparation
+or explicit retained integration data, rather than guessing from height.
+See [CSS baseline rules](https://www.w3.org/TR/CSS22/visudet.html#propdef-vertical-align).
+
+Additional mismatches:
+
+- CSS permits zero content width; `paragraph.Run` currently requires positive
+  width. Define zero-width behavior for empty input and overflowing indivisibles.
+- `paragraph.Run` currently chooses breaker-specific layout defaults internally.
+  Expose resolved spacing/alignment control so changing breakers does not
+  implicitly change the intended paragraph policy.
+- Unit conversion belongs at the adapter: CSS px -> DU, and fractional big points
+  -> CSS px. `khipu/dimen.PX` is not the CSS pixel conversion. Check range and
+  rounding without narrowing retained glyph geometry to float32.
+
+Retain concrete paragraph results by group BoxID with OwnerID. Translate stable
+atomic IDs to exactly one placement per prepared BoxID, including zero-sized
+items. Return extent plus placements; lines and glyphs remain in typed retained
+results. Publish those results, source/paint associations and geometry only after
+the entire document succeeds. Discard invocation-local work on failure.
+
+## Proposed public API capabilities
+
+These are the capability overview; concrete proposed signatures and their
+recommended contracts appear in the stage 1 section below.
+
+| Capability | Contract direction |
+|---|---|
+| Mixed paragraph input | Styled paragraph plus validated object anchors and resolved boundary policy |
+| Prepared paragraph | Opaque reusable shaping, knot templates, provenance, and unresolved atomic slots |
+| Intrinsic query | Prepared material plus atomic bounds -> content min/max widths |
+| Bind layout material | Prepared material plus definite atomic advances -> owned working Khipu |
+| Frozen atomic access | Frozen knot -> stable object identity |
+| Paragraph assembly | Frozen material plus atomic geometry -> vlist and placements |
+
+Keep `EncodeParagraph` as a text-only convenience. Reuse existing run preparation,
+candidate construction and shaping storage rather than build another shaper path.
+
+Preparation reuse must not imply that today's `Khipu` is immutable: breakers
+replace selected discretionaries. Layout attempts need independent mutable work
+and selections; immutable shaping records may be shared. Specify ownership of
+lazy candidate caches explicitly. Start with invocation-local reuse; defer global
+caching, invalidation and speculative-layout acceptance protocols.
+
+Measurement may retain private preparation, but must not publish a final paragraph
+result, placement, or geometry. Final layout binds the selected atomic sizes and
+freezes its own decisions before publication.
+
+## Staged implementation plan
+
+### 1. Freeze mixed-input and ownership contracts
+
+Specify anchor/ID validation, byte/scalar domains, separate measurement and final
+dimensions, supported boundary policy, errors, and bounded vertical alignment.
+Resolve the API/package questions below and reconcile stale sibling documentation.
+
+Acceptance: examples cover text-only, object-only, adjacent objects, nested
+atomics, and source mapping without requiring DOM types in the paragraph engine.
+
+### 2. Encode fixed-size atomics through freezing
+
+**Implemented.** `contracts.AtomicID`/`AtomicAnchor`, `ParagraphInput`,
+`PrepareOptions`, `PrepareParagraph`, `AtomicAdvance`, `BindParagraph`,
+`KTAtomic = 3`, and `FrozenKhipu.Atomic` provide the core mixed-input path.
+Preparation retains private unbound knot templates and immutable shaping records;
+binding creates independent working planes, source associations, discretionary
+caches and selected decisions. Shared shaping slices are capacity-limited so
+appending replacements cannot overwrite another binding's records.
+
+Attached markers stay in Unicode/bidi analysis and source coordinates, but are
+removed from shaping runs before style resolution and feature intersection.
+Atoms enter candidate accumulation directly. Both breakers and freezing use
+the same content classification, preserving zero-width atoms and spaces between
+content items. Frozen identity follows physical bidi order; CopyText is absent
+for atoms. Unattached U+FFFC and the legacy EncodeParagraph path remain text.
+
+Boundary overrides and preparation-time hyphenation modes are enforced. Signed
+advances retain widened intermediate sums in breaker bookkeeping; negative
+completed line geometry returns ErrUnsupportedPolicy during freezing. Positive
+overfull output within the finite domain retains existing diagnostics.
+
+Regression coverage: `paragraph_input_test.go`, `atomic_integration_test.go`,
+and `linebreak/wss_test.go`, alongside the existing text-only suite. Coverage
+includes attachment validation, marker/style bypass, feature domains, original
+byte/scalar coordinates, binding isolation, bidi, zero width, multiline boundaries,
+overfull atoms, signed-prefix recovery, and frozen snapshot stability.
+
+The implementation scope is limited to the core. Typography itemization,
+CSS geometry/placement adapters, and intrinsic measurement remain stages 3–5;
+no changes to cords or sibling modules are required for this stage.
+
+Implement object-aware preparation, direct candidate insertion, content
+classification, and frozen identity. Audit both breakers and every intermediate
+representation; preserve text-only behavior.
+
+Acceptance: both breakers retain each object exactly once, never shape or
+hyphenate it, preserve appropriate surrounding spaces, and handle mixed bidi,
+zero-sized and overfull objects. Invalid attachments fail without partial output.
+
+### 3. Complete fixed-size paragraph/CSS integration
+
+**Stages 3A–3C implemented; stages 3D–3F remain planned.** The source review finds that khipu's
+stage 2 API and CSS core's current callback contracts cover the required horizontal
+boundary. Most implementation belongs in typography and the document integration
+layer. Deliver six reviewable increments, in the order below. Source inspection
+is not evidence that the combined pipeline already builds or passes these tests.
+
+#### Module boundaries
+
+| Module/package | Stage 3 responsibility |
+|---|---|
+| `khipu` | Keep the stage 2 mixed-input, binding and freezing APIs; add integration regressions and fix demonstrated core defects. No API redesign is planned. |
+| `typography` | Atomic-aware projection/itemization and preservation of original feature domains. Exclude markers from existing checks; add no coverage validation. Relocating coverage checking out of the itemizer is future work. No DOM, CSS box-tree or concrete backend dependency in the generic package. |
+| `typography/paragraph` | Prepared orchestration, atomic geometry validation, vertical assembly and detached placements. No CSS parsing, source locators, paint or box-tree traversal. |
+| `tytui/documentlayout` (proposed) | Styled-document-to-render-input adaptation, normalized-group traversal, CSS/paragraph bridge, unit conversion, invocation-local retention and document publication. |
+| `tytui/htmlinput` | Reuse or factor computed-style, normalization and provenance-emission helpers; retain the existing single-paragraph extraction behavior. |
+| `css-box-layout` | Continue owning normalization, used dimensions, nested atomic preparation and block positioning. Verify the real adapter against existing interfaces; reconcile stale documentation. |
+| `cords` | No planned changes: styled text, U+FFFC storage and zero-byte bidi markup suffice. |
+| `w3c-dom` | Reuse existing CSS services. Any demonstrated general cascade/computation defect belongs here, without typography dependencies. |
+
+Use the concrete signatures in the stage 1 proposal below. The new tytui package
+is application integration initially, not a new general-purpose layout library.
+Do not recreate the removed tytui paragraph engine or move CSS orchestration into
+khipu. Keep resource loading, discovery and concrete font adaptation at their
+existing boundaries.
+
+#### Initial supported policies
+
+The document bridge initially supports nested inline blocks with definite,
+nonnegative fixed-pixel widths. CSS core determines their completed border sizes
+and lays out their interiors before the enclosing group's callback. Pass no
+intrinsic measurer to fixed-width flow; reject auto-width atomics rather than
+invent estimates. Intrinsic measurement and auto sizing remain stages 4 and 5.
+
+Use `CSSLineHeight` with `normal`, `NoHyphenation`, supported horizontal text/bidi
+processing, and `AlignBottomMarginEdge`. This alignment is the agreed bounded
+policy, not a claim of full CSS inline-block baseline behavior. Resolve the
+paragraph strut from the owning paragraph's typography, including for object-only
+groups; do not choose it from the first glyph or a fallback run.
+
+Resolve horizontal skips explicitly and pass the same values to either breaker
+and freezing. Use zero natural alignment skips initially; do not let changing
+breakers silently choose a different paragraph alignment policy. General
+`text-align` mapping and indentation are not implied by this bridge. The generic
+paragraph API still preserves existing profiles when `Horizontal == nil`.
+
+Zero available width and zero-sized objects are valid. Positive overfull lines
+remain successful results with diagnostics. Signed margins/advances retain the
+stage 1 finite-domain and negative-completed-line restrictions. Atomic border
+sizes already contain padding and borders; add only margins to their contribution.
+
+The extraction subset uses normal whitespace collapsing. Reject unsupported
+authored policies explicitly, including auto-width atomics, nonzero ordinary-inline
+edges, metric-bearing empty inline elements, preserved whitespace/explicit breaks,
+and richer vertical alignment. Authored line-height values beyond `normal` require
+the separate DOM computation work before acceptance. This bridge restriction does
+not remove the paragraph engine's existing typed factor/length support. Preserve
+legacy text-only proof and replay behavior; no document replay format is added.
+
+#### 3A. Make typography itemization atomic-aware
+
+Implement the agreed `Resolver.ItemizeInline(ctx, text, spans, atomics, policy)`
+entry point while retaining existing text-only itemization APIs. **Implemented
+in typography:** [inline.go](../../typography/inline.go) owns anchor validation,
+atomic-aware projection and private feature windows;
+[itemize.go](../../typography/itemize.go) shares the existing text algorithm;
+[resolver.go](../../typography/resolver.go) resolves those windows for shaping.
+
+Coverage assurance belongs to the caller, as specified under ownership above.
+This increment adds no coverage preflight, missing-glyph validation or fallback
+requirement. The itemizer's existing coverage functionality will be moved elsewhere
+in a future task; making markers bypass that current code is not an endorsement
+of keeping coverage validation in itemization.
+
+Begin in projection/coalescing: [ProjectStyles](../../typography/bypass.go) resolves
+styles before [itemization](../../typography/itemize.go). Skipping only the existing
+coverage checks would still resolve object-only spans. Attached markers must bypass
+style/font resolution and those checks, separate text grapheme/script/fallback
+processing, and produce no text `Binding`. Preserve marker bytes and original
+paragraph scalar positions. Unattached U+FFFC remains ordinary text.
+
+Do not independently itemize text substrings on either side of an atom and reset
+their feature coordinates. Retain private original-domain/window metadata and
+clip/rebase features deliberately for emitted text fragments. Keep marker source,
+paint and bidi metadata outside text font bindings.
+
+Acceptance: object-only styles need no font mapping or placeholder glyph; literal
+U+FFFC remains text under the caller's font-coverage responsibility; no new coverage
+pass is introduced in preparation or layout. Combining characters, existing
+fallback behavior, paint boundaries and range-limited features remain correct
+before and after atoms. Existing text-only itemization and legacy paint-policy
+regressions remain unchanged pending the separate coverage-relocation task.
+
+Implementation details and boundaries:
+
+- Anchor IDs must be unique and nonzero, offsets strictly increasing, and each
+  offset must select one complete U+FFFC. Invalid UTF-8 is rejected before cord
+  construction. Original bytes remain intact; attached markers are unstyled gaps
+  without text bindings. Return no partial itemization on error.
+- Apply the existing paint policy to text-bearing source spans before slicing
+  around atoms. A separate object-only span is a domain barrier: it is skipped
+  without resolving its style, not used to coalesce neighboring text. Structural
+  span validation still applies. With no anchors, use the existing text-only path.
+- Record each projected domain's original byte identity and each emitted text
+  window's scalar coordinates, counting marker scalars. `ResolveStyle` intersects
+  late-supplied features with that window and rebases them locally. Empty overlaps
+  disappear; feature order, values and disabled entries survive. Script/fallback
+  splits retain the same original domain. Khipu can then apply its existing bidi
+  intersection without resetting the origin. Retain the returned style values.
+- Request slices are neither modified nor retained. Source/paint/bidi association
+  stays with the caller, which passes the same anchors to khipu preparation.
+  No new public metadata record or dependency on a concrete font backend is needed.
+
+Regression evidence: [generic itemizer tests](../../typography/inline_test.go)
+cover object-only style bypass, literal markers, adjacent objects, combining
+characters, soft hyphens, fallback/script barriers, both paint policies, nonzero
+feature origins, invalid anchors/UTF-8, cancellation and caller ownership. The
+horizontal integration tests preserve multibyte/LTR/RTL source coordinates through
+both breakers and freezing. [Real-font tests](../../typography/adapter/opentype/inline_test.go)
+apply a range-limited ligature after an atom and check exact glyphs and original
+cluster positions with both breakers and paint policies. Typography and tytui
+ordinary/race suites, builds and vet checks verify compatibility, including the
+generic dependency audit and existing replay fixtures.
+
+Stage 3A adds no coverage validation and does not relocate existing checks. It
+requires no production changes in khipu, cords, CSS core or tytui. Paragraph
+preparation/vertical assembly are implemented in stages 3B/3C below; the document
+bridge remains stages 3D onward.
+
+#### 3B. Add prepared paragraph orchestration
+
+**Implemented together with stage 3C**, so mixed layouts return complete frozen
+content and vertical geometry. [prepared.go](../../typography/paragraph/prepared.go)
+owns preparation and reusable layout; [layout.go](../../typography/paragraph/layout.go)
+shares breaking/freezing and result assembly with the existing `Run` path.
+
+Extend [paragraph.Input and orchestration](../../typography/paragraph/layout.go)
+with the agreed `Input.Atomics`, `Prepare`, `Prepared.Layout`, `AtomicBox`,
+`AtomicMargins`, `HorizontalLayout` and `LayoutRequest` records and operations.
+
+Preparation constructs bidi information once, consumes markup callbacks, and
+retains khipu preparation plus stable source/configuration for assembly. Each
+layout validates atomic geometry, derives advances, binds fresh working material,
+breaks, freezes and assembles. Do not accept independent advances that could
+contradict the supplied border geometry. Clone request/configuration slices as
+needed; retain external services only under their stable-lifetime contracts.
+
+Allow width zero. Explicit horizontal skips replace the profile completely,
+including zero values, and remain identical through breaking and freezing.
+Preserve `Run` as the text-only convenience path and retain its historical error
+stages. Reject nonempty anchors at `Run`'s input boundary because it supplies no
+atomic geometry. Add `StagePrepare` and `StageBind` with the stage 1 cause-preserving
+error mapping; measurement and `StageMeasure` implementation remain stage 4.
+
+Acceptance: repeated layouts with different widths/object dimensions reuse
+preparation without sharing mutable decisions; no re-itemization or loss of
+private styles; cancellation/failure returns no partial result, leaves preparation
+reusable, and cannot change an earlier frozen result or vlist. Owner operations
+remain serialized rather than gaining an implicit concurrent-use promise.
+
+Implementation retains persistent styled text and resolved bidi segments, never
+the markup callback. It copies anchor/boundary slices, configuration envelopes
+and feature defaults; line-layout ranges and atomic geometry are detached per
+layout. New atomic advances are always derived from border dimensions/margins.
+All layout attempts use fresh bound material. `Run` still uses its original
+encoding/hyphenation path and `StageEncode`, but shares subsequent orchestration;
+it now accepts width zero and rejects atomic input at `StageInput`. New
+`StagePrepare`/`StageBind` errors preserve causes, including argument, backend and
+cancellation errors. `MeasureIntrinsic`/`StageMeasure` remain unimplemented.
+
+Acceptance evidence: [prepared tests](../../typography/paragraph/prepared_test.go)
+exercise repeated widths and atomic dimensions, default and explicit skips,
+consumed markup, stable private styles, copied requests/configuration, detached
+diagnostics/vlists and recovery after binding, breaking, freezing and assembly
+failures. [OpenType integration](../../typography/adapter/opentype/prepared_test.go)
+checks range-limited ligatures and original scalar anchors through both breakers
+and repeated layouts without reshaping base text. Existing text-only, hyphenation
+and replay cases remain compatible. Typography and tytui ordinary/race suites,
+builds and vet checks pass; no tytui production adaptation is part of this stage.
+
+#### 3C. Assemble atomic vertical geometry and placements
+
+**Implemented.** [atomic.go](../../typography/paragraph/atomic.go) owns checked
+border/margin geometry, advance derivation and physical placement traversal.
+Both assembly policies now handle atomics explicitly, and `VList.AtomicPlacements`
+returns detached border origins.
+
+Geometry-aware assembly behind `Prepared.Layout` provides the agreed detached
+`VList.AtomicPlacements()` accessor. Before this stage,
+[compatibility assembly](../../typography/paragraph/assemble.go) ignored objects,
+while [CSS line-height assembly](../../typography/paragraph/lineheight.go) treated
+non-glyph material as source-styled space. Both now have distinct atomic branches
+and exclude marker-only ranges from eager source-metric resolution.
+
+For bottom-margin-edge alignment, use:
+
+```text
+advance       = borderWidth + marginLeft + marginRight
+aboveBaseline = marginTop + borderHeight + marginBottom
+belowBaseline = 0
+
+borderX = visualPenX + marginLeft
+borderY = lineBaseline - marginBottom - borderHeight
+```
+
+Combine signed atomic contributions with text extents and the paragraph strut
+before validating final geometry; do not apply text half-leading to markers or
+clamp each object's contribution separately. Walk all frozen knots, including
+glue, to advance the visual pen from the line origin plus its left skip. Do not
+reorder physical knots a second time.
+
+Placements are ordered by line and frozen-knot traversal, not numerical X. Zero
+advances can share X and negative advances can make X nonmonotonic. Preserve
+existing text-only compatibility calculations. The old frozen-only `Assemble`
+must reject atom-containing input without supplied geometry rather than silently
+ignore it; a frozen advance alone cannot recover border height or margins.
+
+Acceptance: independent numeric line-height, baseline and border-origin oracles;
+object-only and mixed lines; negative margins, zero sizes, RTL and coincident
+positions; margins/padding/borders counted once; detached placement slices and
+stable old vlists after subsequent layouts.
+
+The CSS policy retains its explicit paragraph strut and combines signed atomic
+extents before validating the completed line. Marker-only source ranges bypass
+eager font-metric resolution; per-range text line-height values do not add leading
+to atomics. The compatibility policy preserves existing text metrics and fallback
+gap, then unites atomic extents with those values. Neither policy infers an
+internal inline-block baseline. Frozen-only `Assemble` now returns
+`ErrUnsupportedPolicy` for atomic content without border geometry.
+
+Owning tests provide independent baseline/height/border-origin expectations for
+object-only and mixed lines, multiple lines, signed extents, margins, zero-sized
+objects, zero target width, coincident positions, RTL paragraph fill and
+nonmonotonic X. They check finite bounds after signed accumulation, overflow of
+published border origins or paragraph height, absent marker font resolution,
+detached placement slices, cancellation and preservation of prior results.
+The document bridge, CSS unit conversion and intrinsic queries remain deferred.
+
+#### 3D. Extract normalized groups with source correspondence
+
+Build typed `RenderNode` input from the styled document, with retained source and
+computed-style lookup, then let CSS core normalize it. Extract each resulting
+`BoxAnonymousInline` group. The current [subtree extractor](../../tytui/htmlinput/extraction.go)
+rejects nested blocks and inline blocks, so calling it once per group is not a
+valid shortcut. Reuse its emission/provenance logic where applicable, not its
+single-selection eligibility rules.
+
+Walk group children in source order. Read `BoxText.TextRef` through the retained
+source table. At `BoxInlineBlock`, emit one marker and skip its entire subtree;
+its interior belongs to independent groups. Assign occurrence-local IDs and
+retain an explicit `AtomicID -> BoxID` association. Anchor ordering follows emitted
+byte positions, never BoxID order or dimension-table iteration.
+
+Collapse whitespace across text nodes while treating atoms as content. Derive
+anchors, styles, paint, line-height ranges and bidi ranges from the same emitted
+byte stream. Store atomic provenance separately as element/box identity, not as
+invented DOM text-node bytes. Anonymous owners need an explicit inherited
+paragraph-style context. Original source locators remain distinct from normalized
+box identities, including when one source element produces split boxes.
+
+Acceptance: split/hoisted inline structure, anonymous groups, nested atomics,
+whitespace on either side of objects, entities, multibyte text and isolates;
+no duplicate extraction of atomic interiors; exact transformed text/source/paint
+correspondence; the existing single-paragraph extraction path remains compatible.
+
+#### 3E. Implement the CSS callback and transactional publication
+
+Implement the existing [InlineLayouter contract](../../css-box-layout/layout/interfaces.go)
+in an invocation-local adapter. Obtain completed border dimensions from
+`PreparedAtomicsView` and margins from `UsedValuesView`, convert to `AtomicBox`,
+then prepare/layout the group. Return overall extent and ID-mapped border placements.
+CSS core retains responsibility for nested preparation and scheduling; the
+paragraph callback must not recurse into atomic interiors or size them again.
+
+Apply the stage 1 conversions and finite checks:
+
+```text
+CSS px -> DU:       round(px * 49152)
+big points -> px:   points * (4/3)
+```
+
+Convert primitive dimensions once and derive advances afterward. Retain paragraph
+geometry as float64 big points; narrow only CSS-facing summaries to float32 after
+validation. Do not overwrite CSS core's prepared border dimensions with quantized
+round-trip values. Conversion tests use the stated per-primitive error budget.
+
+Callback placements are relative to the owner's content origin. Do not add owner
+padding/borders or ancestor offsets there. Document rendering composes those
+transforms once; it does not stack paragraph lines again.
+
+Retain concrete paragraph results, source maps and paint by group BoxID with an
+explicit OwnerID. Publish the table and CSS geometry together only after the whole
+`FlowLayout` succeeds. Capture context in the invocation adapter and check it at
+callback/publication boundaries; existing synchronous collaborator cancellation
+limits remain. Reject duplicate group layout callbacks initially rather than
+silently overwrite results; speculative acceptance is deferred.
+
+Acceptance: every prepared BoxID is placed exactly once, including zero-sized
+objects; correct anonymous-owner and ancestor transforms; no double edges/margins;
+conversion limits and rounding; late failure/cancellation preserves the previous
+complete document snapshot and exposes no partially retained new document.
+
+#### 3F. Verify nested fixed-size integration and align documentation
+
+Start with typed synthetic fixtures, then an HTML/CSS document fixture, then
+real-font integration tests with caller-supplied suitable fonts. Exercise both
+breakers with text-object-text, adjacent and object-only groups, nested fixed-width
+inline blocks, anonymous groups around
+nested blocks, zero available width, overfull objects, signed margins and bidi.
+Include resize, repeated successful invocations and failures after earlier groups
+have already completed. Verify old snapshots after source-input mutation/removal
+where their retained-source contract permits it.
+
+Produce a diagnostic document proof from retained geometry and glyphs without
+remeasurement. Test coordinates and source associations independently of the
+renderer rather than relying on screenshots alone. TUI features and document
+replay are outside this stage. Preserve static paragraph replay fixtures and
+legacy text-only rendering evidence.
+
+Run focused owning tests followed by ordinary/race suites, build and vet in
+typography and tytui, plus relevant khipu and CSS core regressions. Keep generic
+package dependency audits and backend-service tests. Update sibling documentation
+that still describes `AtomicSizer` or line-box callback results, following CSS
+core's existing roadmap rather than creating a separate decision log.
+
+Stage 3 is complete when the nested fixed-size document path demonstrates
+independently checked line heights and border origins, exact-once edge accounting,
+owner-relative placement, retained source/paint and transactional result lifetime.
+No intrinsic-measurement stub, auto-sizing estimate or broader CSS support claim
+is part of that acceptance.
+
+### 4. Add intrinsic measurement and preparation reuse
+
+Factor width-independent prepared material so measurement and layout share shaped
+text while binding different atomic data. Implement ordinary-wrapping measurement,
+then discretionary-aware measurement with explicit handling of the single-split
+limitation. Do not claim broader CSS policy support than the implementation has.
+
+Acceptance: widths are independent of breaker scoring and prior selections;
+multi-knot unbreakable sequences are measured together; fill/alignment do not
+inflate bounds; atomic intrinsic ranges remain distinct from elasticity. Verify
+reuse with service-call counts and detached working state.
+
+### 5. Verify nested auto sizing and result lifetime
+
+Exercise measure -> width selection -> descendant resolution -> final layout.
+Keep CSS core responsible for scheduling and width selection.
+
+Acceptance: nested intrinsic items, conversion/rounding, signed margins, resize,
+cancellation and failure recovery; no measurement publishes accepted layout data;
+old retained results remain usable after new successful or failed invocations.
+
+## Initial design questions
+
+The following table records the initial questions. The stage 1 proposal below
+recommends concrete answers; its final subsection identifies what remains open.
+
+| Decision | Recommended starting point / unresolved detail |
+|---|---|
+| Attachment representation | U+FFFC plus typed side table; finalize builder and validation API |
+| Shared package | Dependency-light contract usable by itemizer and encoder; avoid engine dependency in basic input vocabulary |
+| ID scope | Stable within prepared paragraph/invocation, mapped to BoxID by adapter; finalize zero/duplicate rules |
+| Unattached U+FFFC | Explicit literal-text or rejection behavior; never infer attachment |
+| Prepared-state ownership | Immutable shared shaping with separate working state; decide cache ownership and context-aware discovery |
+| Intrinsic policy | Exact supported semantics; define whitespace, discretionary and boundary profiles explicitly |
+| Repeated discretionary splits | Extend both paths or reject unsupported CSS cases before claiming general min-content support |
+| Boundary policy API | Neutral resolved opportunities/constraints applied before grouping; settle interaction with mandatory breaks and Unicode rules |
+| Vertical alignment | Bottom margin edge initially; define future baseline source and optional richer alignment |
+| Inline edges and empty elements | Preserve structural associations; specify supported subset and later fragmentation behavior |
+| Zero width and signed geometry | Specify outcomes and validation limits consistently through both breakers, freeze, and assembly |
+| Paragraph spacing/alignment | Expose resolved geometry without duplicating authorities; preserve existing compatibility behavior |
+| Replay | Keep current text-only fixtures stable; define a versioned object/document format only when persistence is requested |
+
+Preserved whitespace modes, glyphless mandatory breaks/blank lines, tabs, full
+CSS inline fragmentation, vertical writing, and speculative layouts are separate
+extensions. Existing unsupported cases should continue to fail explicitly.
+
+## Stage 1 API proposal
+
+Proposed and refined on 2026-11-14. The remaining stage 1 questions are resolved
+below as concrete recommendations for implementation; later-stage extensions stay
+explicitly deferred. These are documentation decisions, not implemented APIs.
+Existing text-only entry points retain their behavior. Code snippets omit imports
+and implementations.
+
+### Shared object vocabulary and ordering
+
+Place the minimal vocabulary in `khipu/contracts`, which the typography itemizer
+already consumes. No additional package is needed initially.
+
+```go
+// Package contracts.
+type AtomicID uint64
+
+type AtomicAnchor struct {
+    ID         AtomicID
+    ByteOffset uint64 // Paragraph-relative start of one U+FFFC.
+}
+```
+
+IDs identify occurrences, not reusable resources: two uses of one image have
+different IDs. IDs are nonzero and unique within one prepared paragraph. Anchors
+are strictly ordered by byte offset, and each addresses exactly one U+FFFC at
+`[ByteOffset, ByteOffset+3)`. Duplicate IDs/offsets, invalid byte boundaries,
+out-of-range anchors, and anchors on another character are errors. Zero-sized
+objects still require anchors and identities. An unattached U+FFFC remains
+ordinary text processed by the existing text path, with no inferred attachment.
+
+**Compatibility with css-box-layout:** anchor ordering is a requirement on the
+adapter-produced paragraph slice, not on CSS BoxIDs or the prepared-item views.
+Both `InlineRequest` and `InlineMeasureRequest` provide a normalized `Group`.
+The adapter walks its children in logical order, appends text or a marker, and
+records the marker's resulting byte offset. At each atomic boundary it retrieves
+dimensions by `Atomics.Lookup(node.BoxID)` and skips the interior subtree.
+Neither `PreparedAtomicsView` nor `IntrinsicAtomicsView` specifies an iteration
+order; both are ID lookups. Thus no CSS interface change is needed.
+
+For example, logical order may produce anchors `(offset=6, ID=42)` and
+`(offset=10, ID=9)`: offsets are increasing, IDs need not be. Bidi may later change
+visual order without changing anchor order. Final placement and dimension tables
+are matched by identity, not by slice position. CSS requires exactly one placement
+per prepared item, including zero-sized ones; it does not require placements in
+anchor order. Measurement and layout must use the same extraction semantics and
+ID association. IDs alone are not stable across unrelated document rebuilds.
+
+The adapter may use a checked BoxID conversion directly or maintain its own
+`AtomicID -> BoxID` table. No payload, dimensions, DOM pointer, font style, or
+renderer callback belongs in `AtomicAnchor`.
+
+### Khipu preparation and boundary policy
+
+```go
+// Package khipu.
+type ParagraphInput struct {
+    Paragraph *styled.Paragraph
+    Atomics   []contracts.AtomicAnchor
+}
+
+type PreparedParagraph struct { /* unexported */ }
+
+func (kq *Khipukamayuq) PrepareParagraph(
+    ctx context.Context,
+    input ParagraphInput,
+    options PrepareOptions,
+) (*PreparedParagraph, error)
+
+type BoundaryAction uint8
+
+const (
+    AllowBoundary BoundaryAction = iota + 1
+    ProhibitBoundary
+)
+
+type AtomicBoundary struct {
+    ByteOffset uint64
+    Action     BoundaryAction
+}
+
+type HyphenationMode uint8
+
+const (
+    NoHyphenation HyphenationMode = iota
+    ExplicitHyphenation
+    AutomaticHyphenation // Includes explicit opportunities.
+)
+
+type PrepareOptions struct {
+    AtomicBoundaries []AtomicBoundary
+    Hyphenation      HyphenationMode
+}
+```
+
+Preparation validates input, analyzes boundaries, resolves styles, shapes text,
+and constructs reusable horizontal material with unbound atomic slots. It does
+not fabricate a working Khipu containing zero-width stand-ins. The supplied
+paragraph already carries bidi resolution; the higher paragraph engine constructs
+it from styled text, direction and markup. Markers participate in analysis but
+bypass shaping; they require no font glyph. Preparation introduces no glyph
+coverage validation: the caller supplies suitable text-to-font assignments.
+
+Use one boundary table rather than independent before/after settings on each
+object: adjacent objects share a boundary. Entries are sorted and unique, and may
+only address interior paragraph boundaries immediately before or after attached
+objects. Omission retains Unicode-derived behavior. Allow means an ordinary
+zero-penalty opportunity; prohibit forbids an optional break. Neither splits an
+object. An override that would downgrade a mandatory break is an error. Apply
+the table before grouping knots.
+
+Forced breaks, arbitrary penalty overrides and per-span wrapping controls are
+outside this initial proposal. Adapters reject unsupported policies. CSS-specific
+boundary rules are translated by the adapter into this neutral table.
+
+Hyphenation mode is fixed for the prepared paragraph and used consistently by
+measurement and layout. NoHyphenation disables discovery even if a provider is
+configured; the other modes require the appropriate provider. Missing services
+are errors. Initial intrinsic implementation may support NoHyphenation only;
+other measurement policies then return ErrUnsupportedPolicy, never silently
+downgrade. Existing EncodeParagraph retains its compatibility behavior.
+
+### Intrinsic query and final binding
+
+```go
+type IntrinsicWidths struct {
+    MinContent dimen.DU
+    MaxContent dimen.DU
+}
+
+type AtomicIntrinsic struct {
+    ID                     contracts.AtomicID
+    MinAdvance, MaxAdvance dimen.DU
+}
+
+type MeasureRequest struct {
+    Atomics []AtomicIntrinsic
+}
+
+func (kq *Khipukamayuq) MeasureIntrinsic(
+    ctx context.Context,
+    prepared *PreparedParagraph,
+    request MeasureRequest,
+) (IntrinsicWidths, error)
+
+type AtomicAdvance struct {
+    ID      contracts.AtomicID
+    Advance dimen.DU
+}
+
+func (kq *Khipukamayuq) BindParagraph(
+    ctx context.Context,
+    prepared *PreparedParagraph,
+    atomics []AtomicAdvance,
+) (*Khipu, error)
+```
+
+These inputs are advances, not border dimensions. The CSS integration adds
+horizontal margins to supplied intrinsic border bounds or final border width.
+Khipu does not interpret margin/border/padding fields.
+
+Each request supplies exactly one entry per attached ID. Missing, duplicate or
+foreign IDs are errors; dimension slice order is immaterial. Inputs are copied,
+with no retained caller-owned map or callback. Require MinAdvance <= MaxAdvance.
+Signed contributions are permitted for negative margins, within finite supported
+DU limits. Use checked wider accumulation, not overflow or fill saturation.
+Do not clamp each contribution individually; final paragraph bounds satisfy
+`0 <= MinContent <= MaxContent`.
+
+BindParagraph creates independent working arrays and empty selected decisions,
+sharing only immutable shaping records. Each bound atom has
+`W == MinW == MaxW == Advance`. Existing BreakParagraph and Freeze operations
+then consume that working Khipu and the same resolved geometry.
+
+Measurement takes no target width, line shape, breaker or alignment options and
+does not modify working selections. Detailed discretionary measurement remains
+stage 4 work; prior layout discoveries must not determine the answer.
+
+### Frozen object identity
+
+```go
+func (f *FrozenKhipu) Atomic(knotIndex int) (contracts.AtomicID, bool)
+```
+
+Invalid indexes and non-atomic knots return false. FrozenKnot supplies width and
+source range; Atomic supplies identity, and CopyText returns false for atoms.
+Every attached occurrence survives exactly once, including zero-width objects.
+Allocate `KTAtomic KnotType = 3`, using the currently reserved value. Keep
+KTKern=0, KTGlue=1, KTTextBox=2 and KTUserDefined=5 unchanged; leave 4 reserved.
+Document that custom kinds remain above KTUserDefined. This does not collide with
+the documented custom range, and no supported penalty/discretionary kind is
+revived. Uses of reserved value 3 were not supported extension points. No existing
+wire format gains atomic support merely through this numeric allocation.
+
+### Typography itemization
+
+```go
+// Package typography.
+func (r *Resolver) ItemizeInline(
+    ctx context.Context,
+    text string,
+    spans []typestyle.Span,
+    atomics []contracts.AtomicAnchor,
+    policy PaintPolicy,
+) (styled.Text, []Binding, error)
+```
+
+This preserves marker bytes and source coordinates and prevents object markers
+from being absorbed into text graphemes/shaping runs. It does not size objects or
+introduce coverage validation. Coverage is the caller's responsibility; attached
+objects require no font glyph and bypass the itemizer's existing coverage checks.
+Moving those checks out of the itemizer is a separate future task. Existing
+text-only itemization entry points remain available. Preserve original feature
+domains when splitting around objects; marker removal must not renumber paragraph
+anchors.
+
+### Typography paragraph preparation and layout
+
+```go
+// Package paragraph. Input extends the existing record with Atomics.
+type Input struct {
+    Text      styled.Text
+    Direction bidi.Direction
+    Markup    bidi.OutOfLineBidiMarkup
+    Atomics   []contracts.AtomicAnchor
+}
+
+type Prepared struct { /* private owner and prepared paragraph */ }
+
+func Prepare(
+    ctx context.Context,
+    input Input,
+    options khipu.PrepareOptions,
+    config khipu.Config,
+) (*Prepared, error)
+
+func (p *Prepared) MeasureIntrinsic(
+    ctx context.Context,
+    request khipu.MeasureRequest,
+) (khipu.IntrinsicWidths, error)
+
+type AtomicMargins struct {
+    Top, Right, Bottom, Left dimen.DU
+}
+
+type AtomicAlignment uint8
+
+const (
+    AlignBottomMarginEdge AtomicAlignment = iota + 1
+)
+
+type AtomicBox struct {
+    ID                        contracts.AtomicID
+    BorderWidth, BorderHeight dimen.DU
+    Margin                    AtomicMargins
+    Alignment                 AtomicAlignment
+}
+
+type HorizontalLayout struct {
+    LeftSkip, RightSkip khipu.KnotCore
+}
+
+type LayoutRequest struct {
+    Params     Params
+    Horizontal *HorizontalLayout
+    Atomics    []AtomicBox
+}
+
+func (p *Prepared) Layout(
+    ctx context.Context,
+    request LayoutRequest,
+) (*Result, error)
+
+type AtomicPlacement struct {
+    ID   contracts.AtomicID
+    Line int
+    X, Y float64 // Border origin; fractional big points, Y downward.
+}
+
+func (v *VList) AtomicPlacements() []AtomicPlacement
+```
+
+Layout derives advances from AtomicBox, binds fresh material, breaks, freezes and
+assembles. Callers do not independently supply potentially inconsistent advances
+and border geometry. Border sizes are nonnegative, margins signed, and all sums
+are checked. Inputs use DU; placements preserve the existing fractional-big-point
+output convention. Line is a zero-based paragraph line index. The placement
+accessor returns a detached slice in ascending paragraph line order, then frozen
+visual-knot order within each line (physical left-to-right traversal). This is
+sequence order, not a numeric X sort: negative advances can make coordinates
+nonmonotonic, and zero-width items can share X. Use frozen knot order to break
+all ties. Consumers associate entries by ID, never by dimension-table index.
+An empty placement list may be nil; callers use len rather than nil identity.
+
+Bottom-margin-edge alignment uses the equations given above. Include atomic
+margin-box contributions in line extents without assigning text half-leading to
+the marker. Zero/unknown alignment is an error. Do not expose an internal-baseline
+field until its upstream source and semantics are defined.
+
+Horizontal == nil preserves existing breaker profiles. Otherwise both skips are
+complete authoritative values, including explicit zeros, used for breaking and
+freezing. Only the geometry fields W/MinW/MaxW of the skip cores matter, following
+the existing Params contract. Params.Constraints.Width remains the sole target
+width authority. Measured CSS integration initially uses zero natural alignment
+skips; indentation needs a separate intrinsic policy.
+
+Zero available width is valid, with overfull results for non-fitting indivisibles.
+Preserve existing empty-paragraph/strut behavior; object-only input is not empty.
+Existing Run remains the text-only convenience operation and rejects nonempty
+anchors, since its arguments contain no atomic geometry. Mixed callers use
+Prepare/Layout. New stage errors preserve causes through the existing paragraph
+error envelope, using the stage mapping specified below.
+
+### Ownership, concurrency and failure contracts
+
+| Value | Proposed contract |
+|---|---|
+| Anchor/boundary/dimension slices | Copied by receiving operation; caller may reuse after return |
+| PreparedParagraph | Bound to creating Khipukamayuq; foreign owner use is an error |
+| Source paragraph, arbitrary styles, font services | Retained under stable-source/service lifetime contracts; no promised deep clone |
+| Prepared shaping records | Immutable after publication |
+| Lazy discretionary cache | Private and owner-controlled; publish only complete entries |
+| Bound Khipu | Independent mutable arrays and selections per binding |
+| Frozen result/vlist | Independent of later bindings/selections; concurrent reads under existing immutable-service contracts |
+
+Serialize all operations on one owner, including preparation, measurement,
+binding and discovery. paragraph.Prepared has the same restriction. This is an
+opaque reusable handle, not a promise of concurrent layout through one instance.
+Do not introduce locking, cross-owner transfer, Close, or global caches initially.
+
+Callers must not destructively wrap/edit a retained source paragraph or mutate
+retained style/service objects. Copying slices is not deep-copying styled.Style.
+At the higher boundary, markup callbacks are consumed during preparation; retain
+resolved bidi data rather than requiring those callbacks to survive afterward.
+
+Failure/cancellation publishes no partial result and leaves preparation reusable.
+Completed immutable cache entries may survive a failed attempt; partial candidates
+and selected layout decisions may not. Preserve current cancellation limits of
+synchronous collaborators. Reuse ErrIllegalArguments, propose ErrUnsupportedPolicy
+for supported-shape-but-unimplemented policies, and wrap backend/context causes.
+Nil contexts are invalid. Current frozen-result lifetime guarantees remain intact.
+
+Document publication stays transactional: measure may retain private preparation,
+but only final layout fills accepted-result tables. Publish geometry, paragraph
+results, source maps and paint together after overall success. No replay format
+change or service serialization is implied.
+
+### Stage 1 resolutions: geometry and unit conversion
+
+Use `F = int64(dimen.Fil)` as the exclusive finite-magnitude bound. Dimension
+records never accept Fil/Fill/Filll/Infinity as lengths. Existing symbolic fill
+semantics remain valid only for glue capacity fields such as skip MaxW.
+
+- Border dimensions and available width: `0 <= value < F`.
+- Individual margins and atomic advances: `-F < value < F`.
+- Atomic intrinsic endpoints: finite signed values with MinAdvance <= MaxAdvance.
+- Derived advances, margin-box extents and coordinates: calculate in checked
+  int64 before narrowing; do not wrap or silently saturate into a fill sentinel.
+- Intermediate accumulation may cross the DU range and return through signed
+  contributions, provided int64 arithmetic stays valid. Validate completed
+  quantities at their consumption/publication boundary, not every prefix.
+- Final materialized line content width, natural width including side skips,
+  and allocated line width remain nonnegative and below F, matching the current
+  freeze geometry contract. A chosen line with a negative total is unsupported;
+  return ErrUnsupportedPolicy, do not clamp its width or move its contents.
+  There is no automatic retry with a different breaker. Positive overfull lines
+  within the domain remain successful output with existing diagnostics.
+- Margins may exceed border dimensions in magnitude, giving negative atomic
+  advances or negative above/below-baseline contributions. Preserve these signed
+  contributions. Combine vertical contributions with the paragraph strut and
+  other items before validating the final nonnegative line height. Do not clamp
+  an individual object's contribution or rewrite its border dimensions.
+- Final paragraph width/height must be nonnegative and below F in DU-equivalent
+  units. Baselines and border origins may be signed; require finite magnitude
+  below F. Reject arithmetic overflow or out-of-domain published geometry with
+  ErrIllegalArguments. Retained fractional-big-point geometry uses the same
+  bounds without intermediate integer narrowing.
+
+For intrinsic measurement, first evaluate complete candidate spans under the
+selected policy using signed natural contributions and correct edge trimming.
+Let rawMin/rawMax be the resulting group bounds before nonnegative normalization:
+
+```text
+MinContent = max(0, rawMin)
+MaxContent = max(MinContent, rawMax)
+```
+
+Normalize at the completed group boundary, not independently for each atom or
+knot. Preserve signed candidate arithmetic and reject overflow. Both returned
+bounds must be below F; overflowing positive bounds are errors, not capped sizes.
+This normalization does not promise that every signed input can be frozen at
+every width: negative completed line totals retain the explicit limitation above.
+The future intrinsic algorithm must honor these rules without assuming monotonic
+prefix widths. CSS core's separate block-contribution combination remains its own
+contract; the adapter must not reproduce that recursion inside group measurement.
+
+Adopt the pipeline convention `96 CSS px = 72 big points`. Conversion uses
+float64 intermediates, with a finite/range check before conversion to integer DU:
+
+```text
+CSS px -> DU:       round(px * (3/4) * 65536)
+DU -> CSS px:       float64(du) / 49152
+big points -> px:   points * (4/3)
+```
+
+Round to nearest with halfway cases away from zero, as existing candidate-width
+rounding does. Validate the rounded value before casting to DU. Convert each
+primitive border size/margin once, then form advances from those converted
+values; do not separately round an already-summed margin-box width. Measurement
+uses the same conversion for intrinsic border endpoints and margins. Do not use
+outward rounding in only one path, or infer 1 CSS px from dimen.PX.
+
+Retain paragraph output at float64 big-point precision. Narrow only CSS-facing
+extent/placement summaries to float32, after finite/range checks. The core retains
+its original prepared border dimensions; the adapter must not overwrite them
+with quantized round-trip values. Quantization is explicit: each converted
+primitive differs by at most half a DU, with additional float32 rounding at the
+CSS boundary. Tests budget these errors per conversion rather than use an
+unexplained global epsilon. Geometry near the finite limit must be rejected if
+conversion makes it unrepresentable.
+
+### Stage 1 resolutions: errors and compatibility
+
+Add these values to paragraph.Stage:
+
+```go
+const (
+    StagePrepare Stage = "prepare"
+    StageMeasure Stage = "measure"
+    StageBind    Stage = "bind"
+)
+```
+
+| Failure boundary | Stage |
+|---|---|
+| Public-envelope validation, nil handle/context, or already-cancelled context at entry | StageInput |
+| Styled paragraph/bidi construction | Existing StageParagraph |
+| Lower-level PrepareParagraph, including anchor/boundary validation, resolution and shaping | StagePrepare |
+| Intrinsic request validation/evaluation, including unsupported measurement mode | StageMeasure |
+| Final atomic geometry validation, advance derivation and BindParagraph | StageBind |
+| Breaking, freezing, vertical assembly | Existing StageBreak, StageFreeze, StageAssemble |
+
+Cancellation after entry carries the stage executing when it is detected.
+Preserve errors.Is for context cancellation, ErrIllegalArguments,
+ErrUnsupportedPolicy, and backend causes through paragraph.Error.Unwrap.
+Malformed data, unknown enum values, foreign ownership and numeric overflow are
+ErrIllegalArguments; a recognized policy or geometric case intentionally outside
+the supported subset is ErrUnsupportedPolicy. Do not convert all backend errors
+to argument errors. Existing paragraph ErrInvalidInput behavior remains for
+public-envelope validation; wrapping must not discard an available underlying
+cause. No new error sentinel per individual bad field is needed.
+
+Existing Run keeps its historical stage labels, including StageEncode, even if
+it later reuses preparation internally. Its nonempty-anchors rejection occurs at
+StageInput. New Prepare/Layout methods use the mapping above. Tytui may map the
+new stages in future integration, but existing text-only replay diagnostics must
+not change just because internal factoring changes.
+
+Extend paragraph.Input in place with Atomics. Source inspection of current
+typography and tytui callers (including the parlayout/layout import aliases) found
+keyed or empty literals, so no positional-literal migration was identified.
+Adding a field can still break external positional literals; document this source
+compatibility change and migrate any discovered callers to keyed literals during
+implementation. Do not add a second input type or constructor solely to preserve
+positional literals. Nil Atomics preserves existing input meaning. This review
+does not claim compilation of the future API or coverage of external consumers.
+
+### Recommended scope and deferred decisions
+
+Recommendations now made concrete: contracts package for IDs/anchors; U+FFFC
+side-table representation; occurrence-local nonzero IDs; literal treatment of
+unattached markers; owner-bound serialized preparation; copied request slices;
+separate signed intrinsic contributions and fixed layout advances; explicit
+boundary table; fixed preparation hyphenation mode; bottom-margin-edge alignment;
+zero-width support; unchanged cords storage and text-only convenience behavior.
+
+The five remaining stage 1 questions now have recommended resolutions: reserved
+kind 3, line/frozen-knot placement order, checked signed geometry and explicit
+conversion/normalization, prepare/measure/bind error stages, and in-place Input
+extension with keyed-literal compatibility guidance. No unresolved stage 1 API
+question is intentionally left as an implementation prerequisite. Implementation
+must verify these contracts rather than treating this document as test evidence.
+
+Later work remains explicitly deferred: repeated discretionary splitting and its
+intrinsic algorithm; per-span wrapping; full inline-block baseline contributions;
+ordinary inline edge fragmentation and metric-bearing empty inline elements;
+indentation contributions; preserved whitespace/blank lines; global caches,
+speculative acceptance, and object/document replay formats. Initial adapters
+support zero ordinary inline edges and reject unsupported nonzero contributions
+or metric-bearing empty elements. They must not silently ignore these inputs.
+
+Separately deferred: remove coverage checking from the typography itemizer and
+relocate it to caller-side font preparation, with an explicit migration plan for
+coverage-driven fallback. Its destination/API is not settled by this integration
+plan. This future task does not change the caller's responsibility for coverage
+or authorize new coverage validation in stage 3.
+
+### Stage 1 contract examples and acceptance
+
+- Text-only input has empty attachment and dimension slices.
+- Object-only input has one marker and one identity, even for zero dimensions.
+- Adjacent objects have distinct ordered anchors and one shared boundary entry.
+- Repeated resources have distinct occurrence IDs.
+- Nested inline-block interiors are separate prepared paragraphs; the outer
+  paragraph carries only the enclosing atomic occurrence.
+- Logical offsets may increase while BoxIDs decrease; both CSS lookup interfaces
+  remain usable, and bidi may produce a different final visual order.
+- A failed operation permits retry with the same preparation.
+- Two layouts can share preparation while retaining independent frozen results.
+
+## Verification strategy
+
+Use deterministic synthetic contracts first, then real-font integration proofs.
+Include independent numeric expectations, not only screenshots or expectations
+generated from the implementation.
+
+Fixtures should cover:
+
+- A word spanning style/shaping knots without a permitted break.
+- Ligatures, combining marks, multibyte text, and feature domains beside anchors.
+- Mixed LTR/RTL text, isolates, and differently directed atomic interiors.
+- Object-only input, adjacent objects, object-space-object, leading/trailing spaces.
+- Empty groups, zero available width, zero-size objects, and oversized objects.
+- Nested fixed and auto inline-blocks, margins, borders, padding and conversions.
+- Soft hyphens, automatic alternatives, multiple potential splits, and unsupported
+  policies with explicit errors.
+- Cancellation, failed preparation/layout, independent selections, retained
+  results, and concurrent reads of published snapshots.
+
+Run focused owning tests, affected integration suites, build and vet at each
+implementation stage. Run race coverage when introducing shared preparation or
+retained results. Preserve existing paragraph/replay controls. This planning pass
+performed no runtime verification.

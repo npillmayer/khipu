@@ -15,6 +15,7 @@ import (
 // the penalty, which can lie beyond core's glyph-bearing span in a source gap.
 // The generated paragraph trailer has no clusters and a zero-length source.
 type candidateKnot struct {
+	atomic     contracts.AtomicID
 	core       KnotCore
 	source     runSourceRange
 	breakAfter sourceBoundary
@@ -161,7 +162,10 @@ func (a *candidateKnotAccumulator) push(c *glyphCluster) error {
 		return a.fail(err)
 	}
 	if a.pending != nil {
-		prevRun := a.pending.clusters[len(a.pending.clusters)-1].runIndex
+		prevRun := -1
+		if a.pending.atomic == 0 {
+			prevRun = a.pending.clusters[len(a.pending.clusters)-1].runIndex
+		}
 		if boundary.penalty < MaxPenalty || boundary.wordBoundary || prevRun != c.runIndex || class != a.class || s.scalarStart != a.lastEnd {
 			if err := a.flush(boundary); err != nil {
 				return a.fail(err)
@@ -190,6 +194,13 @@ func (a *candidateKnotAccumulator) flush(boundary sourceBoundary) error {
 		return nil
 	}
 	c := a.pending
+	if c.atomic != 0 {
+		c.core = KnotCore{Kind: KTAtomic, Pos: a.para.Offset + c.source.byteStart, Len: 3, Penalty: boundary.penalty}
+		c.breakAfter = boundary
+		a.result = append(a.result, *c)
+		a.pending = nil
+		return nil
+	}
 	if c.source.byteEnd-c.source.byteStart > math.MaxUint16 {
 		return fmt.Errorf("%w: candidate source span exceeds knot length capacity", contracts.ErrIllegalArguments)
 	}
@@ -204,6 +215,27 @@ func (a *candidateKnotAccumulator) flush(boundary sourceBoundary) error {
 	c.breakAfter = boundary
 	a.result = append(a.result, *c)
 	a.pending = nil
+	return nil
+}
+
+// pushAtomic inserts unbound material directly, without glyphs or font metrics.
+// The pending endpoint is resolved by the next item just as for shaped text.
+func (a *candidateKnotAccumulator) pushAtomic(atom preparedAtomic) error {
+	if a.err != nil {
+		return a.err
+	}
+	if a.closed || atom.source.scalarStart < a.lastEnd {
+		return a.fail(fmt.Errorf("%w: unordered atomic candidate", contracts.ErrIllegalArguments))
+	}
+	b, err := a.gapBoundary(a.lastEnd, atom.source.scalarStart)
+	if err != nil {
+		return a.fail(err)
+	}
+	if err = a.flush(b); err != nil {
+		return a.fail(err)
+	}
+	a.pending = &candidateKnot{atomic: atom.id, source: atom.source}
+	a.lastEnd = atom.source.scalarEnd
 	return nil
 }
 

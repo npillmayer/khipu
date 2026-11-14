@@ -103,7 +103,10 @@ func (p *visualParagraph) prepareGeometry(ctx context.Context, params Params) (*
 			return bad(fmt.Sprintf("line %d has inconsistent natural width", i+1))
 		}
 		width += int64(leftSkip.W) + int64(rightSkip.W)
-		if width < 0 || width >= int64(dimen.Fil) {
+		if width < 0 {
+			return nil, fmt.Errorf("%w: line %d has negative skip-inclusive natural width", ErrUnsupportedPolicy, i+1)
+		}
+		if width >= int64(dimen.Fil) {
 			return bad(fmt.Sprintf("line %d total natural width out of range", i+1))
 		}
 		// Both endpoints are nonnegative finite dimensions, so their signed

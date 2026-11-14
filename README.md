@@ -139,8 +139,46 @@ implemented, with public `Khipukamayuq.Freeze(ctx, input, breaks, layout)` const
 See the [result contract](doc/FROZEN-API.md) and [testing guide](doc/TESTING.md).
 
 The metric encoder, `Config.Shaper`, `FixedWidthShaper` and `KnotStyler` have
-been removed. The sole encoding entry point is `EncodeParagraph(ctx, para)`;
+been removed. Text-only callers can use `EncodeParagraph(ctx, para)`;
 there is no width-adaptation replacement hook.
+
+### Fixed-Size Atomic Inline Items
+
+Use `PrepareParagraph` and `BindParagraph` for text mixed with pre-boxed opaque
+items. Insert one U+FFFC OBJECT REPLACEMENT CHARACTER per occurrence into the
+styled paragraph, then attach a nonzero, paragraph-local ID at its UTF-8 byte
+offset. Anchors must be strictly ordered; unattached U+FFFC remains ordinary text.
+
+```go
+prepared, err := owner.PrepareParagraph(ctx, khipu.ParagraphInput{
+    Paragraph: para, // Contains U+FFFC at byte offset 5.
+    Atomics: []contracts.AtomicAnchor{{ID: 1, ByteOffset: 5}},
+}, khipu.PrepareOptions{}) // NoHyphenation by default.
+if err != nil { return err }
+input, err := owner.BindParagraph(ctx, prepared, []khipu.AtomicAdvance{
+    {ID: 1, Advance: 20 * dimen.PT},
+})
+if err != nil { return err }
+// Pass input to either BreakParagraph, then owner.Freeze with the same layout.
+```
+
+The example belongs in an error-returning function and uses
+`github.com/npillmayer/khipu/contracts`. Supply exactly one advance per ID, in any
+order. Advances are fixed signed contributions (including caller-resolved margins)
+with magnitude below `dimen.Fil`. Zero-width atoms remain content and are never
+trimmed, shaped or hyphenated. `AtomicBoundaries` can allow/prohibit interior
+atomic-edge breaks; omission retains Unicode policy. Enabled hyphenation modes
+require an owner-configured provider and that owner as the breaker's provider.
+
+Preparation shapes text once. Rebind with new advances without reshaping;
+bindings own their working planes and decisions. Keep the source, styles and
+font services stable for all derived results, and serialize owner operations.
+Request slices may be reused after each call. Frozen `Atomic(index)` returns the
+occurrence ID in visual order; `Knot(index)` supplies its advance/source range and
+`CopyText(index)` returns false. Final negative line totals are unsupported and
+return `ErrUnsupportedPolicy` from Freeze. This API supplies no vertical box
+geometry or intrinsic measurements yet. See the
+[pipeline integration plan](doc/PIPELINE_INTEGRATION.md).
 
 ### Integration And Ownership
 

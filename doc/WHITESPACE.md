@@ -37,6 +37,11 @@ source is glue and receives the current glue flags, independently of elasticity.
 This is not a new Unicode-wide trimming policy. Empty source creates no candidate.
 Line-break penalties remain independent of classification and elasticity.
 
+For line-edge trimming, non-discardable textboxes and `KTAtomic` items count as
+content. Zero or negative atomic advances still shelter intervening spaces.
+Atoms are never discarded. Neutral retained items, such as paragraph fill, do
+not shelter adjacent spaces. Both linebreakers and freezing use this rule.
+
 These helpers are used by the candidate accumulator in `EncodeParagraph`.
 Linebreakers consume the resulting width bounds and discardable flags. Freezing
 allocates final widths; allowing glue to shrink also permits a linebreaker to

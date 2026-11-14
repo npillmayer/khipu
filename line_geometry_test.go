@@ -166,7 +166,11 @@ func TestLineGeometryFailures(t *testing.T) {
 				before = slices.Clone(p.lines[0].knots)
 			}
 			got, err := p.prepareGeometry(context.Background(), Params{LineShape: shape, LeftSkip: left, RightSkip: right})
-			if got != nil || !errors.Is(err, ErrIllegalArguments) {
+			want := ErrIllegalArguments
+			if mode == "negative total" {
+				want = ErrUnsupportedPolicy
+			}
+			if got != nil || !errors.Is(err, want) {
 				t.Fatal("accepted invalid geometry", got, err)
 			}
 			if mode == "late target" && !strings.Contains(err.Error(), "line 2") {

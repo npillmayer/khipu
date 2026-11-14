@@ -117,6 +117,9 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 		}
 		linelen := parshape.LineLength(int32(len(breakpoints) + 1))
 		segw := seg.width(layout)
+		if err := segw.Err(); err != nil {
+			return nil, err
+		}
 		if debug {
 			trace.Debugf("candidate %d: seg=%v len=%.2f", i, segw, linelen.Points())
 		}
@@ -192,6 +195,9 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 			// retain it there instead of losing a legal break until later overflow.
 			if breakpoints[len(breakpoints)-1] != i {
 				nextWidth := seg.width(layout)
+				if err := nextWidth.Err(); err != nil {
+					return nil, err
+				}
 				if nextWidth.Min <= parshape.LineLength(int32(len(breakpoints)+1)) {
 					seg.trackcarry()
 					lastFeasible = i
@@ -266,12 +272,10 @@ func classifyLineItem(k khipu.KnotCore) lineItemClass {
 	if k.IsDiscardable() {
 		return LICTrimDiscardable
 	}
-	switch k.Kind {
-	case khipu.KTTextBox:
+	if k.IsContent() {
 		return LICContent
-	default:
-		return LICRetainedNeutral
 	}
+	return LICRetainedNeutral
 }
 
 func (s *segmentState) append(k khipu.KnotCore) {
@@ -411,11 +415,14 @@ func tryLooseHyphenation(khp *khipu.Khipu, at kinx, base segmentState, checkpoin
 		lineSeg := base.segmentState()
 		lineSeg.append(cand.PreBreak)
 		segw := lineSeg.width(layout)
+		if err := segw.Err(); err != nil {
+			return khipu.DiscretionaryCandidate{}, segmentState{}, false, err
+		}
 		if segw.Min > linelen {
 			continue
 		}
-		gain := segw.W - checkpointWidth.W
-		if gain < params.MinHyphenGain {
+		gain := int64(segw.W) - int64(checkpointWidth.W)
+		if gain < int64(params.MinHyphenGain) {
 			continue
 		}
 		if segw.W > bestWidth || (segw.W == bestWidth && cand.PreBreak.Penalty < bestPenalty) {

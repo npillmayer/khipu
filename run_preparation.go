@@ -28,6 +28,10 @@ func prepareParagraphRuns(para *styled.Paragraph, resolver contracts.StyleResolv
 // boundaries enables streaming no-break coalescing before feature intersection.
 // Ordinary callers retain the original run-preparation behavior.
 func prepareParagraphRunsForInput(para *styled.Paragraph, resolver contracts.StyleResolver, defaults contracts.ResolvedRunStyle, boundaries []sourceBoundary) ([]preparedRun, error) {
+	return prepareMixedRuns(para, resolver, defaults, boundaries, nil)
+}
+
+func prepareMixedRuns(para *styled.Paragraph, resolver contracts.StyleResolver, defaults contracts.ResolvedRunStyle, boundaries []sourceBoundary, atomics []preparedAtomic) ([]preparedRun, error) {
 	if nilRunService(resolver) {
 		return nil, fmt.Errorf("%w: missing style resolver", contracts.ErrIllegalArguments)
 	}
@@ -38,6 +42,9 @@ func prepareParagraphRunsForInput(para *styled.Paragraph, resolver contracts.Sty
 	if boundaries != nil {
 		items = coalesceMarkerIntersections(items, boundaries)
 	}
+	// Split before resolving styles and intersecting features. Original style
+	// domains must include the marker even though the shaper never receives it.
+	items = excludeAtomicIntersections(items, atomics)
 	var result []preparedRun
 	var span runSourceRange
 	var resolved contracts.ResolvedRunStyle
