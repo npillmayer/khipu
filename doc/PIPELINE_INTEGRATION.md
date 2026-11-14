@@ -3,8 +3,8 @@
 Planning analysis and implementation status, 2026-11-14.
 The stage 1 section records the agreed implementation contract, including
 the resolutions of its remaining design questions. Stage 2 is implemented in
-khipu and stages 3A–3C in typography; signatures for later integration and intrinsic
-measurement remain plans.
+khipu, stages 3A–3C in typography, and stages 3D–3F in tytui (with shared proof
+walking in typography/render). Intrinsic measurement and later stages remain plans.
 Source inspection covered sibling `css-box-layout`, `tytui`, `typography`, and
 `cords` checkouts. The initial review was source-only; implementation checks are
 recorded with the completed stages below.
@@ -29,8 +29,8 @@ Recommended direction:
 
 ## Evidence and baseline boundaries
 
-This section records the source analysis before stage 2. The stage 2 and 3A–3C status
-below describes the implemented changes; subsequent integration work remains planned.
+This section records the source analysis before stage 2. The stage 2 and 3A–3F status
+below describes the implemented changes; intrinsic integration remains planned.
 
 Prefer current source signatures over older integration sketches. In particular,
 the old `AtomicSizer` callback and line-box return contracts are superseded.
@@ -391,7 +391,7 @@ zero-sized and overfull objects. Invalid attachments fail without partial output
 
 ### 3. Complete fixed-size paragraph/CSS integration
 
-**Stages 3A–3C implemented; stages 3D–3F remain planned.** The source review finds that khipu's
+**Stages 3A–3F implemented.** The source review finds that khipu's
 stage 2 API and CSS core's current callback contracts cover the required horizontal
 boundary. Most implementation belongs in typography and the document integration
 layer. Deliver six reviewable increments, in the order below. Source inspection
@@ -404,7 +404,7 @@ is not evidence that the combined pipeline already builds or passes these tests.
 | `khipu` | Keep the stage 2 mixed-input, binding and freezing APIs; add integration regressions and fix demonstrated core defects. No API redesign is planned. |
 | `typography` | Atomic-aware projection/itemization and preservation of original feature domains. Exclude markers from existing checks; add no coverage validation. Relocating coverage checking out of the itemizer is future work. No DOM, CSS box-tree or concrete backend dependency in the generic package. |
 | `typography/paragraph` | Prepared orchestration, atomic geometry validation, vertical assembly and detached placements. No CSS parsing, source locators, paint or box-tree traversal. |
-| `tytui/documentlayout` (proposed) | Styled-document-to-render-input adaptation, normalized-group traversal, CSS/paragraph bridge, unit conversion, invocation-local retention and document publication. |
+| `tytui/documentlayout` | Styled-document-to-render-input adaptation, normalized-group traversal, CSS/paragraph bridge, unit conversion, invocation-local retention and document publication. |
 | `tytui/htmlinput` | Reuse or factor computed-style, normalization and provenance-emission helpers; retain the existing single-paragraph extraction behavior. |
 | `css-box-layout` | Continue owning normalization, used dimensions, nested atomic preparation and block positioning. Verify the real adapter against existing interfaces; reconcile stale documentation. |
 | `cords` | No planned changes: styled text, U+FFFC storage and zero-byte bidi markup suffice. |
@@ -516,8 +516,8 @@ generic dependency audit and existing replay fixtures.
 
 Stage 3A adds no coverage validation and does not relocate existing checks. It
 requires no production changes in khipu, cords, CSS core or tytui. Paragraph
-preparation/vertical assembly are implemented in stages 3B/3C below; the document
-bridge remains stages 3D onward.
+preparation/vertical assembly are implemented in stages 3B/3C below. Extraction is
+implemented in stage 3D; the CSS callback and publication are implemented in stage 3E.
 
 #### 3B. Add prepared paragraph orchestration
 
@@ -626,9 +626,17 @@ objects, zero target width, coincident positions, RTL paragraph fill and
 nonmonotonic X. They check finite bounds after signed accumulation, overflow of
 published border origins or paragraph height, absent marker font resolution,
 detached placement slices, cancellation and preservation of prior results.
-The document bridge, CSS unit conversion and intrinsic queries remain deferred.
+The CSS callback, CSS unit conversion and intrinsic queries remain deferred.
 
 #### 3D. Extract normalized groups with source correspondence
+
+**Implemented in [tytui/documentlayout](../../tytui/documentlayout/README.md).**
+`Build(ctx, document, selectedNodeID)` snapshots source/computed typography,
+constructs typed CSS input and delegates normalization to `BuildLayoutTree`.
+`Document.Groups()` returns detached group/owner identities with inherited
+paragraph contexts, and `Document.Extract(ctx, groupID)` returns a detached
+`InlineGroup`. `Document.Root()` exposes borrowed immutable structural input for
+the future flow callback. This stage does not invoke `FlowLayout`.
 
 Build typed `RenderNode` input from the styled document, with retained source and
 computed-style lookup, then let CSS core normalize it. Extract each resulting
@@ -655,9 +663,49 @@ whitespace on either side of objects, entities, multibyte text and isolates;
 no duplicate extraction of atomic interiors; exact transformed text/source/paint
 correspondence; the existing single-paragraph extraction path remains compatible.
 
+The concrete extraction envelope contains `Text`, document `Styles`, separate
+`Paint`, normal `LineLayout` ranges, `Isolates`, ordered `Anchors`, `TextSources`
+and `AtomicSources`. All output ranges refer to the same processed UTF-8 stream.
+Text source records retain decoded DOM node byte ranges, original locators and
+normalized text BoxIDs. Atomic records separately retain occurrence ID, BoxID,
+element locator and marker range. A literal U+FFFC text character is not attached.
+IDs are group-local and assigned by emission order, not BoxID order.
+
+Typography resolution is shared through the new detached
+`htmlinput.Document.ResolvedStyles` helper, without changing the existing
+single-paragraph eligibility rules. Whitespace transformation reuses
+`paragraphtext.Normalize`, and isolate markup reuses htmlinput's implementation.
+The extractor retains first-source-unit ownership of collapsed space for style,
+paint and bidi scopes. Source/style tables are detached from the original DOM;
+published CSS tree nodes must remain read-only. Failure/cancellation publishes no
+partial document or group; synchronous collaborators retain their existing limits.
+
+Initial box-style adaptation supports definite px atomic widths, px box edges
+and auto block widths/margins; other relative box lengths remain unsupported.
+Font sizing retains htmlinput's existing absolute/relative-unit support. Reject
+non-normal line-height, preserved whitespace, explicit breaks, hidden/replaced
+content, unsupported display modes, positioned/floating flow, height/min/max
+constraints, nonzero ordinary-inline edges and metric-bearing empty inlines.
+Empty inline wrappers with the strut's font request may disappear; differing
+font requests require the deferred empty-inline metric model. Coincident nested
+isolate boundaries retain the existing explicit rejection. Border longhands and
+supported four-side shorthands work; combined `border` parsing remains outside
+the current DOM subset. No new glyph coverage validation is introduced.
+
+Acceptance evidence: [extraction tests](../../tytui/documentlayout/extract_test.go)
+cover split/hoisted structure, source-vs-box identities, anonymous owner contexts,
+nested/adjacent/empty atomics, whitespace, entities, multibyte and literal markers,
+isolates, exact transformed provenance, style/paint/layout correspondence and
+detached ownership after source removal. Text-only results are compared with the
+legacy extractor. [Paragraph composition](../../tytui/documentlayout/paragraph_test.go)
+feeds groups through `ItemizeInline` and prepared layout under both breakers,
+checking original coordinates and owner-derived struts for object-only groups.
+Tytui's ordinary/race/build/vet checks include existing TUI, pipeline and replay
+regressions. CSS callback geometry/conversion and publication are covered by stage 3E below.
+
 #### 3E. Implement the CSS callback and transactional publication
 
-Implement the existing [InlineLayouter contract](../../css-box-layout/layout/interfaces.go)
+**Implemented in `tytui/documentlayout`.** Implements the existing [InlineLayouter contract](../../css-box-layout/layout/interfaces.go)
 in an invocation-local adapter. Obtain completed border dimensions from
 `PreparedAtomicsView` and margins from `UsedValuesView`, convert to `AtomicBox`,
 then prepare/layout the group. Return overall extent and ID-mapped border placements.
@@ -692,7 +740,67 @@ objects; correct anonymous-owner and ancestor transforms; no double edges/margin
 conversion limits and rounding; late failure/cancellation preserves the previous
 complete document snapshot and exposes no partially retained new document.
 
+The public entry point is:
+
+```go
+type LayoutRequest struct {
+    Width   float32 // containing-block width, CSS pixels; zero is valid
+    Breaker paragraph.Breaker
+}
+type Config struct {
+    Resolver      *typography.Resolver
+    NewShaper     func() (contracts.StreamingShaper, error)
+    BufferOptions contracts.ShapeBufferOptions
+}
+func (d *Document) Layout(context.Context, LayoutRequest, Config) (*Result, error)
+
+type GroupResult struct {
+    Input     InlineGroup
+    Paragraph paragraph.Result
+}
+func (r *Result) Document() *Document
+func (r *Result) Geometry() box.LayoutGeometryTable
+func (r *Result) Groups() []Group
+func (r *Result) Group(box.BoxID) (GroupResult, bool)
+```
+
+The caller supplies an initialized resolver and fresh exclusive shaper factory;
+there is no backend/discovery or new coverage policy. Calls sharing a resolver
+are serialized; font/scale services remain stable for retained results. Each
+invocation resolves used values, calls CSS `FlowLayout` with no intrinsic measurer,
+and keeps callback results private until success. `Document` has no mutable
+current-result slot: callers replace their snapshot only on nil error. Failure
+returns nil and leaves every earlier result intact, including after resize.
+
+`Geometry`, `Groups` and `Group` copy mutable maps/envelopes/slices, including
+paragraph diagnostics. The normalized document, frozen paragraphs and vlists are
+shared read-only. `GroupResult.Input` retains explicit `OwnerID`, source/paint
+and AtomicID-to-BoxID correspondence. Callback order is nested-first; public group
+order remains source order. Repeated callbacks fail with `ErrUnsupportedPolicy`.
+
+The callback supplies normal CSS line height, the inherited owner strut, no
+hyphenation, bottom-margin-edge atomic alignment and explicit zero side skips.
+It converts prepared border sizes and used margins independently, without sizing
+interiors or modifying CSS border dimensions. Empty atomic interiors currently
+reserve a normal paragraph strut; zero-sized prepared boxes are still valid at
+the callback boundary.
+
+Acceptance evidence: [flow tests](../../tytui/documentlayout/layout_test.go)
+exercise both breakers, nested scheduling, owner/ancestor transforms, exact edge
+accounting, signed margins, zero available width, overfull objects, source/paint
+retention, detached results and resize. [Boundary tests](../../tytui/documentlayout/geometry_test.go)
+cover zero-sized prepared items, duplicate callbacks, malformed views, independent
+primitive rounding, float32 summary budgets, finite-domain limits and cancellation
+at publication. Late backend failure/cancellation returns no partial document and
+preserves the previous complete snapshot. Real-font proofs are covered by stage 3F below.
+Tytui's full ordinary/race suites, build and vet pass with the new callback and
+ownership tests alongside the existing TUI, pipeline and replay regressions.
+
 #### 3F. Verify nested fixed-size integration and align documentation
+
+**Implemented.** The original acceptance criteria follow, then the concrete API
+and evidence. Intrinsic measurement, auto-sized atomics, TUI document features and
+document replay remain outside this completed fixed-width increment.
 
 Start with typed synthetic fixtures, then an HTML/CSS document fixture, then
 real-font integration tests with caller-supplied suitable fonts. Exercise both
@@ -715,11 +823,89 @@ package dependency audits and backend-service tests. Update sibling documentatio
 that still describes `AtomicSizer` or line-box callback results, following CSS
 core's existing roadmap rather than creating a separate decision log.
 
-Stage 3 is complete when the nested fixed-size document path demonstrates
+Stage 3's completed nested fixed-size document path demonstrates
 independently checked line heights and border origins, exact-once edge accounting,
 owner-relative placement, retained source/paint and transactional result lifetime.
 No intrinsic-measurement stub, auto-sizing estimate or broader CSS support claim
 is part of that acceptance.
+
+The reusable walker now lives in `typography/render`:
+
+```go
+type ParagraphInput struct {
+    Frozen      *khipu.FrozenKhipu
+    VList       *paragraph.VList
+    Text        string
+    Paint       []typography.PaintSpan
+    PaintPolicy typography.PaintPolicy
+}
+type Services struct {
+    Backend  Backend
+    Identity typography.IdentityProvider
+}
+func BuildParagraphProof(context.Context, ParagraphInput, Services) (*ParagraphProof, error)
+```
+
+It consumes retained placements and glyphs, applies visual order once per detached
+directional fragment and preserves original processed UTF-8 source/paint anchors.
+It never loads fonts, queries line metrics, reshapes, rebreaks or restacks lines.
+The existing `pipeline.BuildGlyphProof` delegates to it while preserving its public
+proof records, SVG emission and static replay evidence. The generic package has no
+CSS/DOM/backend imports; font identity/outline services are explicitly injected.
+
+The document-specific proof API in `tytui/documentlayout` is:
+
+```go
+func BuildProof(context.Context, *Result, render.Services) (*Proof, error)
+func WriteSVG(context.Context, io.Writer, *Result, render.Services) error
+```
+
+`Proof` contains detached absolute float64 big-point boxes, lines, glyphs and atomic
+origins. Each paragraph contributes its already placed geometry at its OwnerID's
+absolute content origin. CSS RelativeTo chains are composed once; no owner edges
+or line offsets are added twice. Core border dimensions remain unchanged. Glyphs
+retain group/owner, line/knot, cluster, original SourceByte, font hash, paint and
+covering TextSpan records. Atomic records retain their separate ID/BoxID/element
+source correspondence, including precise origins before CSS float32 narrowing.
+
+Proof errors/cancellation expose no partial object; SVG generation completes in
+memory before writing. Writer errors can still leave partial destination bytes.
+The SVG is a diagnostic of boxes, baselines and outlines, not a full CSS painting
+or stacking-context model. It adds neither font embedding nor a replay format.
+
+Acceptance evidence:
+
+- [Typed integration](../../tytui/documentlayout/typed_integration_test.go) starts
+  with explicit normalized-input styles/source identities, independent of DOM/CSS
+  parsing, and checks nested struts, dimensions, markers and content parents.
+- [Document proof tests](../../tytui/documentlayout/proof_test.go) check exact
+  synthetic ancestor and multiline/bidi coordinates under both breakers, real
+  HTML/CSS nested/adjacent/object-only layout, resize/repeated output, source DOM
+  removal, retained paint and font associations, and proof/writer failures.
+  Latin ligature and pointed Hebrew glyph IDs, clusters and offsets are compared
+  against existing independent HarfBuzz captures, with their font hashes.
+- Stage 3E tests continue to cover zero available/prepared sizes, positive overfull
+  objects, signed margins, unit-conversion budgets, duplicate callbacks and late
+  layout failure/cancellation without changing older complete snapshots.
+- [Shared walker tests](../../typography/render/paragraph_test.go) deny metric
+  access after layout and verify byte anchors, physical glyph positions, paint,
+  detached ownership and late outline failure/cancellation.
+- [Fixture and reproduction commands](../../tytui/documentlayout/testdata/README.md)
+  accompany a [real-font SVG](../../tytui/documentlayout/testdata/nested-firstfit.svg).
+  The proof was rasterized and visually inspected; numeric expectations come
+  from independent tests, not from the generated SVG.
+
+Documentation in tytui's document exploration, paragraph-engine plan and integration
+overview now describes `InlineRequest`/`InlineResult{Extent, Atomics}`, core-owned
+nested preparation and typed transactional retention, following CSS core's existing
+roadmap. Historical proposals are explicitly labeled. Glyph coverage remains the
+caller's responsibility; existing itemizer checks are unchanged and their relocation
+is still deferred. Stage 4 intrinsic measurement is not implemented by this work.
+
+Validation: full ordinary/race suites, build and vet pass in typography and tytui,
+including generic dependency audits, backend services and unchanged legacy replay
+tests. Khipu and CSS core full ordinary suites also pass. The documented installed
+proof command reproduces the sample SVG byte-for-byte.
 
 ### 4. Add intrinsic measurement and preparation reuse
 
