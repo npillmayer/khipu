@@ -9,7 +9,9 @@ in khipu and stage 4B exposes it through typography's prepared paragraph.
 Stage 4C separates invocation-local preparation from accepted results in tytui;
 stage 4D connects CSS intrinsic measurement and bounded auto-width layout.
 Stage 4E adds bounded explicit discretionary measurement and shared preparation
-reuse in khipu/typography. Later integration remains planned.
+reuse in khipu/typography. Stages 5A–5D verify nested scheduling, independent
+geometry, resize/failure recovery, retained-result lifetime and nested-auto
+real-font proofs through the actual paragraph engine; stage 5E remains planned.
 Source inspection covered sibling `css-box-layout`, `tytui`, `typography`, and
 `cords` checkouts. The initial review was source-only; implementation checks are
 recorded with the completed stages below.
@@ -1595,12 +1597,395 @@ callbacks, broader whitespace/inline policies and document replay are not added.
 
 ### 5. Verify nested auto sizing and result lifetime
 
-Exercise measure -> width selection -> descendant resolution -> final layout.
-Keep CSS core responsible for scheduling and width selection.
+**Stages 5A–5D implemented; stage 5E remains planned.** This is a verification and
+targeted-fix increment using the existing public APIs. Exercise the complete
+sequence: measure -> width selection -> descendant resolution -> final layout.
+No new measurement, sizing, result-retention or rendering interface is proposed.
 
-Acceptance: nested intrinsic items, conversion/rounding, signed margins, resize,
-cancellation and failure recovery; no measurement publishes accepted layout data;
-old retained results remain usable after new successful or failed invocations.
+CSS core already recursively measures atomic interiors, selects auto content
+widths, re-resolves descendants privately and then invokes final layout. Tytui
+already separates completed preparations, final-callback attempts and accepted
+paragraphs. Existing tests cover nested sizing with fake paragraphs, single-level
+auto sizing with actual typography, and retained fixed-width document results.
+Stage 5 connects those cases across multiple nesting levels and document
+invocations. Focused existing CSS core, typography and tytui tests passed during
+the planning review; that baseline does not establish stage 5 acceptance.
+
+#### Module boundaries
+
+| Module/package | Stage 5 responsibility |
+| --- | --- |
+| `css-box-layout/layout` | Recursive intrinsic measurement, shrink-to-fit selection, descendant used-value resolution and final callback scheduling. Own any sizing, scheduling or core snapshot fixes. Extend owning tests where the integration reveals missing cases. |
+| `tytui/documentlayout` | Main nested integration fixtures, callback observations, CSS/DU conversions, transactional publication, resize/failure tests and retained document proofs. Callbacks translate one requested group; they do not recurse or choose widths. |
+| `typography/paragraph` | Prepared-paragraph reuse, atomic geometry assembly and retained vlist lifetime. Add focused regressions or fixes for assembly/result-isolation gaps found by integration; do not duplicate CSS sizing. |
+| `khipu` | Intrinsic evaluation, independent bindings and frozen ownership. Existing APIs suffice; add focused regressions or fixes only for gaps exposed by stage 5. No CSS types or document scheduling enter this module. |
+| `cords`, DOM and OpenType | No planned changes. Any newly demonstrated defect belongs in its owning module with a minimal regression, not an adapter workaround. |
+
+Keep `Document.Layout`, `Prepared.MeasureIntrinsic`, `Prepared.Layout` and the
+existing CSS callbacks as the public boundaries. Expected work is predominantly
+tests, fixtures and documentation; production changes should address demonstrated
+defects rather than introduce another orchestration layer.
+
+#### 5A. Verify nested scheduling through the actual paragraph engine
+
+**Implemented in tytui tests; no production API or algorithm changes required.**
+
+Extend the test observer in `tytui/documentlayout/auto_test.go` to record ordered
+measurement/final-layout events, group and owner identities, supplied atomic
+bounds, and final content widths. Record value snapshots needed by assertions;
+do not retain invocation-scoped CSS request views. Keep instrumentation in tests,
+without production observer APIs or mutable current-request fields.
+
+Cover auto-inside-auto, auto-inside-fixed, fixed-inside-auto, sibling atomics,
+and auto-width containers with block and anonymous descendants. Use the real
+typography/khipu orchestration with deterministic synthetic services, under both
+first-fit and Knuth–Plass.
+
+Acceptance:
+
+- All required intrinsic measurements finish before any final layout callback.
+- Measurement changes neither final-callback tracking nor accepted paragraphs.
+- Descendant widths and edges are definite before final callbacks; no provisional
+  used values escape into paragraph layout.
+- Atomic interiors complete before their enclosing paragraph, and each normalized
+  group receives exactly one final callback.
+- Measurement and final layout reuse the same preparation within an invocation.
+  Verify no repeated base shaping after measurement, counting actual shaping runs
+  rather than assuming one shaper invocation per group. Empty/object-only groups
+  and groups with multiple shaping runs need distinct expectations.
+- An entirely fixed-width tree still requires no intrinsic callbacks. A fixed
+  atomic boundary supplies equal intrinsic border bounds without measuring its
+  interior solely for those bounds; nested auto descendants still get their own
+  required sizing work.
+
+Use CSS core's `intrinsic_test.go` for minimal scheduling regressions and tytui's
+tests for the combined engine evidence. Do not require identical line choices
+between the two breakers.
+
+Implementation and evidence:
+
+- The observer in [auto_test.go](../../tytui/documentlayout/auto_test.go) records
+  ordered callbacks and completion status, group/owner IDs, copied intrinsic and
+  prepared atomic values, edge values, resolved used values and final widths.
+  It retains no CSS lookup views or requests. Private preparation references are
+  used only as identity witnesses within the test invocation.
+- [scheduling_test.go](../../tytui/documentlayout/scheduling_test.go) runs six
+  fixtures with both breakers: auto inside auto with multiple shaping runs; auto
+  behind a fixed boundary inside auto; auto inside fixed; auto/fixed/empty
+  siblings; block and anonymous descendants inside auto; and an entirely fixed
+  nested/sibling tree. Expected normalized text and callback schedules are stated
+  independently in each fixture.
+- Checks establish measurement before final layout, no measurement publication
+  or final-attempt mutation, definite used values for the entire tree at each
+  final callback, completed atomic interiors before parent delegation, exactly
+  one final callback per group, and unchanged caller used-value tables.
+- Instrumentation counts actual `Shape` calls separately from stream factories.
+  Empty/object-only groups have zero shaping runs; the mixed-size fixture has
+  three. Measured groups retain preparation identity and perform neither new
+  stream construction nor shaping during final layout. Fixed boundaries supply
+  equal intrinsic border bounds without measuring their immediate interiors,
+  while auto descendants behind those boundaries are still measured separately.
+- Final callback widths match retained line targets and CSS content widths;
+  supplied atomic dimensions match completed CSS border boxes. These are
+  scheduling/transport assertions, not stage 5B's independent nested geometry
+  and rounding oracles. No cross-breaker equality of line choices is asserted.
+
+Validation passed: tytui's full ordinary and race suites, build and vet; focused
+CSS core nested/intrinsic scheduling tests, typography prepared-paragraph tests
+and khipu binding/intrinsic integration tests. Existing document proof and replay
+controls pass unchanged. No production changes or upstream fixes were needed.
+
+#### 5B. Add independent nested geometry oracles
+
+**Implemented in tytui tests; no production API or algorithm changes required.**
+
+Start with a typed fixture alongside `typed_integration_test.go`, then exercise
+equivalent HTML through the public document API. Compute expected values
+independently of production conversion and sizing helpers.
+
+One concrete fixture uses 20px synthetic text `aa bbbb`, with content intrinsic
+bounds `[40, 70]` CSS px. Give its inner auto inline-block 6px total horizontal
+padding/border and 4px total horizontal margins. Its enclosing auto inline-block
+contains only that atomic occurrence, has 6px total horizontal padding/border,
+and zero horizontal margins. The root has no horizontal edges. The outer content
+bounds are therefore `[50, 80]` CSS px, with expected selected widths:
+
+| Root available width | Outer content width | Inner content width |
+| --- | --- | --- |
+| 30px | 50px | 40px |
+| 66px | 60px | 50px |
+| 100px | 80px | 70px |
+
+This checks both nested shrink-to-fit decisions and edge accounting, including
+min-content overflow at narrow widths. Extend the fixture with signed margins,
+fractional primitives, empty atomic interiors, zero available width and mixed
+fixed/auto descendants. Include text alongside atomics and block-flow descendants
+so the coverage is not limited to object-only ancestor groups.
+
+Assert selected content widths, border dimensions, paragraph target widths,
+owner-relative atomic origins, retained vertical placements and composed ancestor
+transforms. Borders/padding must be included once, and margins must affect advances
+and placement without becoming border dimensions. Preserve the established empty
+paragraph strut behavior.
+
+Convert each CSS primitive independently using `round(px * 49152)`, retain signed
+advances through checked sums, and preserve CSS-owned border dimensions rather
+than replacing them with a DU round trip. Paragraph geometry stays in float64 big
+points; CSS-facing summaries narrow only at the established boundary. Derive an
+explicit error budget from primitive rounding and float32 conversion at each
+nested boundary, rather than hiding discrepancies behind a broad epsilon.
+
+Intrinsic bounds describe natural break opportunities, not breaker fit guarantees.
+Positive overfull output remains valid, including under the existing zero-skip
+Knuth–Plass policy. Verify the selected target and retained actual output separately;
+do not change scoring, clamp overflow or resize an owner from paragraph overflow
+to make the fixture fit. Unsupported negative completed line widths remain errors.
+
+Implementation and evidence:
+
+- [nested_geometry_test.go](../../tytui/documentlayout/nested_geometry_test.go)
+  constructs typed CSS input directly and equivalent HTML through `Build`, then
+  exercises both through public `Document.Layout` with both breakers. The
+  hand-calculated width table above also runs at zero available width. Variants
+  cover negative left/top margins and negative total horizontal margins, with
+  independently stated selected widths and signed atomic advances.
+- Assertions cover content and border rectangles, paragraph targets, atomic
+  occurrence identity/advance/origin, owner relationships, retained line baselines
+  and heights, and composed absolute atomic/glyph positions. Text line counts may
+  differ by breaker; synthetic 16px ascent/4px descent supplies the independent
+  vertical metric oracle for every accepted line. Positive root overflow at zero
+  width is retained separately from its zero target.
+- Empty nested auto interiors preserve the 20px normal strut. A mixed fixture
+  places a fixed atomic between text neighbors inside a block, with leading and
+  trailing anonymous groups inside an auto ancestor. Its independent 53px outer
+  content width checks maximum block contributions rather than summing them;
+  exact vertical rectangles and glyph coordinates check block stacking and
+  ancestor edge composition.
+- A binary-exact fractional fixture distinguishes primitive conversion from
+  rounding a pre-summed advance: an inner 4.5 DU CSS border and margins of
+  -0.75/1.5 DU yield `5 - 1 + 2 = 6 DU`; the outer 9 DU border and two 1.5 DU
+  margins yield `9 + 2 + 2 = 13 DU`. CSS border dimensions remain unquantized.
+  Signed vertical placement and float64 paragraph positions are checked exactly;
+  CSS summaries and composed transforms use explicit half-ULP budgets for each
+  float32 operation. The two nested three-primitive conversions have a 3 DU
+  total rounding budget; this fixture's error is 1.75 DU.
+- A separate integration case requires `ErrUnsupportedPolicy` and no public
+  result for a negative completed line. Synthetic outline services exercise the
+  existing retained proof transforms numerically; real-font nested-auto proof
+  evidence remains stage 5D. No coverage checks, sizing workarounds, new public
+  interfaces or changes to module ownership were introduced.
+
+Validation passed: tytui's full ordinary and race suites, build and vet; focused
+CSS core intrinsic/atomic/coordinate tests, typography prepared-paragraph tests,
+and khipu atomic/intrinsic tests. Existing proof and replay controls pass unchanged.
+The following stages retain their separate acceptance requirements.
+
+#### 5C. Verify resize, failure recovery and result lifetime
+
+**Implemented in tytui tests; no production API or algorithm changes required.**
+
+Exercise a nested-auto sequence under both breakers:
+
+```text
+wide success -> narrow success -> failed/cancelled invocation -> wide success
+```
+
+Retain every successful result and compare it after every subsequent invocation:
+CSS geometry, frozen glyphs/clusters/source records, vlist lines/materials/atomic
+placements, paint, normalized group ownership and AtomicID-to-BoxID correspondence.
+The repeated wide request with identical stable inputs must reproduce the original
+successful output for that breaker.
+
+Inject failures and cancellation deterministically, without timing sleeps:
+
+- During later intrinsic preparation, after an earlier preparation succeeded.
+- During final assembly, after a nested child's final paragraph completed.
+- At whole-document publication, after all final paragraphs exist privately.
+
+Require a nil public result and an error retaining its cause. Earlier successful
+results must remain usable, and a fresh invocation with working services must
+succeed. A failed final callback remains an attempted callback: do not retry it
+within the same invocation or weaken the existing no-repeat guard.
+
+The result lifetime contracts are:
+
+- `Document.Layout` publishes geometry and all accepted paragraphs together only
+  after complete success. The caller replaces its displayed result after success;
+  there is no mutable current result on `Document`.
+- Completed preparations and even completed child paragraphs may exist privately
+  during a later failing invocation. They are not a partial public document and
+  must not escape on failure. Measurement itself never accepts final output.
+- Preparation reuse is invocation-local. Independent document layouts prepare
+  afresh, including resizes; neither preparation tables nor measurement answers
+  are cached on `Document`.
+- Public result accessors detach mutable envelopes, maps and slices. Frozen
+  content and vlists remain read-only; their retained font/scale services remain
+  valid for the result lifetime. Test accessor mutations, including detached glyph
+  and placement arrays, without mutating shared read-only objects.
+- The original DOM input can be released after `Build`. Retained results keep
+  the normalized `Document` alive; its tree stays read-only. Style/structure edits
+  require a new document, while width changes may reuse the existing one.
+- Serialize operations sharing a resolver or prepared owner. This stage adds no
+  concurrent-operation guarantee. Cancellation remains checked at existing
+  callback/stage/publication boundaries; synchronous collaborators retain their
+  documented interruption limits.
+
+Put document lifecycle cases in `tytui/documentlayout` and use existing khipu
+freeze/binding and typography prepared-result tests as controls. Add upstream
+tests when a newly exposed lifetime issue belongs below the document adapter.
+
+Implementation and evidence:
+
+- [lifetime_test.go](../../tytui/documentlayout/lifetime_test.go) runs the full
+  wide -> narrow -> failure/cancellation -> wide sequence under both breakers.
+  The fixture has two nested auto boundaries, signed margins, multibyte text,
+  mixed direction/isolate markup and separate paint spans. The narrow request
+  must actually reduce the innermost content width. Every successful result is
+  checked after each later invocation and accessor mutation; the repeated wide
+  layout reproduces the original value snapshot for that breaker.
+- Snapshots read CSS geometry, normalized group/owner and atomic correspondence,
+  extracted source/style/paint/layout records, diagnostics, every frozen
+  line/knot/text/cluster record and original source bytes, and vlist box/line/
+  material/atomic placement values. They are captured as immutable value text,
+  rather than comparing result envelopes that share read-only pointers and could
+  hide an in-place mutation.
+- Five deterministic fault cases cover preparation error/cancellation after a
+  nested child's intrinsic preparation succeeds, assembly error/cancellation
+  after the child paragraph completes, and publication cancellation after every
+  final paragraph exists privately. Fault cases use the real invocation runner
+  to inspect private state; successful layouts and recovery use public
+  `Document.Layout`. No scheduler replacement, sleeps or production test hooks
+  are added. Causes and paragraph error stages are checked, and every failed
+  invocation returns no public result.
+- Failed preparation leaves only earlier complete preparations and no final
+  attempts/paragraphs. Failed assembly leaves the child private and the parent's
+  final attempt recorded. A direct repeated call is rejected before invoking
+  services again, including after removing a cancellation gate solely to test
+  that guard. Publication cancellation retains all completed private paragraphs
+  but publishes none. Faulting metric services belong to a separate resolver;
+  earlier successful results retain their original stable font/scale services.
+- Stream construction and actual shaping-run counts establish fresh preparation
+  for each independent successful invocation, with no repeated preparation within
+  that invocation. Completed frozen/vlist objects are distinct between results.
+  Mutable accessor envelopes, geometry maps, source/paint/layout/diagnostic
+  slices, glyph/cluster arrays and vlist placement arrays can be changed without
+  affecting any retained result. Shared frozen/vlist objects and the tree are
+  never mutated.
+- A separate both-breaker case destroys the original HTML input envelope and
+  releases the caller's document reference. The result's retained normalized
+  document still supplies its source/style records and produces identical fresh
+  output. This tests lifetime under serialized operations; it introduces no
+  cross-invocation cache or concurrent-use guarantee.
+
+Validation passed: tytui's full ordinary and race suites, build and vet; focused
+khipu freeze/binding ownership tests, typography prepared-result reuse/recovery
+tests and CSS core nested snapshot/recovery tests. Existing proof/replay controls
+pass unchanged. Separate real-font nested-auto re-rendering evidence is recorded
+in stage 5D, followed by stage 5E's final cross-module documentation and validation.
+
+#### 5D. Add a retained nested-auto document proof
+
+**Implemented in tytui tests and diagnostic fixtures; no production changes.**
+
+Add a separate `tytui/documentlayout/testdata/nested-auto.html` fixture and reuse
+the existing `testdata/proof.go` generator. Preserve the fixed-width fixture and
+its proof evidence. Exercise real caller-supplied fonts, nested auto/fixed items,
+multibyte text, bidi, paint and source correspondence at wide and narrow widths
+under both breakers.
+
+Re-render an older successful result after subsequent successful and failed
+layouts, removal of the original DOM input, and mutation of detached accessor
+results. Its proof/SVG must remain unchanged. Instrument services to establish
+that proof construction does not itemize, shape, break or query line metrics;
+retained outline, scale and identity services remain available for rendering.
+Compose owner-content transforms exactly once and retain each atomic occurrence's
+own source identity without flattening its interior into the parent paragraph.
+
+Numeric synthetic assertions provide the independent sizing/geometry oracle.
+Real-font tests retain glyph/source/paint evidence; SVGs are inspectable diagnostics,
+not the correctness oracle. Reuse existing font fixtures and provenance, without
+copying binaries or adding font discovery. No new proof or replay API is needed.
+
+Implementation and evidence:
+
+- [nested-auto.html](../../tytui/documentlayout/testdata/nested-auto.html) adds
+  auto inside auto, fixed inside auto, a fixed RTL atomic, an empty auto atomic,
+  anonymous groups around a block, signed margins and padding/borders. Explicit
+  Gentium Plus/Noto Sans Hebrew fixtures supply Latin ligatures, multibyte café
+  and pointed Hebrew, with separate retained paint. Existing font provenance and
+  licenses remain in the OpenType checkout; no font files were copied.
+- The unchanged `testdata/proof.go` generator produces four new
+  `nested-auto-{firstfit,knuth-plass}-{wide,narrow}.svg` diagnostics at containing
+  widths 420/100 CSS px. All four were parsed as XML and visually inspected.
+  The narrow request reduces the innermost auto content width. The breakers may
+  choose different lines; positive overflow is displayed, never used to resize
+  CSS owners or alter scoring. The existing fixed-width HTML/SVG is unchanged.
+- [auto_proof_test.go](../../tytui/documentlayout/auto_proof_test.go) checks real
+  glyph/cluster retention, decoded DOM byte anchors, paint, font identity,
+  six distinct atomic occurrences and their independent paragraph ownership.
+  Every retained line appears once, with its original target, actual width,
+  baseline and height. A separate walk of content-parent links checks composed
+  origins; atomic interiors must not contribute glyphs to another group.
+  Stage 5B's synthetic expectations remain the independent sizing oracle, and
+  the existing independent HarfBuzz glyph controls continue to pass.
+- For both breakers, wide and narrow results are retained and re-rendered after
+  every later success, preparation error/cancellation, source-input destruction
+  and mutation of detached result/glyph/placement arrays. Both structured proofs
+  and SVG bytes remain identical. A fresh wide layout through the retained
+  normalized document reproduces the original proof after those operations.
+- Test-only wrappers around the real backend count and reject font loading,
+  coverage/itemization support, stream creation, shaping, metric queries and
+  scale acquisition during proof construction. Every guard is first exercised
+  by layout. Retained outline, identity and scale-conversion calls remain usable
+  and are observed during rendering. Proofs use the existing frozen/vlist walker,
+  which receives no preparation or breaker configuration; retained line records
+  are consumed directly. No rendering fallback or new orchestration API is added.
+
+Validation passed: tytui's full ordinary and race suites, build and vet, including
+existing fixed-width document proofs, independent HarfBuzz and replay controls;
+typography's render and OpenType adapter tests. No replay fixture was regenerated.
+Stage 5E's final cross-module documentation and validation remain outstanding.
+
+#### 5E. Align documentation and complete validation
+
+Update this stage's implementation record, tytui's document-layout README and
+fixture instructions with actual evidence and remaining limits. Reconcile CSS-core
+documentation that still describes implemented integration as pending, especially
+`CSS-Algo-Overview.md`, `Document-Layout-Integration.md`, `Current-Checklist.md` and
+`Exec-Roadmap.md`. Preserve the distinction between existing core tests, completed
+integration and broader CSS work; do not create a separate decision log.
+
+Run focused owning tests first, then ordinary/race suites, build and vet across
+khipu, typography, tytui and css-box-layout for the completed integration increment.
+Preserve generic dependency audits, OpenType adapter regressions, existing retained
+proof evidence and paragraph replay controls. No existing replay fixtures should
+be regenerated to accommodate a regression. Fix discovered defects in the owning
+module, with a minimal regression there and the integration case retained in tytui.
+
+Completion requires the nested scheduling/geometry oracles, transactional failure
+and recovery cases, retained-result rendering evidence and documentation alignment.
+It does not require production changes when the existing implementation passes
+these tests.
+
+#### Supported policies and deferred work
+
+Keep the document profile at `NoHyphenation`, normal `CSSLineHeight`,
+`AlignBottomMarginEdge`, explicit zero horizontal side skips, and fixed/auto widths
+with resolved pixel edges and explicit signed margins. Stage 4E's bounded explicit
+measurement remains available at khipu/typography level; stage 5 does not enable it
+in the CSS adapter.
+
+Defer cross-invocation/global preparation caches and invalidation, speculative or
+repeated final callbacks, percentage/relative-length policy expansion, horizontal
+auto-margin distribution, CSS manual/per-span hyphenation mapping, automatic
+intrinsic hyphenation and successive textbox splits. Broader whitespace/inline
+fragmentation, baseline/vertical-alignment policies, vertical writing, full CSS
+painting, pagination, TUI integration and document replay remain separate work.
+
+Glyph coverage remains the caller's responsibility. Add no coverage validation;
+relocation of existing itemizer checks remains deferred. Supporting the bounded
+profile and demonstrating retained proofs does not establish general CSS sizing
+or hyphenation conformance.
 
 ## Initial design questions
 
