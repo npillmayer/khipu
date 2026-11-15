@@ -41,6 +41,8 @@ declaration comments describe the exact call signatures and error behavior.
 
 ## Architecture And Development
 
+- [Pipeline integration design](PIPELINE_INTEGRATION.md): Khipu’s role in the typesetting
+  stack, preparation/measurement/layout boundaries, atomic input and ownership.
 - [Overall algorithm](KHIPU_ALGORITHM.md): phase-oriented design reference,
   implementation map and explicitly identified limits. Visual representation is
   outside this module; pseudocode is not a client API.
@@ -73,7 +75,7 @@ The accompanying text and tables also describe each example.
 ## History And Unimplemented Designs
 
 The [history index](history/README.md) separates completed implementation records
-from active contracts. It includes the [pipeline integration record](PIPELINE_INTEGRATION.md),
+from active contracts. It includes the [pipeline integration record](history/INTEGRATION_HISTORY.md),
 [frozen API delivery notes](history/FROZEN_API_DELIVERY.md),
 [scoring history and fitness-class proposal](history/SCORING_DESIGNS.md),
 [project background](history/BACKGROUND.md), and [client-readiness review](REVIEW.md).

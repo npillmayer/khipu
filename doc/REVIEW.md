@@ -89,6 +89,10 @@ legacy US paper presets are not represented as exact inch dimensions.
 - The 58 sibling-checkout references in historical material and remote links
   are outside the portable local-link check; client navigation uses local guides.
 
+The integration record has subsequently moved to `history/INTEGRATION_HISTORY.md`;
+`PIPELINE_INTEGRATION.md` now describes the final pipeline design. References
+to its original location in the delivery log below describe that earlier state.
+
 ## Implementation log — November 15, 2026
 
 The entries below record each completed step in delivery order. Their counts
@@ -539,7 +543,7 @@ real reason to remain together.
 
 ## R09 — Separate current guides from implementation history
 
-[PIPELINE_INTEGRATION.md](PIPELINE_INTEGRATION.md) is 2,596 lines. It combines
+[PIPELINE_INTEGRATION.md](history/INTEGRATION_HISTORY.md) is 2,596 lines. It combines
 current contracts, cross-repository responsibilities, staged plans, completion
 records, validation narratives, and an original API proposal. The root README's
 atomic example sends new users there for further information.

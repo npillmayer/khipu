@@ -9,7 +9,7 @@ This is the current client guide for `ParagraphInput`, `PrepareParagraph`,
 `MeasureIntrinsic` and `BindParagraph`. Exact declarations and validation rules
 are documented in [paragraph_input.go](../paragraph_input.go),
 [intrinsic.go](../intrinsic.go) and [contracts/atomic.go](../contracts/atomic.go).
-The [pipeline integration record](PIPELINE_INTEGRATION.md) preserves the earlier
+The [pipeline integration record](history/INTEGRATION_HISTORY.md) preserves the earlier
 cross-repository design and implementation evidence.
 
 ## Workflow

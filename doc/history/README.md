@@ -7,7 +7,7 @@ Start with the [documentation guide](../README.md) for supported contracts.
 
 | Record | What it preserves | Current reference |
 | --- | --- | --- |
-| [Pipeline integration](../PIPELINE_INTEGRATION.md) | Cross-repository ownership, stages 1–5, validation narratives and the original API proposal. The file stays at its original path so section links remain usable. | [Prepared paragraphs](../PREPARED_PARAGRAPHS.md) |
+| [Pipeline integration](INTEGRATION_HISTORY.md) | Cross-repository ownership, stages 1–5, validation narratives and the original API proposal. | [Pipeline design](../PIPELINE_INTEGRATION.md), [prepared paragraphs](../PREPARED_PARAGRAPHS.md) |
 | [Frozen API delivery](FROZEN_API_DELIVERY.md) | Completed geometry migration, result API and pipeline verification steps. | [Result contract](../FROZEN-API.md), [freezing](../FREEZE.md) |
 | [Scoring history and proposal](SCORING_DESIGNS.md) | Arithmetic cleanup stages, removed `kp` behavior and an unimplemented fitness-class design. | [Current scoring](../KNUTH_PLASS_SCORING.md) |
 | [Project background](BACKGROUND.md) | The name, knot metaphor and original conceptual illustration. | [Quick start](../../README.md#encode-and-break-a-paragraph) |

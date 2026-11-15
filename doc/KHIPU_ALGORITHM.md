@@ -8,7 +8,7 @@ known deviations from the design and limitations are collected in
 For supported client calls, start with the [quick start](../README.md#encode-and-break-a-paragraph)
 or [prepared-paragraph guide](PREPARED_PARAGRAPHS.md). This is an architecture
 reference; the [contract index](README.md#contract-references) identifies the
-canonical rules, and the [integration record](PIPELINE_INTEGRATION.md) retains
+canonical rules, and the [integration record](history/INTEGRATION_HISTORY.md) retains
 the staged implementation history.
 
 Jump to [knotting](#phase-1-khipu-knotting), [breaking](#phase-2-line-breaking),
