@@ -51,9 +51,11 @@ declaration comments describe the exact call signatures and error behavior.
 
 ## Diagram Index
 
-Diagrams are repository-owned Mermaid source beside the contracts they explain.
-GitHub and Mermaid-aware Markdown viewers render them without the old remotely
-hosted illustration; the accompanying text and tables also describe each example.
+Diagrams are repository-owned assets beside the contracts they explain.
+The public lifecycle uses a checked-in [SVG](diagrams/public-lifecycle.svg),
+generated from [Graphviz DOT](diagrams/public-lifecycle.dot); its source includes
+the regeneration command. The other diagrams use Mermaid in their guides.
+The accompanying text and tables also describe each example.
 
 | Question | Diagram |
 | --- | --- |

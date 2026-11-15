@@ -79,22 +79,9 @@ optimization, use `knuthplass.DefaultLayout` and `knuthplass.BreakParagraph`;
 
 ### Public Lifecycle
 
-```mermaid
-flowchart TB
-    T["Styled text"] --> E["EncodeParagraph"]
-    S["Styled text + optional atomic anchors"] --> P["PrepareParagraph"]
-    P --> M["MeasureIntrinsic: repeat with new ranges"]
-    P --> B["BindParagraph: repeat with new advances"]
-    E --> K["Working Khipu"]
-    B --> K
-    K --> L["BreakParagraph"]
-    G["One resolved layout Params"] --> L
-    L --> D["Break indices + selections on this Khipu"]
-    D --> F["Freeze"]
-    K --> F
-    G --> F
-    F --> R["FrozenKhipu: read-only queries"]
-```
+![Public lifecycle: encode text or prepare and bind it, then break and freeze using the same layout parameters.](doc/diagrams/public-lifecycle.svg)
+
+[Graphviz DOT source](doc/diagrams/public-lifecycle.dot).
 
 Measurement does not consume the preparation. Each binding has independent
 working decisions; a successful breaker rerun replaces that binding's selections.

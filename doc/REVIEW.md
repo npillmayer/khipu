@@ -68,8 +68,10 @@ legacy US paper presets are not represented as exact inch dimensions.
   the guides. Both breaker README helpers compile as external client code.
 - Checked all 461 local Markdown file/heading links and `git diff --check`.
   Verified that the preserved integration body and extracted history remain
-  intact apart from rebased relative links. The eleven diagram sources are
-  unchanged since their successful Mermaid 11.12.0 rendering and visual review.
+  intact apart from rebased relative links. Ten diagrams retain their verified
+  Mermaid 11.12.0 sources. After a rich-display failure in the README, the public
+  lifecycle was replaced with a Graphviz DOT source and exported SVG; its rendered
+  layout was visually checked. The README now embeds the SVG directly.
 
 ### Remaining boundaries
 

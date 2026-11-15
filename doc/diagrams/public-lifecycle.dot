@@ -1,0 +1,54 @@
+// Regenerate from the repository root:
+// dot -Tsvg doc/diagrams/public-lifecycle.dot -o doc/diagrams/public-lifecycle.svg
+digraph PublicLifecycle {
+    graph [
+        rankdir=TB,
+        bgcolor="white",
+        pad=0.25,
+        nodesep=0.45,
+        ranksep=0.50,
+        fontname="Helvetica"
+    ];
+    node [
+        shape=box,
+        style="rounded,filled",
+        fillcolor="#f1f5f9",
+        color="#94a3b8",
+        fontcolor="#172b4d",
+        fontname="Helvetica",
+        fontsize=12,
+        margin="0.18,0.12"
+    ];
+    edge [color="#64748b", arrowsize=0.7, penwidth=1.2];
+
+    text [label="Styled text"];
+    mixed [label="Styled text + optional\natomic anchors"];
+    encode [label="EncodeParagraph", fillcolor="#e0f2fe", color="#0284c7"];
+    prepare [label="PrepareParagraph", fillcolor="#e0f2fe", color="#0284c7"];
+    measure [label="MeasureIntrinsic\nRepeat with new ranges", fillcolor="#e0f2fe", color="#0284c7"];
+    bind [label="BindParagraph\nRepeat with new advances", fillcolor="#e0f2fe", color="#0284c7"];
+    working [label="Working Khipu"];
+    layout [label="One resolved\nlayout Params", fillcolor="#fef3c7", color="#d97706"];
+    breaker [label="BreakParagraph", fillcolor="#e0f2fe", color="#0284c7"];
+    decisions [label="Break indices + selections\non this Khipu"];
+    freeze [label="Freeze", fillcolor="#e0f2fe", color="#0284c7"];
+    frozen [label="FrozenKhipu\nRead-only queries", fillcolor="#dcfce7", color="#16a34a"];
+
+    { rank=same; text; mixed; }
+    { rank=same; encode; prepare; }
+    { rank=same; working; layout; }
+
+    text -> encode;
+    mixed -> prepare;
+    prepare -> measure;
+    prepare -> bind;
+    encode -> working;
+    bind -> working;
+    working -> breaker;
+    layout -> breaker;
+    breaker -> decisions;
+    decisions -> freeze;
+    working -> freeze;
+    layout -> freeze;
+    freeze -> frozen;
+}
