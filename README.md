@@ -246,9 +246,12 @@ removed. See the [testing guide](doc/TESTING.md#dependency-release-checks) for r
 limitations, and [the documentation index](doc/README.md) for implemented
 contracts, design history, and future work.
 
-## Background
+## More Information
 
-The name and knot terminology come from Andean recording devices. The original
-[metaphor and conceptual illustration](doc/history/BACKGROUND.md) are retained
-as project background. Implementation records and unimplemented proposals are
+The name and knot terminology stem from Andean recording devices. Find out more
+about the original
+[metaphor and conceptual illustration](doc/history/BACKGROUND.md) in file
+"`doc/history/BACKGROUND.md`".
+
+Implementation records and unimplemented proposals are
 listed separately in the [history index](doc/history/README.md).
