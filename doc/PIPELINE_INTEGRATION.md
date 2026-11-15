@@ -1,6 +1,6 @@
 # Typesetting Pipeline Integration
 
-Planning analysis and implementation status, 2026-11-14.
+Planning analysis and implementation status, 2026-11-15.
 The stage 1 section records the agreed implementation contract, including
 the resolutions of its remaining design questions. Stage 2 is implemented in
 khipu, stages 3A–3C in typography, and stages 3D–3F in tytui (with shared proof
@@ -9,9 +9,11 @@ in khipu and stage 4B exposes it through typography's prepared paragraph.
 Stage 4C separates invocation-local preparation from accepted results in tytui;
 stage 4D connects CSS intrinsic measurement and bounded auto-width layout.
 Stage 4E adds bounded explicit discretionary measurement and shared preparation
-reuse in khipu/typography. Stages 5A–5D verify nested scheduling, independent
+reuse in khipu/typography. Stages 5A–5E verify nested scheduling, independent
 geometry, resize/failure recovery, retained-result lifetime and nested-auto
-real-font proofs through the actual paragraph engine; stage 5E remains planned.
+real-font proofs through the actual paragraph engine. Stage 5 is complete,
+including cross-module documentation alignment and validation; the bounded
+profile and deferred work below remain unchanged.
 Source inspection covered sibling `css-box-layout`, `tytui`, `typography`, and
 `cords` checkouts. The initial review was source-only; implementation checks are
 recorded with the completed stages below.
@@ -36,8 +38,9 @@ Recommended direction:
 
 ## Evidence and baseline boundaries
 
-This section records the source analysis before stage 2. The stage 2 and 3A–3F status
-below describes the implemented changes; intrinsic integration remains planned.
+This section records the source analysis before stage 2, not current gaps.
+The stage 2–5 implementation records below supersede it, including intrinsic
+integration, preparation reuse and nested document verification.
 
 Prefer current source signatures over older integration sketches. In particular,
 the old `AtomicSizer` callback and line-box return contracts are superseded.
@@ -1597,7 +1600,7 @@ callbacks, broader whitespace/inline policies and document replay are not added.
 
 ### 5. Verify nested auto sizing and result lifetime
 
-**Stages 5A–5D implemented; stage 5E remains planned.** This is a verification and
+**Stages 5A–5E complete, verified 2026-11-15.** This is a verification and
 targeted-fix increment using the existing public APIs. Exercise the complete
 sequence: measure -> width selection -> descendant resolution -> final layout.
 No new measurement, sizing, result-retention or rendering interface is proposed.
@@ -1944,9 +1947,11 @@ Implementation and evidence:
 Validation passed: tytui's full ordinary and race suites, build and vet, including
 existing fixed-width document proofs, independent HarfBuzz and replay controls;
 typography's render and OpenType adapter tests. No replay fixture was regenerated.
-Stage 5E's final cross-module documentation and validation remain outstanding.
+Stage 5E records the final cross-module documentation and validation below.
 
 #### 5E. Align documentation and complete validation
+
+**Complete, 2026-11-15. Documentation-only alignment; no production changes.**
 
 Update this stage's implementation record, tytui's document-layout README and
 fixture instructions with actual evidence and remaining limits. Reconcile CSS-core
@@ -1966,6 +1971,49 @@ Completion requires the nested scheduling/geometry oracles, transactional failur
 and recovery cases, retained-result rendering evidence and documentation alignment.
 It does not require production changes when the existing implementation passes
 these tests.
+
+Implementation and evidence:
+
+- Updated CSS core's [algorithm contract](../../css-box-layout/doc/CSS-Algo-Overview.md),
+  [integration assessment](../../css-box-layout/doc/Document-Layout-Integration.md),
+  [checklist](../../css-box-layout/doc/Current-Checklist.md) and
+  [roadmap](../../css-box-layout/doc/Exec-Roadmap.md). Removed stale claims that
+  actual tytui wiring, atomic API migration, conversion/publication or pending
+  auto-width representation still needed implementation. Corrected the same
+  integration-status banner in the architecture and pass-algorithm notes.
+- The CSS integration evidence crosswalk links owning core controls separately
+  from actual tytui scheduling, independent geometry, lifetime and real-font proof
+  tests. Completed only the corresponding external-adapter and atomic-geometry
+  checklist items. Broader invariant/geometry coverage, option/abstraction cleanup
+  and horizontal auto-margin decisions remain open; this does not complete the
+  entire CSS-core roadmap.
+- Updated typography's README to describe implemented CSS callbacks/reuse in
+  tytui, and tytui's package/fixture instructions to record completed stage 5
+  evidence and validation. Preserved the separate ownership of CSS recursion and
+  sizing, adapter normalization/conversion/publication, typography preparation and
+  vertical assembly, and khipu horizontal measurement/breaking/frozen results.
+- Focused integration and owning-package tests passed before the full checks.
+  Then ran the following commands from each sibling module, against the current
+  local dependency replacements (ordinary and race tests forced fresh execution):
+
+  | Module | `go test ./... -count=1` | `go test -race ./... -count=1` | `go build ./...` | `go vet ./...` |
+  | --- | --- | --- | --- | --- |
+  | khipu | Pass | Pass | Pass | Pass |
+  | typography | Pass | Pass | Pass | Pass |
+  | tytui | Pass | Pass | Pass | Pass |
+  | css-box-layout | Pass | Pass | Pass | Pass |
+
+- Full suites include generic-package dependency audits, injected backend/service
+  tests, OpenType adapter regressions, independent HarfBuzz glyph controls,
+  fixed/auto retained proofs and paragraph replay compatibility. No existing
+  proof/replay fixture was regenerated, and pre-existing typography code changes
+  were preserved. No additional production fix was indicated by this validation.
+
+Stage 5 completion establishes the bounded integrated pipeline and result-lifetime
+contracts, not broader CSS sizing/hyphenation conformance. The exclusions below
+remain explicit, including caller-owned glyph coverage and deferred relocation of
+existing itemizer checks. No separate decision log, cache, public API or document
+replay format was introduced.
 
 #### Supported policies and deferred work
 
