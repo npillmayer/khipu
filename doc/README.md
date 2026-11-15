@@ -61,6 +61,7 @@ The accompanying text and tables also describe each example.
 
 | Question | Diagram |
 | --- | --- |
+| How does Khipu fit into the typesetting stack? | [Overall pipeline](PIPELINE_INTEGRATION.md#data-flow-and-public-operations) |
 | Which public calls produce which objects? | [Public lifecycle](../README.md#public-lifecycle) |
 | What is copied, shared or reusable? | [Ownership and reuse](PREPARED_PARAGRAPHS.md#ownership-and-reuse) |
 | When can streaming output be committed or discarded? | [Completion and failure](../contracts/ReadMe.md#stream-completion-and-failure) |

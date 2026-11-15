@@ -40,19 +40,17 @@ start a second recursive sizing traversal from inside a shaping or breaking call
 The [public lifecycle diagram](../README.md#public-lifecycle) shows Khipu's calls.
 At the pipeline boundary the data flow is:
 
-```text
-normalized inline group + resolved styles + source/box associations
-    -> adapter extraction and typography itemization
-    -> ParagraphInput + PrepareOptions
-    -> PrepareParagraph -> PreparedParagraph
-         -> MeasureIntrinsic(atomic min/max ranges) -> intrinsic widths
-              -> upstream width selection and nested atomic sizing
-         -> BindParagraph(definite atomic advances) -> working Khipu
-              -> BreakParagraph(shared layout settings) -> indices + selections
-              -> Freeze(same layout settings) -> FrozenKhipu
-    -> paragraph assembly -> line geometry + atomic placements
-    -> adapter publication -> accepted document geometry and retained results
-```
+![Overall typesetting pipeline: Khipu prepares reusable horizontal material, measures intrinsic widths for CSS sizing, then binds, breaks and freezes before vertical assembly and rendering.](diagrams/typesetting-pipeline.svg)
+
+[Graphviz DOT source](diagrams/typesetting-pipeline.dot), including the SVG
+regeneration command.
+
+The blue region is Khipu's responsibility. Yellow nodes show upstream sizing;
+measurement returns widths to that process before definite advances are bound.
+The dashed arrow carries vertical metrics and margins directly to paragraph
+assembly. Arrows show data flow through adapters, not package imports or a
+recursive sizing callback from Khipu. Preparation can also feed final layout
+without an intrinsic query when sizes are already known.
 
 | Operation | Inputs that become available here | Output |
 | --- | --- | --- |

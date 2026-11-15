@@ -1,0 +1,54 @@
+// Regenerate from the repository root:
+// dot -Tsvg doc/diagrams/typesetting-pipeline.dot -o doc/diagrams/typesetting-pipeline.svg
+// Arrows show data flow through adapters, not Go package dependencies.
+digraph TypesettingPipeline {
+    graph [rankdir=TB, bgcolor="white", pad=0.25, nodesep=0.55,
+        ranksep=0.55, fontname="Helvetica", fontsize=14];
+    node [shape=box, style="rounded,filled", fillcolor="#f1f5f9",
+        color="#94a3b8", fontcolor="#172b4d", fontname="Helvetica",
+        fontsize=12, margin="0.18,0.12"];
+    edge [color="#64748b", fontcolor="#475569", fontname="Helvetica",
+        fontsize=10, arrowsize=0.7, penwidth=1.2];
+
+    source [label="DOM + style system\nContent, identity and effective styles"];
+    groups [label="css-box-layout\nNormalized inline groups\n+ containing constraints"];
+    adapter [label="tytui adapter + typography services\nExtract, normalize and itemize\nKeep source / box associations"];
+
+    subgraph cluster_khipu {
+        label="KHIPU — horizontal text layout";
+        style="rounded,filled";
+        color="#0284c7";
+        fillcolor="#f0f9ff";
+        fontcolor="#075985";
+        margin=20;
+        node [fillcolor="#e0f2fe", color="#0284c7"];
+        prepare [label="PrepareParagraph\nShape base text once\nRetain unbound atomic slots"];
+        measure [label="MeasureIntrinsic\nNatural min/max-content widths"];
+        layout [label="BindParagraph → BreakParagraph → Freeze\nDefinite atomic advances\nSame line widths + skips for break and freeze"];
+        frozen [label="FrozenKhipu\nVisual knots, final widths, glyph data\nSource ranges + atomic IDs"];
+        prepare -> measure;
+        prepare -> layout [label="reuse prepared material"];
+        layout -> frozen;
+    }
+
+    ranges [label="css-box-layout\nSchedule nested intrinsic queries\nSupply atomic min/max contributions",
+        fillcolor="#fef3c7", color="#d97706"];
+    sizing [label="css-box-layout\nChoose widths and size nested atomics\nAdapter resolves advances + layout settings",
+        fillcolor="#fef3c7", color="#d97706"];
+    assembly [label="typography/paragraph\nLine heights, baselines\n+ paragraph-local atomic placements"];
+    publication [label="Adapter / CSS publication\nAccepted document geometry\n+ retained paragraph results"];
+    renderer [label="Renderer / application\nDocument transforms and painting",
+        fillcolor="#dcfce7", color="#16a34a"];
+
+    source -> groups;
+    groups -> adapter;
+    groups -> ranges;
+    adapter -> prepare [label="styled text + atomic anchors / policy"];
+    ranges -> measure [label="via adapter"];
+    measure -> sizing [label="intrinsic widths"];
+    sizing -> layout [label="via adapter"];
+    frozen -> assembly;
+    sizing -> assembly [label="vertical metrics + margins", style=dashed];
+    assembly -> publication [label="extent + placements"];
+    publication -> renderer;
+}
