@@ -1,6 +1,8 @@
 package khipu
 
 import (
+	"slices"
+
 	"github.com/npillmayer/khipu/contracts"
 	"github.com/npillmayer/khipu/dimen"
 	"github.com/npillmayer/khipu/helpers"
@@ -68,5 +70,46 @@ func defaultStreamingConfig() *StreamingConfig {
 			Font: helpers.NewSyntheticFont(), EmSize: 10 * dimen.PT,
 			Spacing: contracts.SpacingElastic,
 		},
+	}
+}
+
+// Khipukamayuq owns paragraph preparation, encoding, binding, and lazy shaping.
+// Construct it with [NewKhipukamayuq]; its zero value is not configured for use.
+// Use [Khipukamayuq.EncodeParagraph] for text alone, or prepare once with
+// [Khipukamayuq.PrepareParagraph], measure with [Khipukamayuq.MeasureIntrinsic],
+// and bind atomic advances with [Khipukamayuq.BindParagraph]. After linebreaking,
+// [Khipukamayuq.Freeze] creates an immutable result from the chosen decisions.
+// Serialize operations on an owner and keep source, styles, and retained font
+// services stable for the lifetime of derived paragraphs and results.
+type Khipukamayuq struct {
+	env typEnv
+}
+
+// NewKhipukamayuq creates an owner for SOA paragraphs using config.
+// It copies parameters and retains collaborator instances as described by Config.
+// A Khipukamayuq must not be used concurrently.
+func NewKhipukamayuq(config Config) *Khipukamayuq {
+	env := typEnv{
+		hyphenator:  config.Hyphenator,
+		parFillSkip: KnotCore{MaxW: dimen.Fill},
+	}
+	if config.Streaming != nil {
+		streaming := *config.Streaming
+		streaming.Defaults.Features = slices.Clone(streaming.Defaults.Features)
+		env.streaming = &streaming
+	} else {
+		env.streaming = defaultStreamingConfig()
+	}
+	if config.ParFillSkip != nil {
+		env.parFillSkip = *config.ParFillSkip
+	}
+	if config.Params == nil {
+		env.params = newParameters()
+	} else {
+		params := *config.Params
+		env.params = &params
+	}
+	return &Khipukamayuq{
+		env: env,
 	}
 }

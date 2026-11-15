@@ -18,7 +18,7 @@ import (
 func checkFrozenGeometry(t *testing.T, got *FrozenKhipu, geometry *geometryParagraph) {
 	t.Helper()
 	n := len(got.w)
-	if len(got.pos) != n || len(got.len) != n || len(got.kind) != n || len(got.flags) != n || len(got.origins) != n || len(got.lines) != len(geometry.lines) {
+	if len(got.kind) != n || len(got.flags) != n || len(got.origins) != n || len(got.lines) != len(geometry.lines) {
 		t.Fatal("unaligned frozen planes")
 	}
 	end := 0
@@ -33,9 +33,12 @@ func checkFrozenGeometry(t *testing.T, got *FrozenKhipu, geometry *geometryParag
 		for j, knot := range original.knots {
 			at := line.content.start + j
 			sum += int64(got.w[at])
-			want := frozenOrigin{knot.atomic, knot.source, knot.box, knot.origin, knot.variant, knot.fragment, knot.paragraphFill}
-			if got.pos[at] != knot.core.Pos || got.len[at] != knot.core.Len || got.kind[at] != knot.core.Kind || got.flags[at] != knot.core.Flags || got.origins[at] != want {
+			want := frozenOrigin{atomic: knot.atomic, source: knot.source, box: knot.box, fragment: knot.fragment, paragraphFill: knot.paragraphFill}
+			if got.kind[at] != knot.core.Kind || got.flags[at] != knot.core.Flags || got.origins[at] != want {
 				t.Fatal("lost knot identity", at)
+			}
+			if snapshot, ok := got.Knot(at); !ok || snapshot.Source != publicSource(knot.source) {
+				t.Fatal("lost public source provenance", at, snapshot)
 			}
 			if got.w[at] < knot.core.MinW || got.w[at] > knot.core.MaxW || (knot.core.Kind != KTGlue && got.w[at] != knot.core.W) {
 				t.Fatal("unrealizable final width", at, got.w[at])
@@ -72,9 +75,10 @@ func TestFreezeFiniteGlue(t *testing.T) {
 			t.Fatal("wrong interword allocation or changed input", got.w)
 		}
 		got.w[0]++
-		got.origins[0].origin++
+		wantSource := got.origins[0].source
+		got.origins[0].source.byteStart++
 		again, err := g.freeze(context.Background())
-		if err != nil || again.w[0] != k.W[0] || again.origins[0].origin != 0 {
+		if err != nil || again.w[0] != k.W[0] || again.origins[0].source != wantSource {
 			t.Fatal("output shares mutable planes", err)
 		}
 	}
@@ -181,8 +185,14 @@ func TestFreezeSelectedReplacementLifetime(t *testing.T) {
 	}
 	if got.origins[0].box != candidate.preBox || got.origins[1].box != candidate.postBox ||
 		got.origins[0].fragment != logicalPreBreak || got.origins[1].fragment != logicalPostBreak ||
-		got.origins[0].variant != 4 || got.origins[1].variant != 4 || got.lines[0].byteEnd != 3 || got.lines[1].byteStart != 3 {
+		got.lines[0].byteEnd != 3 || got.lines[1].byteStart != 3 {
 		t.Fatal("lost selected replacement/provenance")
+	}
+	pre, preOK := got.Knot(0)
+	post, postOK := got.Knot(1)
+	if !preOK || !postOK || pre.Material != PreBreakMaterial || post.Material != PostBreakMaterial ||
+		pre.Source.Bytes != (ByteRange{0, 3}) || post.Source.Bytes != (ByteRange{3, 7}) {
+		t.Fatal("lost public replacement provenance", pre, post)
 	}
 	clear(k.SelectedDiscretionaries)
 	unwireKhipu(k)

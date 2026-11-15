@@ -46,7 +46,7 @@ These helpers are used by the candidate accumulator in `EncodeParagraph`.
 Linebreakers consume the resulting width bounds and discardable flags. Freezing
 allocates final widths; allowing glue to shrink also permits a linebreaker to
 accept a line wider than its target at natural width, provided its minimum width
-fits. See [firstfit's fitting policy](FIRSTFIT.md#algorithm-and-fitting) and
+fits. See [firstfit's fitting policy](FIRSTFIT.md#fitting) and
 [freezing](FREEZE.md).
 
 ## Typographic Reference

@@ -5,6 +5,8 @@
 // StreamingShaper and StyleResolver drive paragraph encoding and lazy
 // discretionary reshaping. Package helpers supplies synthetic implementations.
 // Paragraph-specific interfaces such as Hyphenator stay in package khipu.
+// AtomicID and AtomicAnchor separately identify opaque inline occurrences in
+// source text. They carry no renderer payload, dimensions, or shaping service.
 package contracts
 
 import "errors"

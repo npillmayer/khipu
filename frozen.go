@@ -35,8 +35,6 @@ type FrozenKhipu struct {
 	sourceOffset uint64
 	shaping      frozenShaping
 	w            []dimen.DU
-	pos          []uint64
-	len          []uint16
 	kind         []KnotType
 	flags        []KnotFlags
 	origins      []frozenOrigin
@@ -59,14 +57,12 @@ type frozenLine struct {
 }
 
 // frozenOrigin preserves the association with original source and chosen
-// replacement material, not alternative break opportunities. Pos/Len alone
-// cannot identify changed-spelling or silent discretionary replacements.
+// replacement material, not alternative break opportunities. The source range
+// and shaping box together identify changed-spelling or silent replacements.
 type frozenOrigin struct {
 	atomic        contracts.AtomicID
 	source        runSourceRange
 	box           shapedBoxID
-	origin        int
-	variant       uint16
 	fragment      logicalFragment
 	paragraphFill bool
 }
@@ -152,12 +148,12 @@ func (p *geometryParagraph) freeze(ctx context.Context) (*FrozenKhipu, error) {
 		start := len(result.w)
 		for j, knot := range line.content.knots {
 			result.w = append(result.w, plan.content[j])
-			result.pos = append(result.pos, knot.core.Pos)
-			result.len = append(result.len, knot.core.Len)
 			result.kind = append(result.kind, knot.core.Kind)
 			result.flags = append(result.flags, knot.core.Flags)
-			result.origins = append(result.origins, frozenOrigin{knot.atomic, knot.source, knot.box, knot.origin,
-				knot.variant, knot.fragment, knot.paragraphFill})
+			result.origins = append(result.origins, frozenOrigin{
+				atomic: knot.atomic, source: knot.source, box: knot.box,
+				fragment: knot.fragment, paragraphFill: knot.paragraphFill,
+			})
 		}
 		result.lines[i] = frozenLine{content: arenaRange{start, len(result.w)},
 			leftSkip: plan.leftSkip, rightSkip: plan.rightSkip, width: plan.adjustment.actual,

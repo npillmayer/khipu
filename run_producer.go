@@ -10,7 +10,7 @@ import (
 	"github.com/npillmayer/khipu/contracts"
 )
 
-// producePreparedRuns feeds a fresh, exclusively owned stream in logical order.
+// produceNoBreakRuns feeds a fresh, exclusively owned stream in logical order.
 // The caller runs this function in a goroutine while consuming Glyphs on its
 // own execution path. Publish the complete prepared-run table before starting
 // either side and keep it and the paragraph immutable until both have finished.
@@ -22,11 +22,8 @@ import (
 // checking completion and shaper.Err. On consumer failure, cancel ctx and join
 // the producer before discarding output. Cancellation cannot interrupt every
 // backend source read. The caller must not reuse the stream, even on failure.
-func producePreparedRuns(ctx context.Context, para *styled.Paragraph, runs []preparedRun, shaper contracts.StreamingShaper, options contracts.ShapeBufferOptions) error {
-	return produceNoBreakRuns(ctx, para, runs, nil, shaper, options)
-}
-
-// produceNoBreakRuns optionally filters markers using previously published
+//
+// It optionally filters markers using previously published
 // mapping metadata. Retained run parameters stay in original coordinates;
 // only the backend request receives adjusted feature ranges.
 func produceNoBreakRuns(ctx context.Context, para *styled.Paragraph, runs []preparedRun, maps []*noBreakRun, shaper contracts.StreamingShaper, options contracts.ShapeBufferOptions) error {

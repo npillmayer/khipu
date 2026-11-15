@@ -4,7 +4,10 @@ package khipu
 // associated with a textbox knot. Variants are expected to be stable for a given
 // textbox within one paragraph instance.
 type DiscretionaryCandidate struct {
-	Variant   uint16
+	// Variant is a nonzero identity unique within the source textbox's candidates.
+	Variant uint16
+	// PreBreak replaces the source textbox on the ending line; its penalty
+	// controls eligibility. PostBreak starts the next line's material.
 	PreBreak  KnotCore
 	PostBreak KnotCore
 	// SourceSplit, when Valid, is relative to the original paragraph in UTF-8
@@ -21,42 +24,17 @@ type DiscretionaryCandidate struct {
 // DiscretionarySelection records which discretionary candidate was selected
 // for a selected break decision.
 type DiscretionarySelection struct {
-	Source  int
+	// Source is the original textbox's zero-based knot index.
+	Source int
+	// Variant identifies a cached alternative at Source.
 	Variant uint16
 }
 
-func defaultFlagsForKind(kind KnotType) KnotFlags {
-	switch kind {
-	case KTGlue, KTKern:
-		return KFDiscardable
-	default:
-		return 0
-	}
-}
-
-func (khipu *Khipu) flagsAt(index int) KnotFlags {
-	if khipu == nil || index < 0 || index >= len(khipu.Flags) {
-		return 0
-	}
-	return khipu.Flags[index]
-}
-
-func (k KnotCore) IsDiscardable() bool {
-	return k.Flags&KFDiscardable != 0
-}
-
-func (khipu *Khipu) SetKnotFlags(index int, flags KnotFlags) bool {
-	if khipu == nil || index < 0 || index >= len(khipu.Kind) {
-		return false
-	}
-	if len(khipu.Flags) < len(khipu.Kind) {
-		missing := len(khipu.Kind) - len(khipu.Flags)
-		khipu.Flags = append(khipu.Flags, make([]KnotFlags, missing)...)
-	}
-	khipu.Flags[index] = flags
-	return true
-}
-
+// AddDiscretionaryCandidate appends cand at index and clears any cached empty
+// discovery there. It returns false for a nil receiver or invalid knot index.
+// Success means appended: kind, variant uniqueness, source split and shaping
+// provenance are not validated. Callers supplying metric-only alternatives must
+// not assume they can be frozen. Normal clients use the owner's provider.
 func (khipu *Khipu) AddDiscretionaryCandidate(index int, cand DiscretionaryCandidate) bool {
 	if khipu == nil || index < 0 || index >= len(khipu.Kind) {
 		return false
@@ -69,6 +47,10 @@ func (khipu *Khipu) AddDiscretionaryCandidate(index int, cand DiscretionaryCandi
 	return true
 }
 
+// DiscretionariesAt returns cached alternatives at index without discovery.
+// Nil receivers, negative indices and absent map entries return nil. The slice
+// shares cache storage; treat it as read-only while the paragraph is in use.
+// An empty result does not indicate whether discovery has been attempted.
 func (khipu *Khipu) DiscretionariesAt(index int) []DiscretionaryCandidate {
 	if khipu == nil || index < 0 {
 		return nil
@@ -76,6 +58,11 @@ func (khipu *Khipu) DiscretionariesAt(index int) []DiscretionaryCandidate {
 	return khipu.DiscretionaryCandidates[index]
 }
 
+// SelectDiscretionary stores choice for the zero-based line-ending breakpoint.
+// It returns false for a nil receiver or invalid breakpoint. It does not validate
+// choice.Source, choice.Variant, or candidate availability. Breaker-produced
+// choices use the ending textbox as Source; successful breaker calls replace
+// all prior choices. Freeze validates choices against the complete break list.
 func (khipu *Khipu) SelectDiscretionary(breakpoint int, choice DiscretionarySelection) bool {
 	if khipu == nil || breakpoint < 0 || breakpoint >= len(khipu.Kind) {
 		return false
@@ -87,6 +74,9 @@ func (khipu *Khipu) SelectDiscretionary(breakpoint int, choice DiscretionarySele
 	return true
 }
 
+// SelectedDiscretionaryAt returns the stored choice and whether its map entry
+// exists. Nil receivers and negative breakpoints return a zero value and false.
+// The returned choice is a value copy; this query does not validate its candidate.
 func (khipu *Khipu) SelectedDiscretionaryAt(breakpoint int) (DiscretionarySelection, bool) {
 	if khipu == nil || breakpoint < 0 {
 		return DiscretionarySelection{}, false
@@ -110,6 +100,9 @@ func (khipu *Khipu) SelectedDiscretionaryAt(breakpoint int) (DiscretionarySelect
 // Streaming paragraphs support explicit U+00AD and automatic requests for one
 // complete eligible source segment, never metric-shaped substitutes.
 // Configure the owner as the linebreaker's provider to enable lazy discovery.
+// This synchronous query has no context argument. Lazy replacement shaping uses
+// context.Background(); earlier encoding and later freezing contexts do not
+// cancel it. The returned candidate slice shares the paragraph's cache storage.
 func (kq *Khipukamayuq) DiscretionaryCandidates(khp *Khipu, at int) ([]DiscretionaryCandidate, error) {
 	if kq == nil {
 		return nil, ErrVoidKhipukamayuq

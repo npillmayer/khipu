@@ -13,11 +13,14 @@
 // NewDefaultParameters supplies the profile used for nil algorithm parameters;
 // NewTolerantParameters explicitly opts into higher tolerance and emergency
 // stretch. Both return independent values; there is no shared mutable profile.
+// Score fields use Merits, an int64-based type: convert typed application values
+// with Merits(value). Physical dimensions use dimen.DU instead.
 //
 // The result contains zero-based line-ending knot indices, including the final
-// trailer. BreakRef distinguishes ordinary breaks from discretionary variants
-// during search. Only a successful call replaces Khipu.SelectedDiscretionaries
-// with the winning variants; a failed call leaves previous selections intact.
+// trailer. Legacy BreakRef helpers are deprecated compatibility names for search
+// records, not the public result format. Only a successful call replaces
+// Khipu.SelectedDiscretionaries with the winning variants; a failed call leaves
+// previous selections intact.
 // Discovery may still populate paragraph-owned candidate caches. Providers own
 // shaping and candidate penalties; the breaker reads PreBreak.Penalty and seeds
 // the following line with PostBreak.
@@ -66,12 +69,14 @@
 //
 // # Implementation map and limits
 //
-// passes.go orchestrates retries; boundary.go advances, commits and retires
-// states; geometry.go classifies line geometry; knuthplass.go manages working
-// bookkeeping, demerits and collection; path.go stores predecessor history;
+// knuthplass.go provides the entry point and pass-state setup; passes.go
+// orchestrates retries. search.go drives the knot scan and predecessor updates;
+// boundary.go advances, commits and retires states; bookkeeping.go tracks widths
+// and edge trimming. evaluation.go evaluates ordinary candidates; geometry.go
+// classifies line geometry; scoring.go computes demerits. path.go stores
+// predecessor history; results.go collects and publishes the winning path.
 // discretionary.go discovers and evaluates replacements; evaluation_cache.go
-// owns boundary-local reuse. buildBreakpointPaths drives the knot scan and
-// predecessor-table construction. hyphenationCandidateForLine and
+// owns boundary-local reuse. hyphenationCandidateForLine and
 // requestDiscretionariesForLine serve both hyphenating passes (2 and 3).
 //
 // This is not a complete TeX implementation: fitness classes and consecutive
@@ -79,19 +84,3 @@
 // every possible hyphenation. Exact symbolic fill-order arithmetic is also not
 // modeled by the breaker's numerical width summaries.
 package knuthplass
-
-import "github.com/npillmayer/schuko/tracing"
-
-// tracer traces with key 'khipu.linebreak'.
-func tracer() tracing.Trace {
-	return tracing.Select("khipu.linebreak")
-}
-
-func assert(cond bool, msg string) {
-	if !cond {
-		panic(msg)
-	}
-}
-
-// infinityDemerits is the capped line badness, not a bound on accumulated costs.
-const infinityDemerits merits = 10000

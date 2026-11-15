@@ -30,6 +30,16 @@ through `Config.Streaming`, with synthetic defaults for `Config{}`.
 Paragraph-specific `Hyphenator` remains in the root package. Paragraph shapes
 and discretionary-provider interfaces remain with their linebreaker consumers.
 
+## Atomic Occurrences
+
+`AtomicID` and `AtomicAnchor` describe opaque inline occurrences, independently
+of the font services above. IDs are nonzero and paragraph-local. Each anchor
+selects the first paragraph-relative UTF-8 byte of a U+FFFC marker; anchors must
+be strictly ordered. Unattached markers remain ordinary text. Payloads and
+vertical geometry stay with the caller, while the root engine's `BindParagraph`
+accepts fixed signed advances. See [prepared paragraphs](../doc/PREPARED_PARAGRAPHS.md#anchors-and-atomic-boundaries)
+and the [executable preparation example](../example_test.go).
+
 ## Fonts and Style Resolution
 
 [`FontLoader`](font_api.go) loads a face from an `io.Reader`; the adapter retains
@@ -85,6 +95,45 @@ are meaningful only with their run's face. Advances and offsets are signed font
 units, converted using the run's `FontScale`. Advances move the pen; offsets move
 the glyph relative to that pen. The channel has no run/cluster completion markers.
 
+### Stream Completion And Failure
+
+The engine's [coordinator](../stream_shaper.go) keeps producer completion separate
+from glyph-channel closure. The sequence below summarizes the two outcomes after
+a producer has been launched; it does not require a particular channel-observation
+order. Shape calls and glyph consumption run concurrently.
+
+```mermaid
+sequenceDiagram
+    participant C as Consumer / coordinator
+    participant P as Producer goroutine
+    participant S as Fresh StreamingShaper
+    C->>P: Launch with child context and buffered done channel
+    alt Successful stream
+        loop Each prepared run
+            P->>S: SetInitialCluster, then Shape(ctx, run)
+            S-->>C: Glyphs: provisional records while Shape runs
+            Note over P,C: Drain concurrently while Shape may block on output
+        end
+        P->>S: Finish()
+        S-->>C: Glyphs closes with buffered glyphs still to drain
+        P-->>C: done receives nil
+        Note over C: Wait for both completion and drained/closed output
+        C->>S: Err()
+        C->>C: Publish only if Err is nil
+    else Producer, consumer or context failure
+        Note over P,C: A failure before Shape need not close Glyphs
+        C->>P: Cancel child context
+        P-->>C: Receive done if not already joined
+        C->>C: Discard provisional paragraph output
+    end
+    Note over C,P: Every exit cancels and joins the launched producer
+```
+
+A completed producer is not proof that all buffered glyphs have been consumed.
+Conversely, closed output is not proof of successful production. On failure,
+joining waits for the producer to return; cancellation cannot interrupt every
+backend source read. A failed or finished shaper is never reused.
+
 ## Coordinates and Units
 
 | Value | Coordinate or unit |
@@ -98,6 +147,42 @@ For `aéz`, one-scalar clusters have byte anchors `0, 1, 3`, but scalar anchors
 `0, 1, 2` with initial base zero. Streaming bases continue by input scalar count,
 including scalars producing no output. Cluster boundaries alone do not authorize
 line breaks; source spans and penalties remain layout metadata.
+
+### Coordinate Ladder: Multibyte Text And Soft Hyphens
+
+Consider one run containing `aé­z`, with paragraph offset 100. Here U+00AD
+is the invisible soft-hyphen scalar, not the six printed escape characters.
+The engine's ordinary no-break path filters that marker before shaping.
+
+| Original scalar | Paragraph byte span | Document byte span | Filtered scalar index |
+| --- | --- | --- | --- |
+| `a` (0) | `[0, 1)` | `[100, 101)` | 0 |
+| `é` (1) | `[1, 3)` | `[101, 103)` | 1 |
+| U+00AD (2) | `[3, 5)` | `[103, 105)` | omitted |
+| `z` (3) | `[5, 6)` | `[105, 106)` | 2 |
+
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 450}}}%%
+flowchart TB
+    D["Document UTF-8 bytes: 100..106"] -->|subtract Paragraph.Offset| P["Paragraph UTF-8 bytes: 0..6"]
+    P -->|decode source boundaries| O["Original scalars: 0=a, 1=é, 2=SHY, 3=z"]
+    O -->|filter SHY for this shaping request| I["Backend input: aéz; dense scalars 0, 1, 2"]
+    I -->|shape; glyph count may differ| G["Backend glyph cluster anchors in filtered input"]
+    G -->|restoreNoBreakAnchor: 0→0, 1→1, 2→3| R["Retained glyph anchors in original scalar coordinates"]
+    R -->|original boundary table| B["Source byte/scalar spans; separate break metadata"]
+```
+
+The diagram uses a run whose original scalar base is zero. Every backend run
+starts at its original scalar base; marker-free indices are dense *within* that
+run. The engine restores anchors before cluster assembly. Features are likewise
+clipped/rebased for the request, while retained contexts preserve the original
+run coordinates. Ligatures, marks and omitted controls mean neither scalar count
+nor byte count predicts glyph count. A restored cluster boundary does not itself
+permit a break.
+
+Discretionary replacement runs start at zero in their **own input**, not the
+original paragraph. Their original provenance remains separate; see the
+[replacement-coordinate diagram](../doc/FROZEN-API.md#replacement-coordinates).
 
 ## Dependencies, Errors, and Compatibility
 

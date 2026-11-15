@@ -9,20 +9,6 @@ import (
 	"github.com/npillmayer/khipu/contracts"
 )
 
-// publishDiscretionary stores one fully shaped alternative for one original
-// textbox. Discovery and penalty policy remain with its caller. Both fragments
-// are prepared privately before any arena/cache mutation; errors leave the
-// khipu unchanged. Publication is not concurrent-safe, like the khipu itself.
-// Existing variants cannot be replaced: selections and arena IDs remain stable.
-// Multi-box replacements and public renderer access are deliberately excluded.
-func (k *Khipu) publishDiscretionary(at int, variant uint16, penalty Penalty, pair *shapedDiscretionaryInput) (DiscretionaryCandidate, error) {
-	staged, err := k.prepareDiscretionaryPublication(at, variant, penalty, pair)
-	if err != nil {
-		return DiscretionaryCandidate{}, err
-	}
-	return k.commitDiscretionary(at, staged), nil
-}
-
 // stagedDiscretionary permits a complete provider batch to be validated before
 // publishing any alternative. The private arenas own all mutable storage.
 type stagedDiscretionary struct {
@@ -30,6 +16,10 @@ type stagedDiscretionary struct {
 	pre, post shapingArena
 }
 
+// prepareDiscretionaryPublication validates one alternative and owns its
+// replacement storage without changing the khipu. Existing variants cannot be
+// replaced: selections and arena IDs remain stable. The caller must stage the
+// complete batch before committing; staging and commit require exclusive access.
 func (k *Khipu) prepareDiscretionaryPublication(at int, variant uint16, penalty Penalty, pair *shapedDiscretionaryInput) (stagedDiscretionary, error) {
 	bad := func() (stagedDiscretionary, error) {
 		return stagedDiscretionary{}, fmt.Errorf("%w: invalid discretionary publication", contracts.ErrIllegalArguments)

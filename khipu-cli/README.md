@@ -21,9 +21,11 @@ treated as one paragraph. Width is an integer in **big points** (1/72 inch), not
 TeX/printer points. Directions are `ltr` and `rtl`. Breakers are `firstfit`
 (default, ragged-right layout) and `knuthplass` (default justified layout).
 
-The command uses `Config{}` synthetic shaping. It wires the owner as discretionary
-provider, so explicit soft hyphens can be selected; no dictionary hyphenator is
-installed. It freezes using the same layout as the breaker. Ctrl-C cancels
+The command uses `Config{}` synthetic shaping with no hyphenator. Soft-hyphen
+markers are suppressed during shaping, but neither explicit replacements nor
+automatic hyphenation alternatives are discovered. Wiring the owner as the
+breaker's provider does not supply a break-material policy. It freezes using the
+same layout as the breaker. Ctrl-C cancels
 encoding/freezing cooperatively, but cannot interrupt the synchronous breaker
 or a blocked input read. Failed layout does not overwrite the destination.
 Filesystem write failures can still leave a partial file.

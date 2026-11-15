@@ -87,12 +87,6 @@ func TestScanSkipsDiscardablesToPreviousAndNextContentBox(t *testing.T) {
 	if next, ok := nextContentBox(khp, 1); !ok || next != 3 {
 		t.Fatalf("expected next content box at 3, got %d ok=%v", next, ok)
 	}
-	if prev, ok := previousNonDiscardable(khp, 2); !ok || prev != 0 {
-		t.Fatalf("expected previous non-discardable at 0, got %d ok=%v", prev, ok)
-	}
-	if next, ok := nextNonDiscardable(khp, 1); !ok || next != 3 {
-		t.Fatalf("expected next non-discardable at 3, got %d ok=%v", next, ok)
-	}
 }
 
 func TestScanStopsAtNonTextboxNonDiscardable(t *testing.T) {
@@ -105,14 +99,8 @@ func TestScanStopsAtNonTextboxNonDiscardable(t *testing.T) {
 	khp.Pos = append(khp.Pos, 0, 0, 0)
 	khp.Len = append(khp.Len, 0, 0, 0)
 	khp.Flags = append(khp.Flags, 0, 0, khipu.KFDiscardable)
-	if next, ok := nextNonDiscardable(khp, 1); !ok || next != 1 {
-		t.Fatalf("expected next non-discardable at 1, got %d ok=%v", next, ok)
-	}
 	if _, ok := nextContentBox(khp, 1); ok {
 		t.Fatalf("expected no next content box past custom knot")
-	}
-	if prev, ok := previousNonDiscardable(khp, 2); !ok || prev != 1 {
-		t.Fatalf("expected previous non-discardable at 1, got %d ok=%v", prev, ok)
 	}
 	if _, ok := previousContentBox(khp, 2); ok {
 		t.Fatalf("expected no previous content box when custom knot intervenes")

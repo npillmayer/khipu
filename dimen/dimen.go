@@ -1,5 +1,12 @@
 /*
-Package dimen implements dimensions and units.
+Package dimen provides signed fixed-point dimensions and simple page geometry.
+One DU is 1/65536 of a big point (BP, 1/72 inch). PT uses printer points;
+Points converts to BP. PX is an alias in value for BP, not a device conversion.
+
+Arithmetic on DU is ordinary int32 arithmetic and is not checked. Callers must
+check widened sums and rounded conversions before narrowing. Khipu reserves
+Fil, Fill and Filll for glue stretch orders; they are not physical lengths.
+The finite layout domain has magnitude below Fil; Infinity is not a fill order.
 
 # License
 
@@ -18,8 +25,8 @@ import (
 // Online dimension conversion for print:
 // http://www.unitconversion.org/unit_converter/typography-ex.html
 
-// DU is a 'design unit' typ.
-// Values are in scaled big points (different from TeX).
+// DU is a signed dimension in units of 1/65536 big point. Its underlying int32
+// arithmetic does not check overflow; layout reserves the positive fill sentinels.
 type DU int32
 
 // Some pre-defined dimensions
@@ -37,15 +44,29 @@ const (
 // Infinity is the largest possible dimension
 const Infinity = math.MaxInt32
 
-// Some very stretchable dimensions
+// Fil is first-order infinite glue stretch, lower than Fill and Filll.
+// Fill orders are layout sentinels, not physical lengths or shrink capacities.
 const Fil DU = Infinity - 3
+
+// Fill is second-order infinite glue stretch, higher than Fil and lower than Filll.
 const Fill DU = Infinity - 2
+
+// Filll is the highest supported infinite glue stretch order.
 const Filll DU = Infinity - 1
 
-// Some common paper sizes
+// DINA4 is the 210 by 297 mm paper preset. Copy it before customization;
+// this exported variable is shared mutable state.
 var DINA4 = Point{210 * MM, 297 * MM}
+
+// DINA5 is the 148 by 210 mm paper preset. Copy it before customization.
 var DINA5 = Point{148 * MM, 210 * MM}
+
+// USLetter is the legacy rounded 216 by 279 mm preset, not an exact inch size.
+// Copy it before customization.
 var USLetter = Point{216 * MM, 279 * MM}
+
+// USLegal is the legacy 216 by 357 mm preset, not an exact 8.5 by 14 inch size.
+// Copy it before customization.
 var USLegal = Point{216 * MM, 357 * MM}
 
 // Stringer implementation.
@@ -91,46 +112,3 @@ func (r Rect) Width() DU {
 func (r Rect) Height() DU {
 	return r.BotR.Y - r.TopL.Y
 }
-
-// ---------------------------------------------------------------------------
-
-//var dimenPattern = regexp.MustCompile(`^([+\-]?[0-9]+)(%|[cminpxtc]{2})?$`)
-
-// Parse parses a string to return a dimension. Syntax is CSS Unit.
-// If a percentage value is given (`80%`), the second return value will be true.
-//
-/*
-func Parse(s string) (DU, bool, error) {
-	d := dimenPattern.FindStringSubmatch(s)
-	if len(d) < 2 {
-		return 0, false, errors.New("format error parsing dimension")
-	}
-	scale := SP
-	ispcnt := false
-	if len(d) > 2 {
-		switch d[2] {
-		case "pt", "PT":
-			scale = PT
-		case "mm", "MM":
-			scale = MM
-		case "bp", "px", "BP", "PX":
-			scale = BP
-		case "cm", "CM":
-			scale = CM
-		case "in", "IN":
-			scale = IN
-		case "sp", "SP", "":
-			scale = SP
-		case "%":
-			scale, ispcnt = 1, true
-		default:
-			return 0, false, errors.New("format error parsing dimension")
-		}
-	}
-	n, err := strconv.Atoi(d[1])
-	if err != nil {
-		return 0, false, errors.New("format error parsing dimension")
-	}
-	return DU(n) * scale, ispcnt, nil
-}
-*/

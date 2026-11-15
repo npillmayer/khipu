@@ -14,8 +14,14 @@
 // The linebreak/firstfit and linebreak/knuthplass packages consume these
 // paragraphs and return line-ending knot indices. To discover hyphenation
 // alternatives lazily, set the breaker's DiscretionaryProvider to the owner.
-// Chosen variants are retained in Khipu.SelectedDiscretionaries; each breaker
-// run replaces the previous selections.
+// Chosen variants are retained in Khipu.SelectedDiscretionaries. Each successful
+// breaker run replaces the previous selections; failures preserve them.
+//
+// For mixed text and atomic inline occurrences, use [ParagraphInput] with
+// [Khipukamayuq.PrepareParagraph]. Reuse the [PreparedParagraph] for intrinsic
+// measurement through [Khipukamayuq.MeasureIntrinsic] and for independent working
+// bindings through [Khipukamayuq.BindParagraph]. Atomics participate in source
+// and bidi analysis but bypass shaping; callers supply their signed advances.
 //
 // Owners and their mutable collaborators must not be used concurrently.
 // Linebreaking does not produce final glyph placement or rendering. Internal
@@ -39,28 +45,3 @@ Copyright © 2017–2021 Norbert Pillmayer <norbert@pillmayer.com>
 
 */
 package khipu
-
-import (
-	"errors"
-
-	"github.com/npillmayer/khipu/contracts"
-
-	"github.com/npillmayer/schuko/tracing"
-)
-
-// tracer traces with key 'khipu'.
-func tracer() tracing.Trace {
-	return tracing.Select("khipu")
-}
-
-func assert(cond bool, msg string) {
-	if !cond {
-		panic(msg)
-	}
-}
-
-var (
-	// ErrIllegalArguments retains identity with contracts.ErrIllegalArguments.
-	ErrIllegalArguments = contracts.ErrIllegalArguments
-	ErrVoidKhipukamayuq = errors.New("khipu: void khipukamayuq")
-)

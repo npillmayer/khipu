@@ -5,12 +5,16 @@ and `frozen.go`. `Khipukamayuq.Freeze` consumes complete break decisions and
 resolved Params, returning an opaque `FrozenKhipu` or an error without partial output.
 See [FREEZE.md](FREEZE.md) for allocation and ownership details.
 
-## Scope And Recommendation
+Read [construction and shared geometry](#construction), [lines and knots](#lines-and-knots),
+[text/glyph snapshots](#retained-text-and-glyphs), or [source and lifetime](#source-and-lifetime).
+Completed implementation steps are in the [delivery record](history/FROZEN_API_DELIVERY.md).
 
-Expose an opaque `FrozenKhipu`, produced by its `Khipukamayuq`, with read access
-to final lines, knots, original source and retained shaping data. Keep SOA planes
-and arena IDs private. Return small records by value and copy variable-length
-shaping data only on explicit request. Do not export mutable width slices.
+## Scope
+
+`FrozenKhipu` is an opaque result produced by its `Khipukamayuq`, with read access
+to final lines, knots, original source and retained shaping data. SOA planes and
+arena IDs are private. Queries return small records by value and copy variable-
+length shaping data on explicit request; mutable width slices are not exposed.
 
 The result is final layout data, not a new elastic paragraph, a renderer box,
 or a serialized format. There is no unfreeze operation. Keeping the original
@@ -28,7 +32,7 @@ content even with zero advance; their identity and geometry survive later workin
 paragraph changes. The caller retains all actual box/payload and vertical geometry.
 Negative completed content or skip-inclusive line totals return
 `ErrUnsupportedPolicy`; individual negative advances are supported. See
-[the mixed-input contract](PIPELINE_INTEGRATION.md#stage-1-api-proposal).
+[the prepared-paragraph guide](PREPARED_PARAGRAPHS.md).
 
 ## Construction
 
@@ -59,8 +63,7 @@ Params is the authority for paragraph geometry as well as its existing
 paragraph-level settings. Both linebreakers and Freeze must consume the same
 resolved LineShape, LeftSkip and RightSkip. Breaker-specific Parameters retain
 algorithm controls, such as tolerances and MinHyphenGain, not duplicate skip
-fields. Both breakers now accept `BreakParagraph(input, layout Params,
-algorithmParams)`; their separate shape argument and skip fields are removed.
+fields. Both breakers accept `BreakParagraph(input, layout Params, algorithmParams)`.
 
 Resolve defaults once when preparing the paragraph's layout configuration, before
 linebreaking. Pass that resolved Params value through breaking and freezing.
@@ -68,7 +71,7 @@ Passing Params by value snapshots the skip cores, but does not clone the object
 behind LineShape: its behavior must remain stable across both phases. Freeze
 must not consult changed owner defaults or apply breaker defaults again.
 
-The agreed firstfit default is **ragged-right**:
+The firstfit default is **ragged-right**:
 
 ```go
 LeftSkip:  KnotCore{Kind: KTGlue, W: 0, MinW: 0, MaxW: 0}
@@ -109,7 +112,6 @@ breaks, err := firstfit.BreakParagraph(input, layout, nil)
 // Keep this same layout for freezing the returned decisions.
 ```
 
-The internal materialization/geometry/freeze constructors now also accept Params.
 `Params.ValidateGeometry()` rejects absent/typed-nil shapes and invalid side-skip
 width triples without querying the shape. Encoding does not require layout
 geometry. Config copies Params values, retaining the LineShape service by
@@ -131,9 +133,9 @@ Requirements:
 
 Success returns a complete independent final-width result. Failure returns nil
 and an error, without changing the input or its selections. Insufficient capacity
-is not an error: internal allocation now publishes over-/underfull outcomes.
+is not an error: allocation publishes over-/underfull outcomes.
 Finite stretch can exceed MaxW; shrink stops at MinW. With no stretch, natural
-widths remain. The public line record must expose target and actual width,
+widths remain. The public line record exposes target and actual width,
 signed residual, fit status, ratio, badness and fill order from that outcome.
 No shaper/hyphenator is called in the current supported subset.
 
@@ -151,9 +153,8 @@ use `ErrIllegalArguments` and `ErrVoidKhipukamayuq` for their existing cases.
 Wrap errors with stage/line context; callers use `errors.Is`, not message text.
 
 This contract cannot detect a stale breakpoint list that is structurally valid
-against newly replaced selections, or a different but valid shape. Document
-that limitation rather than introduce a new breaker-result/generation protocol
-in this PR.
+against newly replaced selections, or a different but valid shape. Callers must keep
+the geometry, breakpoints and selected discretionaries from the same run together.
 
 ## Lines And Knots
 
@@ -236,6 +237,41 @@ is still a knot and may have a nonempty original source range.
 Prefer SourceRange over a second public Pos/Len pair: it avoids mixing absolute
 positions, paragraph-relative positions and the internal uint16 Len field.
 
+### From Logical Material To A Visual Line
+
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 450}}}%%
+flowchart TB
+    D["Complete break indices + selected variants"] --> S["Substitute selected textbox:<br/>pre-break here; post-break starts next line"]
+    S --> T["Record trailing source glue for L1;<br/>trim line-edge discardables"]
+    T --> B["Bidi permutation of whole source-backed knots"]
+    B --> F["Place final paragraph fill:<br/>right for LTR, left for RTL"]
+    F --> W["Allocate widths with physical LeftSkip and RightSkip"]
+    W --> R["Frozen line: visual knots + separate side skips"]
+```
+
+For a short RTL paragraph whose logical text is `אב xy `, let `A` be the RTL
+textbox and `B` the LTR textbox. Assume each is represented by one box. The
+labels `a0,a1` and `b0,b1` denote retained glyph-array order, not pen positions.
+Each row below is drawn left to right; the first row lists **logical** items.
+
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 750}}}%%
+flowchart TB
+    L["Logical: A(a0,a1) | space | B(b0,b1) | trailing space | fill"]
+    T["After trimming: A(a0,a1) | space | B(b0,b1) | fill"]
+    V["Visual content: fill | B(b0,b1) | space | A(a0,a1)"]
+    P["Physical line: LeftSkip | fill | B(b0,b1) | space | A(a0,a1) | RightSkip"]
+    L --> T --> V --> P
+```
+
+The trailing source space is removed from visible material but remains in line
+source coverage. Final fill follows paragraph direction, not the direction of
+`B`. Side skips are physical edges and are not content knots. Neither bidi
+permutation nor freezing reverses glyph arrays within a box. The example does
+not claim full UAX#9 L1 handling; the accepted approximation is described in
+[the freezing guide](FREEZE.md#accepted-l1-approximation).
+
 ## Retained Text And Glyphs
 
 Consumers must be able to obtain shaping data without learning arena IDs or
@@ -297,6 +333,31 @@ The copy-based design is a deliberate first contract, not a requirement to copy
 the whole arena during Freeze. Indexed value access or copy-into-buffer methods
 can be added later if profiling justifies them, without exposing backing slices.
 
+### Replacement Coordinates
+
+Use the source example `aé­z` from the
+[coordinate ladder](../contracts/ReadMe.md#coordinate-ladder-multibyte-text-and-soft-hyphens).
+Assume a configured explicit policy supplies `-` before the break and no added
+post-break material. The owner forms `aé-` and `z` as complete replacement inputs.
+
+```mermaid
+flowchart TB
+    O["Original paragraph: aé + SHY + z<br/>bytes 0..6; scalars 0..4"]
+    O -->|SourceSplit.ByteOffset = 5, after SHY| S["Original source split"]
+    S --> A["Pre-break FrozenKnot.Source:<br/>bytes 0..5; scalars 0..3"]
+    S --> B["Post-break FrozenKnot.Source:<br/>bytes 5..6; scalars 3..4"]
+    A -. "CopyText uses separate input" .-> P["Replacement aé-:<br/>local bytes 0..4; local scalars 0..3"]
+    B -. "CopyText uses separate input" .-> Q["Replacement z:<br/>local bytes 0..1; local scalars 0..1"]
+```
+
+`FrozenKnot.Source` remains original paragraph provenance; `CopyText` glyph
+anchors, cluster `Input` and context `Input` refer to the replacement input.
+Feature ranges are relative to that replacement run. The soft hyphen belongs to
+pre-break provenance even though it is not shaped. A generated hyphen is not
+mapped back to one original character. Add `SourceOffset()` only when converting
+original paragraph byte positions into document positions; never add it to
+replacement-local coordinates.
+
 ## Source And Lifetime
 
 ```go
@@ -314,8 +375,8 @@ Byte ranges may be arbitrary byte boundaries; semantic ranges returned above
 use valid source boundaries. Invalid ranges or nil/zero results return
 ErrIllegalArguments; a valid empty range returns an empty reader.
 
-Do not expose the mutable `*styled.Paragraph`, bidi levels, source style objects
-or owner. Keep the existing stable-source lifetime requirement explicit: source,
+Queries do not expose the mutable `*styled.Paragraph`, bidi levels, source style
+objects or owner. The stable-source lifetime requirement still applies: source,
 published arena records and external font services must remain immutable.
 The result retains references and does not depend on the owner staying alive
 or on the elastic input's mutable slice headers, caches or selections.
@@ -331,44 +392,8 @@ Each returned reader has an independent cursor, but a single reader is not
 promised concurrent use. There is no Close or invalidation when the owner is
 reused. Frozen output is not a persistent/portable font serialization format.
 
-## Delivery Plan
+## Verification And History
 
-### Complete Pipeline Verification
-
-The public EncodeParagraph -> BreakParagraph -> Freeze pipeline is exercised
-with both firstfit and Knuth-Plass by `pipeline_integration_test.go`, alongside
-the public cancellation/retry and varying-shape tests. Checks include mixed bidi
-ordering, source coverage, glyph/width consistency, explicit and automatic
-replacements, fixed-width spaces, finite shrink, finite overstretch, overfull
-words, empty paragraphs and competing fill orders. Frozen output survives later
-replacement of the input's selected decisions; freezing does not call shaping
-or hyphenation services. An executable Freeze example demonstrates the sequence.
-
-These are synthetic-font contract tests, not typography proofs. They do not
-require identical break decisions from the two algorithms. In particular, a fil
-skip can make a shorter K&P line preferable to a compressed line; the shared
-shrink fixture uses zero side skips to exercise finite shrink with both engines.
-Font-backed adapters, broader script corpora and elastic-textbox realization
-remain separate work. There were no production changes required by this sweep.
-
-1. **Implemented:** Params is the shared geometry source for both breakers and
-   internal freezing. Default profiles resolve before breaking, with firstfit's
-   right skip set to fil. Tests cover explicit zero overrides, shared geometry,
-   ragged-right interword spacing, finite shrink, fill precedence, RTL physical
-   edges, invalid configuration, parameter snapshots and existing break paths.
-2. **Implemented:** opaque public result, final line/knot value records and query
-   methods. Map existing storage without exporting its planes. Add tests for
-   index conventions, empty/silent material, detached values and exact widths.
-3. **Implemented:** CopyText and source access. Tests cover snapshot independence, replacement
-   coordinates, feature/context preservation, rebased cluster glyph ranges,
-   retained lifetime, bounded cord reads and concurrent read-only access.
-4. **Implemented:** Freeze consumes resolved Params, promotes the unsupported-adjustment sentinel and threads
-   cancellation checks through
-   internal stages. Move test-only integration bridges to public API tests for
-   both breakers, including failure/retry and input preservation.
-
-Prefer a separate shared-geometry migration followed by the result/API changes.
-No renderer helpers, breaker algorithm redesign, arena compaction or elastic-text
-realization are prerequisites. Future kashida-like support changes how final glyphs and
-widths are produced, not the meaning of this result: successful output must
-always contain mutually consistent realized widths and retained shaping data.
+Current guarantees and executable evidence are indexed in the
+[testing guide](TESTING.md#guarantees-and-evidence). The completed migration and
+verification narrative is preserved in the [delivery record](history/FROZEN_API_DELIVERY.md).

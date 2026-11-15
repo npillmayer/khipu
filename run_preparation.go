@@ -2,7 +2,6 @@ package khipu
 
 import (
 	"fmt"
-	"reflect"
 	"slices"
 
 	"github.com/npillmayer/cords/styled"
@@ -11,7 +10,7 @@ import (
 	textbidi "golang.org/x/text/unicode/bidi"
 )
 
-// prepareParagraphRuns resolves each contributing original style span once,
+// prepareMixedRuns resolves each contributing original style span once,
 // then constructs independently owned parameters for its bidi intersections.
 // Spans containing only omitted controls require no shaping parameters.
 // Defaults apply independently to every span; they are never inherited from
@@ -21,16 +20,8 @@ import (
 // paragraph. The source must stay intact during preparation and later use.
 // Errors preserve their cause and return no partial result. Script subdivision
 // and font fallback are not performed here; the resolver supplies those values.
-func prepareParagraphRuns(para *styled.Paragraph, resolver contracts.StyleResolver, defaults contracts.ResolvedRunStyle) ([]preparedRun, error) {
-	return prepareParagraphRunsForInput(para, resolver, defaults, nil)
-}
-
-// boundaries enables streaming no-break coalescing before feature intersection.
-// Ordinary callers retain the original run-preparation behavior.
-func prepareParagraphRunsForInput(para *styled.Paragraph, resolver contracts.StyleResolver, defaults contracts.ResolvedRunStyle, boundaries []sourceBoundary) ([]preparedRun, error) {
-	return prepareMixedRuns(para, resolver, defaults, boundaries, nil)
-}
-
+// Non-nil boundaries enable no-break marker coalescing before feature
+// intersection; atomic spans are excluded before resolving the text runs.
 func prepareMixedRuns(para *styled.Paragraph, resolver contracts.StyleResolver, defaults contracts.ResolvedRunStyle, boundaries []sourceBoundary, atomics []preparedAtomic) ([]preparedRun, error) {
 	if nilRunService(resolver) {
 		return nil, fmt.Errorf("%w: missing style resolver", contracts.ErrIllegalArguments)
@@ -119,18 +110,4 @@ func intersectFeatures(features []contracts.ShapeFeature, spanLength, from, to u
 		result = append(result, feature)
 	}
 	return result, nil
-}
-
-// Service interfaces may contain typed nils. Reject them before invoking a
-// backend method; an interface comparison with nil alone is insufficient.
-func nilRunService(v any) bool {
-	if v == nil {
-		return true
-	}
-	r := reflect.ValueOf(v)
-	switch r.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return r.IsNil()
-	}
-	return false
 }

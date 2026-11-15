@@ -1,10 +1,24 @@
 package knuthplass
 
 import (
-	"github.com/npillmayer/khipu/linebreak"
 	"math"
 
 	"github.com/npillmayer/khipu/dimen"
+	"github.com/npillmayer/khipu/linebreak"
+)
+
+type lineDisposition uint8
+
+const (
+	// lineOverfull means the effective minimum width exceeds the target. No
+	// tolerance can make this an acceptable ordinary or discretionary line.
+	lineOverfull lineDisposition = iota
+	// lineScreenedOut means the segment is geometrically feasible, but its badness
+	// exceeds the active threshold of the current pass.
+	lineScreenedOut
+	// lineAccepted means the segment survives pass screening and therefore receives
+	// a demerit score for path ranking.
+	lineAccepted
 )
 
 // classifyLine is the shared, side-effect-free geometry and tolerance screen
@@ -69,9 +83,45 @@ func classifyLine(w linebreak.WSS, target dimen.DU, tolerance merits, extraStret
 	return ev
 }
 
+// calcAdjustmentRatio computes the TeX-style adjustment ratio for one line.
+// Positive ratios mean stretching, negative ratios mean shrinking.
+// Except at exact fit, the ratio requires stretch or shrink capacity in the
+// relevant direction. The classifier supplies signed infinity when it is absent.
+//
+// In TeX terms:
+// - short lines divide by available stretch
+// - long lines divide by available shrink
+//
+// This function is pure geometry. It does not decide whether the line is
+// acceptable in the current pass.
+func calcAdjustmentRatio(segwss linebreak.WSS, linelen dimen.DU) (float64, bool) {
+	if segwss.W == linelen {
+		return 0, true
+	}
+	if segwss.W < linelen {
+		available := int64(segwss.Max) - int64(segwss.W)
+		if available <= 0 {
+			return 0, false
+		}
+		return float64(int64(linelen)-int64(segwss.W)) / float64(available), true
+	}
+	available := int64(segwss.W) - int64(segwss.Min)
+	if available <= 0 {
+		return 0, false
+	}
+	return -float64(int64(segwss.W)-int64(linelen)) / float64(available), true
+}
+
 // badnessForRatio keeps the existing cubic rounding and cap. Infinities map
 // to the cap as well. It does not decide whether a shrinking line is overfull.
 func badnessForRatio(ratio float64) merits {
 	r := absFloat64(ratio)
 	return merits(min(100.0, r*r*r) * 100.0)
+}
+
+func absFloat64(n float64) float64 {
+	if n < 0 {
+		return -n
+	}
+	return n
 }

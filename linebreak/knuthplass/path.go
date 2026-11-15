@@ -8,43 +8,10 @@ import (
 	"strings"
 )
 
-type kinx = int   // khipu knot index
-type merits int64 // line and accumulated path costs, including repeated fallbacks
-type lineNo int   // line number
+type kinx = int // khipu knot index
+type lineNo int // line number
 
 const noinx = -1
-
-// BreakRef identifies a logical breakpoint for linebreaking.
-// Variant == 0 denotes the ordinary breakpoint at knot index At.
-// Variant > 0 denotes a discretionary breakpoint inside knot At.
-type BreakRef struct {
-	At      kinx
-	Variant uint16
-}
-
-var NoBreakRef = BreakRef{At: noinx}
-
-func PlainBreak(at kinx) BreakRef {
-	return BreakRef{At: at}
-}
-
-func (br BreakRef) IsDiscretionary() bool {
-	return br.Variant > 0
-}
-
-func (br BreakRef) Kinx() kinx {
-	return br.At
-}
-
-func (br BreakRef) String() string {
-	if br.At < 0 {
-		return "START"
-	}
-	if br.Variant == 0 {
-		return fmt.Sprintf("k-%d", br.At)
-	}
-	return fmt.Sprintf("k-%d[v:%d]", br.At, br.Variant)
-}
 
 func compareBreakRef(a, b BreakRef) int {
 	d := cmp.Compare(a.At, b.At)
@@ -111,12 +78,13 @@ func (pt *pathTable) AddBP(bp BreakRef) error {
 	return nil
 }
 
-// Breakpoint returns the index if it is a registered breakpoint, and noinx otherwise.
+// Breakpoint returns a registered reference, or a fresh {At: noinx} value.
+// Missing lookups never depend on the exported legacy NoBreakRef variable.
 func (pt *pathTable) Breakpoint(bp BreakRef) BreakRef {
 	if _, ok := pt.feasBP[bp]; ok {
 		return bp
 	}
-	return NoBreakRef
+	return BreakRef{At: noinx}
 }
 
 // Pred returns the currently stored predecessor for a reachable (to,line) state.
@@ -129,7 +97,7 @@ func (pt *pathTable) Pred(to BreakRef, line lineNo) (predecessor, bool) {
 // Equal total costs prefer the lower predecessor knot index, then variant.
 // This canonical ordering is independent of map iteration and arrival order.
 func (pt *pathTable) SetPred(from, to BreakRef, cost, total merits, line lineNo) bool {
-	if pt.Breakpoint(to) == NoBreakRef {
+	if pt.Breakpoint(to) == (BreakRef{At: noinx}) {
 		pt.AddBP(to)
 	}
 	st := pathState{to: to, line: line}

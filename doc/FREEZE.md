@@ -1,478 +1,162 @@
 # Freezing A Khipu
 
-This note records first design findings for the post-linebreaking step which
-assigns final widths to the knots of each line.
+Freezing is implemented. It materializes a complete linebreak decision and
+assigns final widths, returning an opaque `FrozenKhipu`. This guide describes
+current behavior as of November 15, 2026; the earlier implementation plan has
+been superseded. Query types, coordinates, and ownership are specified in
+[FROZEN-API.md](FROZEN-API.md).
 
-For now, the working term will be **freezing the khipu**.
-
-Status checked November 3, 2026: this is a design and implementation plan.
-No `FrozenKhipu` type or freeze entry point is implemented. Both modern
-linebreakers already return breakpoints and retain chosen discretionary
-variants, providing the inputs for this next stage.
-
-The intention is:
-
-- linebreaking decides *where* lines break
-- freezing decides *how* each line reaches its target width
-- later box creation consumes the frozen result
-
-This differs from TeX terminology:
-
-- we do **not** call this "boxing"
-- we do **not** plan an "unfreeze"
-
-So freezing should be understood as an irreversible transition from an elastic
-paragraph representation to a final line-local width assignment.
-
-## Problem Statement
-
-The current `Khipu` carries elastic widths:
-
-- `W`
-- `MinW`
-- `MaxW`
-- `Penalty`
-
-After linebreaking, that is still only a *potential* paragraph.
-
-To typeset lines, we still need to:
-
-1. determine the actual knot sequence of each line
-2. determine the target line width
-3. compute the line delta between natural width and target width
-4. distribute that delta across the adjustable knots of the line
-5. write final knot widths
-
-The freeze step therefore sits between:
-
-- linebreaking
-- later box creation / rendering
-
-## Inputs To Freeze
-
-Freezing will need at least these inputs:
-
-- an elastic `Khipu`
-- a breakpoint sequence (`[]kinx`)
-- selected discretionaries (`SelectedDiscretionaries`)
-- paragraph shape (`ParShape`) or explicit target line lengths
-- the same left/right skip dimensions used during linebreaking
-
-The public entry point belongs to `Khipukamayuq`; its internal collaboration
-with `Shaper` remains to be designed.
-
-The important point is that linebreak results are not enough by themselves.
-The freeze step must also know:
-
-- which discretionaries were chosen
-- the target width of each output line
-- the width range of each surviving knot
-
-The document no longer assumes a separate freeze-time policy for last-line
-justification. That decision is already encoded upstream through paragraph skip
-settings such as `LeftSkip`, `RightSkip`, and especially `ParFillSkip`.
-
-Likewise, freeze should not decide from scratch which knots are adjustable.
-That information already arrives through `W`, `MinW`, and `MaxW`.
-
-## Output Of Freeze
-
-The intended output is a **frozen khipu**:
-
-- each surviving knot has a final `W`
-- `MinW` and `MaxW` are gone
-- `Penalty` is gone
-
-That means a frozen khipu is no longer a linebreaking input.
-
-This strongly suggests that freezing should produce a representation distinct
-from the current elastic `Khipu`, even if the name still contains "khipu".
-
-## Important Finding: Freeze Is Also A Materialization Step
-
-Freezing is not just "write final widths into existing knots".
-
-It also has to materialize the final line-local knot stream.
-
-Examples:
-
-- leading and trailing discardable material, trimmed during linebreaking,
-  should not become visible line content
-- a selected discretionary splits one textbox into:
-  - one pre-break fragment on the current line
-  - one post-break fragment on the next line
-
-Therefore the frozen result may differ from the original elastic `Khipu` in:
-
-- knot count
-- knot order at line boundaries
-- knot identity of split textboxes
-
-This is the strongest argument against freezing the current elastic `Khipu`
-in-place.
-
-## Recommended Representation Direction
-
-The current elastic `Khipu` is optimized for:
-
-- linebreaking
-- lazy discretionary lookup
-- width ranges
-
-A frozen representation should instead optimize for:
-
-- final line-local knot order
-- final widths only
-- no linebreaking metadata
-
-So the clean direction appears to be:
-
-- keep the current `Khipu` as the elastic paragraph model
-- introduce a separate frozen representation derived from it
-
-Conceptually:
+## Public API
 
 ```go
-type FrozenKhipu struct {
-    W     []dimen.DU
-    Pos   []uint64
-    Len   []uint16
-    Kind  []KnotType
-    Flags []KnotFlags
-
-    Lines []FrozenLine
-}
+frozen, err := owner.Freeze(ctx, input, breaks, layout)
 ```
 
-where `FrozenLine` maps line boundaries into the frozen knot stream.
+Use the owner that encoded or bound `input`, a nonnil context, and the same
+resolved `Params` (shape and physical side skips) used for breaking. `breaks`
+contains strictly increasing line-ending knot indices through the final trailer.
+The input's `SelectedDiscretionaries` must still belong to that breaker run.
+Freeze before rerunning a breaker, since indices alone do not capture variants.
+See the complete [public example](../example_test.go).
 
-This sketch is not a settled API. In particular, source `Pos/Len` alone
-cannot necessarily identify altered discretionary fragments or reshaped
-content. The current discretionary cache stores metrics, not persistent glyph
-sequences or fragment strings. Fragment provenance and ownership must be
-settled alongside the frozen representation.
+Freezing leaves the elastic input intact. It does not reshape, discover
+alternatives, choose new breaks, or render glyphs. No unfreeze operation exists;
+retaining the original input permits a separate future break/freeze operation.
 
-The exact shape is open, but the main point is stable:
+## Materialization And Ordering
 
-- freezing should produce a new final structure
-- not destroy the elastic one
+The implementation proceeds through explicit stages:
 
-## Line Construction Before Width Distribution
+1. [Logical materialization](../logical_lines.go) validates ownership, aligned
+   storage, complete breaks, trailer identity, and selected fragment provenance.
+   A selected textbox is replaced by its pre-break fragment and a post-break
+   carry for the next line. Required breaks cannot be skipped.
+2. Line-edge discardables are trimmed. Non-discardable text and atomic items
+   shelter intervening spaces, even when an atomic advance is zero or negative.
+   Neutral retained material such as final fill does not shelter spaces.
+   Source coverage still includes trimmed bytes.
+3. [Line ordering](../line_ordering.go) clones retained bidi resolution, splits
+   it into lines, applies the L1 approximation below, and obtains orderings.
+   [Knot mapping](../knot_ordering.go) permutes whole source-backed knots into
+   physical left-to-right order. Glyph arrays within boxes are not reversed.
+4. [Generated placement](../generated_placement.go) puts paragraph fill at the
+   paragraph's trailing visual edge: right for LTR and left for RTL. Unknown
+   zero-source material has no attachment policy and is rejected.
+5. [Geometry preparation](../line_geometry.go) snapshots one inclusive target
+   width per line and keeps physical left/right skips outside the content knots.
+   [Width allocation](../width_allocation.go) computes final widths before
+   [publication](../frozen.go).
 
-For each output line, freeze will first need to build the exact knot sequence.
+Atomics retain occurrence IDs and fixed signed advances throughout these stages.
+They are never shaped, trimmed, or hyphenated. Their vertical geometry and actual
+payload remain the caller's responsibility.
 
-That line-construction phase must:
+### Accepted L1 Approximation
 
-1. start at the previous breakpoint
-2. end at the next breakpoint
-3. remove trimmed discardables at both line edges
-4. replace selected discretionary textboxes with:
-   - `PreBreak` on the broken line
-   - `PostBreak` on the following line
+The trailing contiguous original source-glue interval is recorded before trimming
+and reset for bidi ordering. The paragraph trailer is ignored for this purpose;
+source gaps, kerns, textboxes, and replacement fragments stop the suffix scan.
 
-Only after this materialization step does it make sense to compute the final
-width adjustment of the line.
+This is not full UAX#9 L1. NBSP or suppressed soft hyphens included in source glue
+can be over-reset; omitted controls, whitespace inside text clusters, and
+segment separators can be missed. See [trailingGlueL1](../line_ordering.go).
+Neither widths nor discardability flags alone define the L1 interval.
 
-## Width Distribution Model
+## Width Allocation
 
-Once a line-local knot list is known, the freeze step must distribute:
+Only glue adjusts in the current realization policy. Every non-glue content knot
+must have `MinW == W == MaxW`, even when the requested target would not require
+changing it. Otherwise `Freeze` returns `ErrUnsupportedAdjustment`: changing a
+textbox width without matching shaping would leave stale glyph metrics. Side
+skips act as glue by role regardless of their incidental knot kind or flags.
 
-```text
-delta = target_line_width - natural_line_width
+Targets and natural widths must be finite, below `dimen.Fil`. Individual finite
+signed contributions are supported, but negative completed content or
+skip-inclusive line totals return `ErrUnsupportedPolicy`. Invalid ranges,
+overflow, and inconsistent geometry are errors.
+
+Allocation uses the following rules:
+
+- Stretch uses only the highest present fill order: `Filll > Fill > Fil`.
+  Items of that order share equally; other items retain natural width. There
+  are no separate fill weights. `Infinity` is not a supported fill order.
+- Without fill, stretch shares are proportional to `MaxW - W`. Finite stretch
+  may exceed those declared capacities, producing an underfull diagnostic.
+- Shrink uses finite `W - MinW` capacities, including for glue with fill maxima.
+  Shrink stops at minima; infinite shrink is unsupported.
+- No stretch capacity leaves widths natural. Exact fit also leaves them natural.
+- Integer shares use floors followed by largest-remainder apportionment, with
+  ties resolved in input order (physical left-to-right for prepared geometry).
+  Only diagnostic ratio/badness uses floating-point arithmetic.
+
+The paragraph trailer is ordinary retained fill for allocation. Its configured
+order competes with side skips, so no separate last-line justification policy is
+applied. Knuth–Plass emergency stretch is virtual search capacity and is not added
+to these physical capacities.
+
+### Allocation Decisions And Rounding
+
+For validated finite geometry, let `delta = target - natural`. Content is in
+physical visual order, with LeftSkip first and RightSkip last for apportionment.
+
+```mermaid
+flowchart TB
+    D{"delta?"} -->|zero| Z["Keep natural widths"]
+    D -->|positive| F{"Any fill maximum?"}
+    F -->|yes| H["Use highest order only:<br/>Filll > Fill > Fil; equal weights"]
+    F -->|no| S["Finite weights = MaxW - W;<br/>allocate full requested stretch"]
+    D -->|negative| C["Weights = W - MinW;<br/>cap shrink at total capacity"]
+    H --> A["Integer shares: floor each quota,<br/>then award remaining DU by remainder"]
+    S --> A
+    C --> A
+    A --> R["Publish actual widths, residual and fit"]
+    Z --> R
 ```
 
-There are two cases:
-
-- `delta > 0`: stretch
-- `delta < 0`: shrink
-
-The naive TeX-like case is:
-
-- glue carries most or all adjustment
-
-But your target model is broader:
-
-- Western script: usually glue dominates
-- Arabic: textboxes may absorb substantial width change (`kashida`)
-- other scripts may need still different mechanisms
-
-So the key design question is not "how much total stretch/shrink does a line
-have?" We already know that from `W/MinW/MaxW`.
-
-The key design question is:
-
-- **which knots are allowed to absorb the delta, and with what weight?**
-- **how are the assigned widths realized by the shaping machinery?**
-
-Eligibility already comes from upstream capacities. Additional weighting or
-priority metadata is only a proposal if proportional capacity allocation proves
-insufficient; it is not an implemented or settled requirement.
-
-## Important Finding: Per-Knot Capacity Is Not Enough For Policy
-
-The current `Khipu` already provides per-knot width range:
-
-- `W`
-- `MinW`
-- `MaxW`
-
-This is enough to know *how much* a knot may change.
-
-It is not yet enough to know *how the line should prefer to distribute* that
-change.
-
-For example:
-
-- Western interword glue should usually take most of the adjustment
-- Arabic textboxes may take substantial adjustment
-- some knots may be adjustable only as a last resort
-
-Therefore freeze will likely need, in addition to width ranges, a notion of
-adjustment policy or class per knot.
-
-Possible future examples:
-
-- glue-like adjuster
-- textbox stretchable by kashida
-- textbox shrinkable only slightly
-- fixed knot
-
-This policy should come from `Khipukamayuq` / shaping logic, not from the
-freeze algorithm guessing by `Kind` alone.
-
-So the current understanding is:
-
-- `W`, `MinW`, and `MaxW` describe capacity
-- a possible future adjustment class could describe preference or mechanism
-
-This distinction matters because a Western glue knot and an Arabic textbox may
-both be stretchable, but not by the same mechanism and not with the same
-priority.
-
-## Suggested Decomposition Of The Freeze Step
-
-The freeze step can be decomposed into two subproblems:
-
-### 1. Resolve line content
-
-Input:
-
-- elastic `Khipu`
-- breakpoints
-- selected discretionaries
-
-Output:
-
-- exact knot list per line
-
-Responsibilities:
-
-- remove trimmed material
-- split discretionaries
-- preserve line order
-
-### 2. Set final widths
-
-Input:
-
-- one resolved line
-- target line width
-- adjustment policy for the line's knots
-
-Output:
-
-- same line with final `W` assigned to every knot
-
-Responsibilities:
-
-- compute line delta
-- distribute delta across adjustable knots
-- ensure the sum of final widths equals the chosen target
-
-This split looks important because the first half is about structure, while the
-second half is about numeric width assignment.
-
-## Final-Line Treatment
-
-Final-line treatment should not be modeled as an extra freeze-time switch.
-
-Instead, freeze should simply honor the elastic paragraph data that already
-survived linebreaking:
-
-- paragraph-final fill is intended to absorb the remaining space and leave the
-  text at its ordinary spacing when that fill takes precedence
-- if paragraph-final fill behavior is absent, the last line can be justified
-  like any other line
-
-So the final-line result should fall out of ordinary width distribution, not a
-special freeze policy.
-
-The numeric representation still needs a concrete rule: `dimen.Fill` and
-`dimen.Filll` are special dimension values, not an implemented freeze
-allocator. Ordinary finite stretch alone does not guarantee that only the
-paragraph fill stretches. Define and test fill precedence before claiming
-ragged final-line behavior. The terminal fill must remain non-discardable.
-
-## Suggested First Implementation Slice
-
-A reasonable first slice would be deliberately conservative:
-
-1. derive line-local knot lists from breakpoints
-2. materialize selected discretionaries
-3. trim line-edge discardables
-4. freeze only Western-style glue adjustment
-5. keep textboxes fixed in that first slice
-
-That would already establish:
-
-- the freeze boundary in the pipeline
-- the frozen result type
-- the line materialization rules
-
-Only after that foundation is stable should textbox-based adjustment policies
-such as Arabic kashida be added.
-
-## Responsibility Split
-
-Clients should continue to face `Khipukamayuq` as the owner of both elastic and
-frozen paragraph data.
-
-Internally, freeze will likely be a collaboration:
-
-- `Khipukamayuq` owns the paragraph, breakpoints, selected discretionaries, and
-  line construction
-- `Khipukamayuq` can directly freeze simple Western interword spacing
-- `Khipukamayuq` may need to re-consult the `Shaper` for script-sensitive
-  adjustment mechanisms such as Arabic kashida
-
-So the first implementation may be simple and mostly self-contained, but the
-ownership boundary should already assume that some scripts will require a
-roundtrip through shaping.
-
-## Implementation Plan
-
-The most realistic path looks incremental.
-
-### Stage 1: Define A Frozen Representation
-
-Introduce a new data structure for frozen khipus.
-
-Goals:
-
-- preserve the elastic `Khipu`
-- store only final widths
-- preserve final line-local knot order
-- be explicit about line boundaries
-
-This stage is about data shape only. No real width distribution logic needs to
-exist yet.
-
-### Stage 2: Materialize Frozen Lines
-
-Build line-local knot streams from:
-
-- the elastic `Khipu`
-- chosen breakpoints
-- selected discretionaries
-
-Responsibilities:
-
-- trim line-edge discardables
-- emit `PreBreak` and `PostBreak` fragments for selected discretionaries
-- preserve knot order within each line
-
-At the end of this stage, each line should have a natural width but not yet a
-final adjusted width.
-
-### Stage 3: Western Glue-Only Freezing
-
-Implement the first actual width distribution pass for the simplest case:
-
-- glue absorbs stretch and shrink
-- textboxes keep their natural width
-
-This stage should:
-
-- compute line delta from natural width to target width
-- distribute the delta over adjustable glue knots
-- write final `W`
-- drop `MinW`, `MaxW`, and `Penalty` from the frozen result
-
-This establishes the freeze stage end to end without yet solving non-Western
-adjustment.
-
-Restrict this first slice to inputs whose textboxes are fixed upstream.
-Do not silently ignore textbox capacity used by the linebreaker; report an
-unsupported adjustment if realizing it requires an unavailable shaper service.
-
-Before implementation, settle deterministic dimension rounding, behavior when
-capacity is insufficient, and fill precedence. Tests should cover exact fit,
-stretch, shrink, exhaustion, skips, discretionary boundaries, and conservation
-of total assigned width. An impossible target must be reported rather than
-hidden by widths outside the advertised bounds.
-
-### Stage 4: Adjustment Classes
-
-Evaluate whether the upstream paragraph model needs additional metadata for
-how a knot participates in width distribution. Capacity-proportional allocation
-may be sufficient for the initial implementation.
-
-Examples:
-
-- ordinary interword glue
-- fixed textbox
-- textbox stretchable through kashida
-- last-resort shrinkable content
-
-This stage should still keep `Khipukamayuq` as the public owner, but may
-internally require a `Shaper` roundtrip.
-
-The current `Shaper` only supplies cluster metrics. Requesting an adjusted
-run, reporting the achievable width, and retaining the resulting shaped data
-require an explicit contract before script-sensitive freezing is implemented.
-
-### Stage 5: Script-Sensitive Freezing
-
-Once adjustment classes exist, freezing can support script-sensitive width
-distribution by delegating the appropriate parts to `Khipukamayuq` and
-`Shaper`.
-
-Arabic kashida is the clearest example, but the same architecture should allow
-other non-Western justification mechanisms later.
-
-## Risks
-
-### 1. In-place mutation of elastic `Khipu`
-
-This would make the freeze step hard to reason about because:
-
-- selected discretionaries change knot identity
-- trimmed material should disappear from lines
-- `MinW`, `MaxW`, and `Penalty` disappear permanently
-
-This is a strong reason to prefer a new frozen result structure.
-
-### 2. Mixing materialization and width distribution
-
-If these are not separated conceptually, the implementation may become hard to
-debug.
-
-### 3. Under-specifying adjustment policy
-
-If freeze only sees `Kind` and `W/MinW/MaxW`, it will be hard to support
-non-Western justification well.
-
-## Provisional Recommendation
-
-The most coherent direction currently looks like this:
-
-- keep the current elastic `Khipu` unchanged after linebreaking
-- introduce a separate frozen representation
-- split freezing into:
-  - line materialization
-  - width distribution
-- start with glue-only width distribution
-- later add richer per-knot adjustment policies from `Khipukamayuq`
-
-This would establish a clear new stage in the typesetting pipeline without
-committing too early to the final non-Western width-distribution strategy.
+Zero total capacity leaves widths natural. For nonzero capacity, largest
+remainders get the remaining single-DU shares; ties follow physical input order.
+Finite stretch may exceed `MaxW`, but shrink never passes `MinW`. These are
+allocation rules for glue and side skips, not permission to resize textboxes.
+
+| Example (widths in DU) | Allocation and outcome |
+| --- | --- |
+| Two finite stretch capacities `(1, 2)`, requested growth `2` | Quotas `(2/3, 4/3)`, floors `(0, 1)`, then the larger remainder receives 1 DU: additions `(1, 1)`. |
+| One `Fil` item and one `Fill` item, requested growth `6` | Only the `Fill` item grows, by 6; lower orders and finite glue stay natural. |
+| Natural total `20`, finite maximum total `23`, target `26` | Stretch capacity 3, request 6: actual `26`, residual `0`, ratio `2`, **FitUnderfull**. |
+| Natural total `20`, minimum total `16`, target `14` | Shrink capacity 4, request 6: actual `16`, residual `-2`, **FitOverfull**. |
+
+Thus `Residual == 0` does not imply `FitWithinCapacity`: finite overstretch can
+reach the target while exceeding declared capacity. Side skips and paragraph
+fill participate in the same rules; virtual Knuth–Plass emergency stretch does not.
+
+## Frozen Publication
+
+All stages construct private output. A failure returns no partial result and
+preserves the input and its decisions. Cancellation is checked between stages
+and lines and after shape queries; it cannot interrupt a synchronous
+`LineLength` call or one bidi/allocation operation.
+
+Overfull and underfull lines are successful outcomes. `FrozenLine` exposes
+`TargetWidth`, actual `Width`, signed `Residual = TargetWidth - Width`, `Fit`,
+`Ratio`, `Badness`, and the winning `FillOrder`. Finite overstretch may reach the
+target with zero residual while still reporting `FitUnderfull`. Bounded shrink
+can leave a negative residual and `FitOverfull`. Fit status is physical capacity
+information, not the breaker's optimization score.
+
+Final line/knot/provenance storage is independently owned. Immutable shaping
+records and source/font services are shared under their stable-lifetime
+contracts. `CopyText` returns independent glyph, cluster, and feature slices;
+`SourceReader` reads retained original bytes without flattening the paragraph.
+Unused arena records may remain retained: arena compaction is not implemented.
+
+## Limits And Further Work
+
+Renderer boxes, drawing, baseline placement, and hit testing are outside this
+API. Script-sensitive target-width shaping (for example kashida) would require
+an explicit realization service and matching provenance before enabling elastic
+non-glue material. General zero-source fragment attachment, full L1 treatment,
+and arena compaction also require separate work.
+
+Existing tests cover [public construction](../freeze_api_test.go),
+[cancellation](../freeze_cancellation_test.go), [fit outcomes](../width_outcomes_test.go),
+[allocation](../width_allocation_test.go), and [result queries](../frozen_result_test.go).

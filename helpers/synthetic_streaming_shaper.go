@@ -35,7 +35,8 @@ var (
 // Sequential runs share scalar numbering until Finish. Finished or failed
 // instances cannot be reused. Never copy an instance after first use.
 //
-// This standalone helper does not wire streaming into khipu.Config or the encoder.
+// The engine creates this helper through its default streaming factory; the
+// helper itself depends only on contracts, not on the root engine.
 type SyntheticStreamingShaper struct {
 	mu          sync.Mutex
 	glyphs      chan contracts.ShapedGlyph

@@ -3,9 +3,16 @@ package khipu
 import "github.com/npillmayer/uax"
 
 // Penalty is the cost of breaking after a SOA knot.
+// Values >= MaxPenalty prohibit a break; values <= MaxMerit force one.
+// Values between the thresholds permit a break, with zero neutral, positive
+// costs discouraging and negative costs encouraging it under a scoring breaker.
+// A penalty is an input to scoring, not an accumulated demerit score.
 type Penalty int16
 
+// MaxPenalty is the inclusive threshold for a prohibited break.
 const MaxPenalty = 10000
+
+// MaxMerit is the inclusive threshold for a forced break.
 const MaxMerit = -10000
 
 // penaltyFromUAX translates a finalized Unicode boundary classification into a

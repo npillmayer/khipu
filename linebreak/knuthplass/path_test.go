@@ -172,3 +172,23 @@ func TestPathTableReportsMissingState(t *testing.T) {
 		t.Fatalf("expected missing predecessor state")
 	}
 }
+
+func TestLegacyNoBreakRefDoesNotControlPathTable(t *testing.T) {
+	old := NoBreakRef
+	t.Cleanup(func() { NoBreakRef = old })
+	NoBreakRef = PlainBreak(5)
+
+	pt := newPathTable()
+	if got := pt.Breakpoint(PlainBreak(9)); got != (BreakRef{At: -1}) {
+		t.Fatalf("external sentinel mutation changed missing lookup: %v", got)
+	}
+	if !pt.SetPred(PlainBreak(1), PlainBreak(5), 10, 10, 1) {
+		t.Fatal("could not register a breakpoint matching the external variable")
+	}
+	if got := pt.Breakpoint(PlainBreak(5)); got != PlainBreak(5) {
+		t.Fatalf("registered breakpoint changed: %v", got)
+	}
+	if pred, ok := pt.Pred(PlainBreak(5), 1); !ok || pred.from != PlainBreak(1) {
+		t.Fatalf("lost predecessor: %+v, %v", pred, ok)
+	}
+}

@@ -51,7 +51,7 @@ func main() {
 
 // runView keeps I/O separate from command parsing for reproducible tests. Input
 // is bounded and preserved verbatim, including trailing newlines. No dictionary
-// is installed; the owner can still provide explicit discretionary candidates.
+// or explicit-material policy is installed, so no alternatives are discovered.
 func runView(ctx context.Context, input, output, breaker, direction string, width int, stdin io.Reader, stdout io.Writer) error {
 	if width <= 0 || width >= math.MaxInt32/int(dimen.BP) {
 		return fmt.Errorf("width must be in [1,32766] big points")

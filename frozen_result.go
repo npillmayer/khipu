@@ -23,8 +23,11 @@ type SourceRange struct {
 type FrozenFit uint8
 
 const (
+	// FitWithinCapacity reports that the target fits the declared physical capacities.
 	FitWithinCapacity FrozenFit = iota
+	// FitUnderfull reports insufficient stretch capacity, even if overstretch reaches the target.
 	FitUnderfull
+	// FitOverfull reports that bounded shrink cannot reach the target.
 	FitOverfull
 )
 
@@ -51,9 +54,13 @@ type FrozenLine struct {
 type FrozenMaterial uint8
 
 const (
+	// OriginalMaterial identifies retained original text, glue, kerns or atomic content.
 	OriginalMaterial FrozenMaterial = iota
+	// PreBreakMaterial identifies a selected replacement ending a line.
 	PreBreakMaterial
+	// PostBreakMaterial identifies a selected replacement starting the following line.
 	PostBreakMaterial
+	// ParagraphFillMaterial identifies the generated final paragraph fill.
 	ParagraphFillMaterial
 )
 

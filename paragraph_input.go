@@ -29,7 +29,9 @@ type ParagraphInput struct {
 type BoundaryAction uint8
 
 const (
+	// AllowBoundary permits an optional zero-penalty break at the atomic edge.
 	AllowBoundary BoundaryAction = iota + 1
+	// ProhibitBoundary prohibits an optional break at the atomic edge.
 	ProhibitBoundary
 )
 
@@ -46,7 +48,9 @@ type AtomicBoundary struct {
 type HyphenationMode uint8
 
 const (
+	// NoHyphenation disables explicit and automatic discretionary discovery.
 	NoHyphenation HyphenationMode = iota
+	// ExplicitHyphenation permits authored soft-hyphen replacements only.
 	ExplicitHyphenation
 	AutomaticHyphenation // Includes explicit opportunities.
 )

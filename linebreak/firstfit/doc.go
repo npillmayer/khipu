@@ -35,10 +35,3 @@ selections, although provider-owned candidate caches may have been populated.
 Providers must not modify the published selection map themselves.
 */
 package firstfit
-
-import "github.com/npillmayer/schuko/tracing"
-
-// tracer traces with key 'khipu.linebreak'.
-func tracer() tracing.Trace {
-	return tracing.Select("khipu.linebreak")
-}

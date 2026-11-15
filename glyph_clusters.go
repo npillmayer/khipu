@@ -9,12 +9,11 @@ import (
 // glyphCluster is one completed logical cluster. Glyphs retain backend order,
 // signed font-unit advances and offsets; no scaling or knotting happens here.
 // runIndex selects immutable prepared-run parameters. source ends at the next
-// anchor in that run, or at run end, and penalty belongs to that source endpoint.
-// A finite penalty alone does not establish that a shaping boundary is safe.
+// anchor in that run, or at run end. Later knotting resolves break penalties
+// from source boundaries; a cluster endpoint alone does not permit a break.
 type glyphCluster struct {
 	runIndex int
 	source   runSourceRange
-	penalty  Penalty
 	glyphs   []contracts.ShapedGlyph
 }
 
@@ -115,7 +114,6 @@ func (a *glyphClusterAssembler) complete(end uint64) *glyphCluster {
 	c := a.pending
 	c.source.scalarEnd = end
 	c.source.byteEnd = a.byteAt(end)
-	c.penalty = a.boundaries[end-1].penalty
 	a.pending = nil
 	return c
 }

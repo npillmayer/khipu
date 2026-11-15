@@ -9,7 +9,12 @@ import (
 )
 
 // WSS (width, stretch, shrink) holds an elastic width triple used by
-// linebreakers for segment bookkeeping and line-width calculation.
+// linebreakers for segment bookkeeping and line-width calculation. W, Min and
+// Max are natural, minimum and maximum widths, not stretch/shrink deltas.
+// The zero value is an empty sum. Public fields are bounded to dimen.DU's int32
+// range; private excess preserves signed sums for subsequent arithmetic until
+// int64 overflow, reported by [WSS.Err]. Do not edit fields of computed sums.
+// These numerical summaries do not implement freeze-time symbolic fill order.
 type WSS struct {
 	W   dimen.DU
 	Min dimen.DU
@@ -20,6 +25,7 @@ type WSS struct {
 	overflow bool
 }
 
+// String returns the bounded width fields in big points for diagnostics.
 func (wss WSS) String() string {
 	return fmt.Sprintf("WSS[%.2f -%.2f +%.2f]",
 		wss.W.Points(), wss.Min.Points(), wss.Max.Points())
@@ -30,17 +36,20 @@ func (wss WSS) Spread() (w dimen.DU, min dimen.DU, max dimen.DU) {
 	return wss.W, wss.Min, wss.Max
 }
 
-// SetFromKnot copies elastic widths from one knot core into a WSS helper.
+// SetFromKnot returns a fresh summary of k, ignoring the receiver. It does not
+// mutate the receiver and carries no previous excess or overflow state.
 func (wss WSS) SetFromKnot(k khipu.KnotCore) WSS {
 	return WSS{W: k.W, Min: k.MinW, Max: k.MaxW}
 }
 
-// Add returns the pairwise sum of two elastic widths.
+// Add returns the pairwise sum without changing either operand. The result
+// retains excess beyond the public field range; check [WSS.Err] for overflow.
 func (wss WSS) Add(other WSS) WSS {
 	return wss.combine(other, false)
 }
 
-// Subtract returns the pairwise difference of two elastic widths.
+// Subtract returns the pairwise difference without changing either operand.
+// Retained excess participates in subtraction; check [WSS.Err] for overflow.
 func (wss WSS) Subtract(other WSS) WSS {
 	return wss.combine(other, true)
 }

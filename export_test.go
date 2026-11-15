@@ -5,8 +5,7 @@ import "context"
 import "github.com/npillmayer/khipu/dimen"
 
 // LogicalLineForTest exposes value snapshots only to external integration tests.
-// Keeping this bridge test-only avoids committing to a public freeze API while
-// the supported realization policies are still being developed.
+// It permits inspection of intermediate stages without expanding the public API.
 type LogicalLineForTest struct {
 	Knots              []KnotCore
 	NaturalWidth       dimen.DU
@@ -28,8 +27,8 @@ func MaterializeLogicalLinesForTest(owner *Khipukamayuq, k *Khipu, breaks []int)
 	return lines, nil
 }
 
-// MaterializeVisualLinesForTest exposes only geometry/source value snapshots;
-// it does not add a production freeze or renderer API.
+// MaterializeVisualLinesForTest exposes intermediate geometry/source snapshots
+// before final width allocation.
 func MaterializeVisualLinesForTest(owner *Khipukamayuq, k *Khipu, breaks []int) ([]LogicalLineForTest, error) {
 	p, err := owner.materializeVisualLines(context.Background(), k, breaks)
 	if err != nil {
@@ -78,8 +77,8 @@ type FrozenLineForTest struct {
 	Underfull, Overfull        bool
 }
 
-// FreezeParagraphForTest exercises the internal end-to-end constructor without
-// introducing public output accessors for downstream box creation.
+// FreezeParagraphForTest projects public Freeze results into per-line geometry
+// and diagnostic snapshots for external integration tests.
 func FreezeParagraphForTest(owner *Khipukamayuq, k *Khipu, breaks []int, params Params) ([]FrozenLineForTest, error) {
 	p, err := owner.Freeze(context.Background(), k, breaks, params)
 	if err != nil {

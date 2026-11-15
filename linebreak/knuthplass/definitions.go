@@ -5,6 +5,21 @@ import (
 	"github.com/npillmayer/khipu/dimen"
 )
 
+// Merits is a signed, dimensionless score with underlying type int64. It is
+// used for badness thresholds, line penalties and additive demerits; it is not
+// a physical dimension or a breakpoint penalty (see khipu.Penalty).
+// Convert typed configuration values explicitly, for example Merits(tolerance).
+// This alias preserves the identity of the original parameter field type.
+//
+// Computed badness lies in [0, 10000]. Tolerances in that range are normally
+// useful; a negative tolerance rejects even zero badness, and a tolerance above
+// 10000 adds no further quality allowance. Hard shrink limits still apply.
+// Cost parameters are not clamped or overflow-checked. Callers must keep the
+// squared line costs and accumulated paragraph totals within int64's range.
+type Merits = merits
+
+type merits int64 // keep the original defined type for source/type compatibility
+
 // Parameters is a collection of configuration parameters for line-breaking.
 // Paragraph geometry lives in khipu.Params, not in this algorithm configuration.
 // ParFillSkip remains an encoding convenience; the breaker reads the actual
@@ -17,16 +32,16 @@ import (
 //   - demerit extras such as FirstHyphenDemerits / FinalHyphenDemerits are local
 //     linebreaker adjustments on top of the base breakpoint penalty
 type Parameters struct {
-	Tolerance           merits // admissible badness for passes 2 and 3
-	PreTolerance        merits // admissible badness for pass 1
-	LinePenalty         merits // base cost added to every accepted line
-	FirstHyphenDemerits merits // demerits for hyphen in the first line
-	FinalHyphenDemerits merits // demerits for hyphen in the last line
+	Tolerance           Merits // admissible badness for passes 2 and 3
+	PreTolerance        Merits // admissible badness for pass 1
+	LinePenalty         Merits // added to badness before squaring the line cost
+	FirstHyphenDemerits Merits // additive cost for a first-line discretionary break
+	FinalHyphenDemerits Merits // additive cost when the last line starts after a discretionary break
 	// EmergencyStretch enables a third, final pass if the first two fail.
 	// A positive value must be finite (< dimen.Fil); nonpositive values disable
 	// the extra pass and leave pass 2 final. Virtual stretch changes badness,
 	// demerits and lazy discovery, never knot widths or shrink capacity. Freezing
-	// uses real capacities and may still reject underfull output.
+	// uses real capacities and may report an underfull result with fit diagnostics.
 	EmergencyStretch      dimen.DU
 	ParFillSkip           khipu.KnotCore // upstream trailer dimensions; pass to khipu.Config.ParFillSkip when encoding
 	DiscretionaryProvider DiscretionaryProvider
@@ -71,17 +86,25 @@ func glue(w, wmin int, wmax dimen.DU) khipu.KnotCore {
 	}
 }
 
+// InfinityMerits is the forced-break penalty threshold (-10000).
+// Use it in knot or discretionary penalties, not as a tolerance.
 const InfinityMerits = -10000
+
+// InfinityDemerits is the prohibited-break penalty threshold (10000).
+// It also equals the maximum computed line badness.
 const InfinityDemerits = 10000
+
+// AwfulDemerits is the base cost of a final-pass fallback transition.
+// It is not a cap on accumulated path costs.
 const AwfulDemerits = 1000000000
 
-// clampPenalty caps a penalty value to the TeX-style sentinel range.
-func clampPenalty(p merits) merits {
-	if p > InfinityDemerits {
-		return InfinityDemerits
-	}
-	if p < InfinityMerits {
-		return InfinityMerits
-	}
-	return p
+// DefaultLayout preserves the finite-stretch right skip of the K&P profile.
+// Resolve it before breaking, apply caller overrides, and pass the same Params
+// to freezing. Nil algorithm parameters never substitute geometry defaults.
+func DefaultLayout(shape khipu.LineShape) khipu.Params {
+	layout := khipu.DefaultParams()
+	layout.LineShape = shape
+	layout.LeftSkip = glue(0, 0, 0)
+	layout.RightSkip = glue(0, 0, 50*dimen.BP)
+	return layout
 }

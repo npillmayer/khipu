@@ -24,10 +24,19 @@ import (
 // context; cancellation need not interrupt an already executing source read.
 // A finished instance cannot be reused for later discretionary shaping.
 type StreamingShaper interface {
+	// Shape consumes a uniform run synchronously while the caller drains Glyphs.
+	// Success leaves the stream open for another run; accepted failure is terminal.
 	Shape(context.Context, ShapeParams, RuneReader, ShapeBufferOptions) error
+	// SetInitialCluster overrides the next run's scalar base while idle.
+	// Calling it during Shape must fail without disrupting the active operation.
 	SetInitialCluster(uint32) error
+	// Glyphs supplies logical-order records. Drain concurrently with Shape;
+	// channel closure alone does not establish successful producer completion.
 	Glyphs() <-chan ShapedGlyph
+	// Finish closes output after the final run. It must not disrupt active Shape.
 	Finish() error
+	// Err reports terminal stream failure. Check it after draining output and
+	// observing producer completion; it may be queried concurrently with Shape.
 	Err() error
 }
 
@@ -67,12 +76,18 @@ type ShapeBufferOptions struct {
 	MaxBuffer     int
 }
 
-// ShapeFlushBoundary requests run or cluster emission. Explicit flush signaling
-// is omitted because the proposed backend does not implement it yet.
+// ShapeFlushBoundary requests a backend buffering/emission policy. Neither mode
+// adds run/cluster completion markers to Glyphs or permits unsafe shaping cuts.
+// Emission timing and input buffering depend on the backend; these values do not
+// promise a fixed latency or that a whole run is withheld until Shape returns.
+// Backends should report unsupported options rather than silently treating them
+// as supported. The synthetic helper accepts both modes and emits scalar cells.
 type ShapeFlushBoundary uint8
 
 const (
+	// ShapeFlushRun requests run-oriented emission and is the zero-value policy.
 	ShapeFlushRun ShapeFlushBoundary = iota
+	// ShapeFlushCluster requests emission at safe completed-cluster boundaries.
 	ShapeFlushCluster
 )
 

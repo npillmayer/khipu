@@ -43,7 +43,7 @@ func TestGlyphClusterAssembly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.source != (runSourceRange{0, 3, 0, 2}) || !reflect.DeepEqual(c.glyphs, []contracts.ShapedGlyph{first, mark}) || c.penalty != a.boundaries[1].penalty {
+	if c.source != (runSourceRange{0, 3, 0, 2}) || !reflect.DeepEqual(c.glyphs, []contracts.ShapedGlyph{first, mark}) {
 		t.Fatalf("cluster %+v", c)
 	}
 	last, err := a.finish()

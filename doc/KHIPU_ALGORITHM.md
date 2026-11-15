@@ -5,6 +5,16 @@ positioned glyphs. It describes the intended design. How far the code has got,
 known deviations from the design and limitations are collected in
 [Implementation Status](#implementation-status) at the end.
 
+For supported client calls, start with the [quick start](../README.md#encode-and-break-a-paragraph)
+or [prepared-paragraph guide](PREPARED_PARAGRAPHS.md). This is an architecture
+reference; the [contract index](README.md#contract-references) identifies the
+canonical rules, and the [integration record](PIPELINE_INTEGRATION.md) retains
+the staged implementation history.
+
+Jump to [knotting](#phase-1-khipu-knotting), [breaking](#phase-2-line-breaking),
+[bidi ordering](#phase-3-line-local-bidi-ordering), [freezing](#phase-4-freezing-the-khipu),
+or [the code map](#code-map).
+
 The process has five phases:
 
 1. **Knotting** converts the styled paragraph from characters into glyphs and
@@ -29,15 +39,17 @@ rune in the input sequence, the style hierarchy can tell the exact style that
 applies to it.
 
 The paragraph carries a bidi resolution (UAX#9) computed for the whole
-paragraph. Original source bytes are preserved throughout all phases: every
-position used by this algorithm is a half-open UTF-8 byte offset (or a scalar
-index) into the original paragraph. If text is to be normalized, normalization
-must happen before styled ranges are established.
+paragraph. Original source bytes are preserved as provenance throughout all
+phases. Source ranges use half-open UTF-8 byte offsets or scalar indices into
+the original paragraph; shaped discretionary replacements have separate local
+input coordinates. See the [coordinate contract](FROZEN-API.md#replacement-coordinates).
+If text is to be normalized, normalization must happen before styled ranges are
+established.
 
-Non-discardable inline items (e.g. inline-blocks or images) are intended to
-enter the algorithm as fixed-size boxes, unaffected by the current style. Their
-representation in the input and in the khipu is still an
-[open question](#inline-objects).
+Non-discardable inline items (e.g. inline-blocks or images) enter through
+`ParagraphInput.Atomics`: anchors identify U+FFFC occurrences, and binding supplies
+fixed signed advances. They bypass shaping and style resolution. See
+[inline objects](#inline-objects) and the [prepared-paragraph guide](PREPARED_PARAGRAPHS.md).
 
 The first phase converts the rune sequence into a sequence of glyphs. Glyphs are
 selected from a font. Each glyph carries positioning information, sizing
@@ -328,6 +340,36 @@ unchanged while the khipu is in use.
 
 Glyphs are knotted in logical order.
 
+#### Retained Storage Map
+
+This is the current private storage layout, alongside the design pseudocode above.
+One zero-based knot index addresses all working SOA planes. Box IDs are one-based;
+zero means no retained text box, not the first box.
+
+```mermaid
+flowchart TB
+    I["Knot index i"] --> V["W, MinW, MaxW, Penalty,<br/>Pos, Len, Kind, Flags at i"]
+    I --> S["shaping.sources at i:<br/>original provenance, breakAfter, atomic ID"]
+    I --> R["boxRefs at i"]
+    R -->|0| N["No text box: glue, fill or atomic item"]
+    R -->|b greater than 0| B["shaping.boxes at b-1"]
+    B -->|context index| C["Prepared run:<br/>font, scale, features, input range"]
+    B -->|cluster range: start..end| K["Stored clusters:<br/>input spans + glyph ranges"]
+    B -->|glyph range: start..end| G["Flat retained glyph records"]
+    K -->|glyph ranges| G
+    V --> Q["KnotByIndex: detached elastic metrics"]
+    B -. "selected records survive Freeze" .-> F["Frozen origins: source, box, atomic, fragment role"]
+    F --> X["Knot: final value / CopyText: copied slices"]
+```
+
+All ranges are half-open. Context, cluster and glyph indices are zero-based,
+private and arena-local. Box/source metadata describes original provenance;
+replacement contexts and cluster inputs use replacement-local coordinates.
+`CopyText` rebases cluster glyph ranges into its returned slice and keeps font
+services shared. Silent replacement boxes can have empty glyph ranges; absence
+of glyphs is not absence of a box. Frozen output keeps final widths and origins,
+not the elastic W/MinW/MaxW planes or break opportunities.
+
 
 ## Phase 2: Line Breaking
 
@@ -383,18 +425,23 @@ stretch `Y` and total shrink `Z`, the adjustment ratio is, as in TeX:
 - `r = (t - w) / Z` if the line is long (`w > t`),
 - `r = 0` if `w = t`.
 
-If an infinite stretch order is present, a short line has `r = 0` for the
-finite material. Badness is `100·|r|³`, capped at 10000 (`inf_bad`). A short
+Freeze handles infinite stretch symbolically: the highest fill order absorbs
+positive slack, leaving finite material unchanged and reporting ratio zero.
+Knuth–Plass search uses numerical width summaries, including fill sentinels,
+so its ratio is an approximation rather than exact symbolic fill arithmetic.
+Search badness is `100·|r|³`, truncated and capped at 10000 (`inf_bad`). A short
 line without any stretch has badness `inf_bad`.
 
-Following TeX:
+For the implemented search:
 
-- A line with `r < -1` (it cannot shrink enough) is **infeasible**. When a
-  candidate line from an active state becomes infeasible, that state is
-  **deactivated**; it cannot reach any later breakpoint either. A state is a
-  breakpoint together with the number of lines before it, since that number
-  determines the next line's target width. A breakpoint stays active while any
-  of its states is active.
+- A line whose minimum width exceeds the target is **infeasible** regardless
+  of tolerance. Retirement waits until discretionary rescue and boundary commit
+  have finished, including insertion of any final-pass fallback. Early retirement
+  is enabled only when nonnegative minima and bounded sums make it safe; signed
+  inputs can become feasible at a later boundary. Forced boundaries still block
+  every earlier state. A state is a breakpoint together with its completed-line
+  count, which determines the next target width. Retiring working state preserves
+  the predecessor history needed to reconstruct results.
 - A line with `r > 1` is feasible, merely bad. Whether it is acceptable depends
   on the tolerance of the current pass.
 
@@ -405,10 +452,10 @@ Following TeX:
     [ Run a first pass without discretionaries, using PreTolerance ]
     [ If no acceptable complete path was found ] :
         [ Run a fresh second pass with discretionaries enabled, using Tolerance ]
-            // final pass if EmergencyStretch = 0
+            // final pass if EmergencyStretch <= 0
     [ If still no acceptable path was found and EmergencyStretch > 0 ] :
         [ Run a fresh emergency pass like pass 2, adding EmergencyStretch ]
-        [ to every line's stretch for badness calculation ]
+        [ to finite stretch for short-line badness calculation ]
             // always the final pass
     [ Choose the complete path with the lowest total demerits ]
     [ Collect its breakpoints backwards and reverse the sequence ]
@@ -416,7 +463,8 @@ Following TeX:
 
 Only the **final pass** may fall back to over-/underfull lines (see the pass
 structure below). Earlier passes fail without a fallback, which triggers the
-next pass. This guarantees a result whenever the input is valid.
+next pass. Fallback permits poor fits, but provider/geometry errors still abort
+the call and an exhausted search returns `ErrNoBreakpoints`.
 
 **Emergency pass.** Its purpose is to prefer loose lines over overfull ones:
 text protruding into the margin is considered worse than wide spaces. The pass
@@ -426,46 +474,45 @@ stretch `Y`, badness becomes `100·(s/(Y+E))³` instead of `100·(s/Y)³`, where
 `E` is `EmergencyStretch`. Consequently, loose lines whose badness exceeded the
 tolerance may become acceptable, lines without any stretch get a finite
 badness, and since `E` is the same for every line, looseness tends to be spread
-evenly across the paragraph. Nothing else changes: shrink is not relaxed
-(`r < -1` remains infeasible, so overfull lines cannot be rescued), and
+evenly across the paragraph. Shrink is not relaxed
+(minimum-width overflow remains infeasible under virtual stretch alone), and
 tolerance, penalties, forced/prohibited breaks and demerits are the same as in
 pass 2. Discretionary lookup works as in pass 2, but is triggered by the
 emergency-adjusted badness (see below).
 
 `E` only influences the choice of breakpoints. It is not added to any knot, and
-freezing sets each line with its real glue only. Lines chosen thanks to `E`
-therefore usually have `r > 1` and are set and reported as underfull: the
-emergency pass decides *which* underfull lines are produced, instead of
-overfull ones.
+freezing sets each line with its real glue only. A line chosen thanks to `E`
+can still require more stretch than its real capacity and report `FitUnderfull`.
+Emergency search improves the available path choices without promising a
+physically well-fitting result.
 
-Each pass has the following structure:
+Each pass has the following structure. The
+[boundary diagram](KNUTH+PLASS.md#boundary-transaction-and-lifetimes) also shows
+working-state and predecessor-history lifetimes.
 
 ```
 [ Run a Knuth-Plass pass ] :=
     [ Initialize the root state before the first knot ]
     [ Initialize the set of active breakpoints with the root ]
     [ Scan knots in logical order ] :
-        [ Extend the line-segment bookkeeping of active states ]
+        [ In passes 2/3, cache explicit candidates at the current textbox ]
+        [ Snapshot the horizon; advance eligible existing states once ]
+        [ In passes 2/3, evaluate discretionaries, request rescue, and activate successors ]
         [ At each permitted or forced breakpoint `E` ] :
-            [ For each active predecessor state `S` ] :
+            [ Snapshot the expanded horizon, including discovered successors ]
+            [ For each predecessor state `S` that has reached this boundary ] :
                 [ Evaluate the candidate line from `S` to `E` ]
-                [ If r < -1 ] :
-                    [ Deactivate `S` ]
-                    [ In the final pass, remember it as a fallback if it is the last one ]
-                [ During passes 2 and 3, if the line warrants discretionary lookup ] :
-                    [ Request and evaluate discretionary alternatives ]
-                [ For each acceptable ordinary or discretionary candidate ] :
+                [ Remember the best fallback transition and any eligible retirement ]
+                [ For an acceptable ordinary candidate ] :
                     [ Calculate line demerits and accumulated path cost ]
                     [ Keep the cheapest predecessor for this breakpoint and line count ]
-            [ If `E` is forced, it must be reached ]
-                // in the final pass, using the fallback if necessary;
-                // otherwise the pass fails
-            [ Activate newly discovered feasible states ]
-            [ If no active state remains ] :
-                [ In the final pass, activate `E` from the remembered fallback, as an overfull line ]
-                [ Otherwise the pass fails ]
-            [ If all remaining lines have the same target width ] :
-                [ Keep only the cheapest state at `E`; drop states differing only in line count ]
+            [ If `E` is unreached and forced or no working state can survive ] :
+                [ In the final pass, insert the best fallback while its source is live ]
+                [ Otherwise this pass has no complete path ]
+            [ Retire eligible working states; preserve predecessor history ]
+            [ If `E` is forced, retire all other states and require `E` to be reached ]
+        [ For the built-in rectangular shape, compact the completed ordinary boundary ]
+            [ Keep the cheapest completed-line state; equal costs prefer fewer lines ]
     [ Compare complete states reaching the paragraph end ]
     [ Report the best path and its quality, or failure ]
 ```
@@ -505,11 +552,11 @@ overfull. See [FIRSTFIT.md](FIRSTFIT.md).
 
 ### Over- and Underfull Lines
 
-Line breakers do not fail because a paragraph cannot be set well. As in TeX,
-they fall back to lines that are overfull (too long even at maximum shrink) or
+Poor fit alone need not cause failure. Both breakers can fall back to lines
+that are overfull (too long even at maximum shrink) or
 underfull (badness above the tolerance), and freezing sets those lines as
-described [below](#over--and-underfull-lines-1). Line breakers only fail on
-invalid input, for example if a forced break cannot be reached at all.
+described [below](#over--and-underfull-lines-1). Invalid geometry, provider errors,
+or an exhausted search still return an error without publishing partial choices.
 
 
 ## Phase 3: Line-Local Bidi Ordering
@@ -641,9 +688,10 @@ stretch.
 The trailing edge is the right edge for LTR paragraphs and the left edge for
 RTL paragraphs, matching the placement of the final ParFillSkip.
 
-Elastic knots are normally glue. Elastic textboxes (e.g. kashida justification)
-fit the same allocation scheme, but an allocated textbox width is only a
-proposal until a shaping service has produced matching glyphs for it.
+Only glue and physical side skips adjust in the current implementation.
+Elastic textboxes (e.g. kashida justification) return `ErrUnsupportedAdjustment`,
+even when the target would require no change. Supporting them would require
+a target-width shaping service that supplies matching glyphs and provenance.
 
 ### Over- and Underfull Lines
 
@@ -658,10 +706,10 @@ Such a line is set as well as possible and reported:
   beyond the target width at its trailing edge.
 
 Each frozen line records its adjustment ratio, its badness and, for overfull
-lines, the excess width, so that a report can be produced. Whether a line is
-reported should depend on thresholds similar to TeX's `\hbadness` and
-`\hfuzz`. How reports are delivered is an
-[open question](#reporting-over--and-underfull-lines).
+lines, the excess width, so that a report can be produced. Clients choose
+reporting thresholds and presentation; the module exposes result diagnostics
+without a callback/reporting service. See
+[reporting over- and underfull lines](#reporting-over--and-underfull-lines).
 
 The frozen result is final layout data: it has fixed widths per knot, retains
 glyphs and provenance, and has no elastic widths or penalties. There is no
@@ -678,28 +726,25 @@ the need for direction-aware placement later; paragraph bidi ordering must not
 be applied a second time.
 
 
-## Open Design Questions
+## Resolved Decisions And Remaining Limits
 
 ### Reporting Over- and Underfull Lines
 
-Lines that cannot meet their target are set and reported, but the reporting
-channel is undecided. Options:
-
-- per-line status in the frozen result (adjustment ratio, badness, excess),
-  which clients query,
-- path quality returned by the line breaker (worst badness, number of
-  fallback lines),
-- a diagnostics callback or logger configured on the Khipukamayuq.
-
-The thresholds that decide what is worth reporting (analogous to `\hbadness`,
-`\hfuzz`) also belong to this decision.
+Physical fit diagnostics are available on each `FrozenLine`: target and actual
+width, residual, ratio, badness, fill order, and fit status. Capacity shortfalls
+are successful results. These diagnostics differ from the linebreaker's internal
+path quality, particularly when emergency stretch influenced the search.
+See [frozen publication](FREEZE.md#frozen-publication). Application-level reporting
+thresholds remain the caller's choice.
 
 ### Inline Objects
 
-Images and inline-blocks are meant to enter as fixed-size boxes. Open points:
-how they are represented in the styled paragraph (e.g. U+FFFC with an attached
-object), which knot kind they map to, how they take part in bidi ordering and
-line-breaking penalties, and how their dimensions bypass the shaper.
+Fixed-size atomic occurrences are implemented. Attach paragraph-local IDs to
+U+FFFC byte offsets in `ParagraphInput`, call `PrepareParagraph`, then supply
+signed advances to `BindParagraph`. Atomics participate in boundary/bidi analysis
+but bypass shaping. `FrozenKhipu.Atomic` exposes their IDs in visual order;
+vertical geometry and payloads remain with the caller. See the
+[root usage guide](../README.md#fixed-size-atomic-inline-items).
 
 ### Blank Lines and Glyphless Mandatory Breaks
 
@@ -748,17 +793,22 @@ defaults. There is no metric-only encoding path. See
 
 | Design step | Code |
 |---|---|
+| Owner and services | `Khipukamayuq`, `Config`, `NewKhipukamayuq` (`config.go`), typed-nil checks (`service_validation.go`) |
+| Knot model and flags | `KnotCore`, `KnotType`, `KnotFlags`, trimming/access operations (`knot_types.go`) |
 | Source-boundary table | `prepareParagraphBoundaries` (`boundary_preparation.go`) |
 | Bidi/style intersection | `intersectParagraphRuns` (`run_intersection.go`) |
-| Run parameters `P(R)` | `prepareParagraphRunsForInput`, `preparedRun` (`run_preparation.go`, `prepared_run.go`) |
+| Run parameters `P(R)` | `prepareMixedRuns`, `preparedRun` (`run_preparation.go`, `prepared_run.go`) |
 | Soft-hyphen handling | `coalesceMarkerIntersections`, `prepareNoBreakRuns`, `restoreNoBreakAnchor` (`stream_nobreak.go`) |
 | Producer | `produceNoBreakRuns` (`run_producer.go`) |
 | Cluster assembly | `glyphClusterAssembler` (`glyph_clusters.go`) |
 | Knot formation and classification | `candidateKnotAccumulator`, `classifyCandidateSource`, `candidateWidth` (`candidate_knots.go`, `candidate_metrics.go`) |
-| Connected pipeline | `streamCandidateParagraph` (`stream_candidates.go`) |
-| Khipu storage | `publishCandidateParagraph`, `shapingArena` (`shaping_storage.go`) |
+| Connected pipeline | `streamCandidateParagraph`, `streamMixedCandidateParagraph` (`stream_candidates.go`) |
+| Mixed input and binding | `PrepareParagraph`, `BindParagraph` (`paragraph_input.go`), atomic validation (`atomic_preparation.go`) |
+| Intrinsic measurement | `MeasureIntrinsic` (`intrinsic.go`), explicit preparation cache (`discretionary_prepared.go`) |
+| Khipu storage | `Khipu`, allocation and SOA access (`khipu.go`); `publishCandidateParagraph`, `shapingArena` (`shaping_storage.go`) |
 | Lazy discretionaries | `Khipukamayuq.DiscretionaryCandidates` (`discretionary*.go`) |
 | Breakpoint positions | `Khipu.BreakpointPositions` (`breakpoint_positions.go`) |
+| Linebreaking | [First-fit source map](FIRSTFIT.md#code-reading-guide), [Knuth–Plass source map](KNUTH+PLASS.md#code-reading-guide) |
 | Logical lines | `materializeLogicalLines` (`logical_lines.go`) |
 | Bidi ordering | `lineOrderings`, `trailingGlueL1` (`line_ordering.go`), `mapOrdering` (`knot_ordering.go`), `placeGenerated` (`generated_placement.go`), `materializeVisualLines` (`visual_lines.go`) |
 | Line geometry | `materializeLineGeometry`, `prepareGeometry` (`line_geometry.go`) |
@@ -780,8 +830,10 @@ defaults. There is no metric-only encoding path. See
 - Preparation checks cancellation between stages, not within them. A shaper
   blocked in a source read is subject to the streaming contract's cancellation
   limits.
-- Arena compaction and renderer access to glyph data are not implemented.
-- Inline objects and tab stops are not supported.
+- Arena compaction is not implemented. `FrozenKhipu.CopyText` provides retained
+  glyph snapshots; renderer boxes and drawing remain outside this module.
+- Fixed-size atomic inline items are supported through preparation/binding.
+  Tab stops are not supported.
 
 ### Line Breaking
 
@@ -815,8 +867,8 @@ demerits or passes, and hyphenation only for a textbox that makes the line
 overflow. Lines fit by minimum width, so supplied shrink is used before an
 earlier break is taken. See [FIRSTFIT.md](FIRSTFIT.md#limits).
 
-Both breakers fall back to overfull lines when nothing fits, but the frozen
-result cannot yet represent them (see below).
+Both breakers can fall back to overfull lines when nothing fits. Freezing
+represents those lines with actual widths and fit diagnostics (see below).
 
 ### Bidi Ordering
 

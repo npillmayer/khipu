@@ -2,9 +2,29 @@ package knuthplass
 
 import (
 	"fmt"
+
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/linebreak"
 )
+
+type breakCandidate struct {
+	eval    lineEvaluation
+	target  BreakRef
+	seed    bookkeeping
+	initial bookkeeping // post-break fragment alone, without the consumed suffix
+}
+
+func (bc breakCandidate) lineCost() lineCost {
+	return lineCost{
+		bp:      bc.target,
+		line:    bc.eval.line,
+		stretch: bc.eval.stretch,
+		cost: cost{
+			badness:  bc.eval.badness,
+			demerits: bc.eval.demerits,
+		},
+	}
+}
 
 // DiscretionaryProvider supplies hyphenation alternatives for one textbox knot.
 // Ownership of candidate discovery and caching stays with the provider.
@@ -16,6 +36,9 @@ import (
 // remaining int32 headroom after summing original minima. This conservative
 // bound allows a post-break seed and pre-break prefix without saturating the
 // minimum-width arithmetic on which retirement relies.
+// Calls are synchronous and have no context argument. Encoding/freezing contexts
+// do not propagate here; the standard owner uses Background for lazy shaping.
+// Providers must preserve published selections even when discovery fails.
 type DiscretionaryProvider interface {
 	DiscretionaryCandidates(khp *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error)
 }
@@ -50,33 +73,6 @@ func (kp *linebreaker) discretionaryCandidates(khp *khipu.Khipu, at kinx) ([]khi
 // belongs to the paragraph owner, not to discretionary discovery or trimming.
 func isLineDiscardable(k khipu.KnotCore) bool {
 	return k.IsDiscardable()
-}
-
-// previousNonDiscardable and nextNonDiscardable walk the physical Khipu around a
-// candidate breakpoint. They are used to locate hyphenation candidates locally
-// instead of storing additional textbox identity in path state.
-func previousNonDiscardable(khp *khipu.Khipu, at kinx) (kinx, bool) {
-	if khp == nil || at < 0 || at >= len(khp.Kind) {
-		return noinx, false
-	}
-	for i := at; i >= 0; i-- {
-		if !isLineDiscardable(khp.KnotByIndex(i)) {
-			return i, true
-		}
-	}
-	return noinx, false
-}
-
-func nextNonDiscardable(khp *khipu.Khipu, at kinx) (kinx, bool) {
-	if khp == nil || at < 0 || at >= len(khp.Kind) {
-		return noinx, false
-	}
-	for i := at; i < len(khp.Kind); i++ {
-		if !isLineDiscardable(khp.KnotByIndex(i)) {
-			return i, true
-		}
-	}
-	return noinx, false
 }
 
 // previousContentBox and nextContentBox narrow the local scans to actual

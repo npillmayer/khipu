@@ -23,9 +23,16 @@ type Params struct {
 	// Physical edge glue, also in RTL paragraphs. Only W/MinW/MaxW are used;
 	// Kind, flags and penalty do not participate in side-skip accounting.
 	LeftSkip, RightSkip KnotCore
-	Language            language.Tag
-	Script              language.Script
-	BidiDir             bidi.Direction
+	// Language and Script are owner-level hyphenation hints, not shaping defaults.
+	// Automatic discovery replaces them with the retained run's resolved values;
+	// explicit-marker material requests receive a copy of these owner settings.
+	// Configure shaping through StreamingConfig.Defaults and StyleResolver.
+	Language language.Tag
+	Script   language.Script
+	// BidiDir is the analogous hyphenation hint. Automatic requests replace it
+	// with run direction. Source paragraph analysis controls encoding and visual
+	// ordering; changing this field does not change that analysis.
+	BidiDir bidi.Direction
 	// Hyphenpenalty is the fallback for a discretionary whose provider supplies
 	// no nonzero penalty. The breaker reads the resulting PreBreak.Penalty;
 	// it has no independent hyphen-penalty default. Zero is a valid fallback.

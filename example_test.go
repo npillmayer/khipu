@@ -6,6 +6,7 @@ import (
 
 	"github.com/npillmayer/cords/styled"
 	"github.com/npillmayer/khipu"
+	"github.com/npillmayer/khipu/contracts"
 	"github.com/npillmayer/khipu/dimen"
 	"github.com/npillmayer/khipu/linebreak"
 	"github.com/npillmayer/khipu/linebreak/firstfit"
@@ -109,4 +110,70 @@ func ExampleConfig_hyphenator() {
 	// Output:
 	// lines: 2
 	// selected: true variant: 1
+}
+
+func ExampleKhipukamayuq_PrepareParagraph() {
+	ctx := context.Background()
+	text := styled.TextFromString("A \uFFFC B")
+	para, err := styled.ParagraphFromText(&text, 0, text.Raw().Len(), bidi.LeftToRight, nil)
+	if err != nil {
+		panic(err)
+	}
+	owner := khipu.NewKhipukamayuq(khipu.Config{})
+	prepared, err := owner.PrepareParagraph(ctx, khipu.ParagraphInput{
+		Paragraph: para,
+		Atomics:   []contracts.AtomicAnchor{{ID: 1, ByteOffset: 2}},
+	}, khipu.PrepareOptions{})
+	if err != nil {
+		panic(err)
+	}
+	layout := firstfit.DefaultLayout(linebreak.RectangularParShape(100 * dimen.PT))
+	for _, advance := range []dimen.DU{20 * dimen.PT, 30 * dimen.PT} {
+		// Reuse shaped text, but give each binding independent working decisions.
+		input, err := owner.BindParagraph(ctx, prepared, []khipu.AtomicAdvance{{ID: 1, Advance: advance}})
+		if err != nil {
+			panic(err)
+		}
+		breaks, err := firstfit.BreakParagraph(input, layout, nil)
+		if err != nil {
+			panic(err)
+		}
+		frozen, err := owner.Freeze(ctx, input, breaks, layout)
+		if err != nil {
+			panic(err)
+		}
+		for i := 0; i < frozen.KnotCount(); i++ {
+			if id, ok := frozen.Atomic(i); ok {
+				knot, _ := frozen.Knot(i)
+				fmt.Println("atomic", id, "advance:", int64(knot.W/dimen.PT), "pt")
+			}
+		}
+	}
+	// Output:
+	// atomic 1 advance: 20 pt
+	// atomic 1 advance: 30 pt
+}
+
+func ExampleKhipukamayuq_MeasureIntrinsic() {
+	ctx := context.Background()
+	text := styled.TextFromString("Hello world")
+	para, err := styled.ParagraphFromText(&text, 0, text.Raw().Len(), bidi.LeftToRight, nil)
+	if err != nil {
+		panic(err)
+	}
+	owner := khipu.NewKhipukamayuq(khipu.Config{})
+	prepared, err := owner.PrepareParagraph(ctx, khipu.ParagraphInput{Paragraph: para}, khipu.PrepareOptions{})
+	if err != nil {
+		panic(err)
+	}
+	// No target geometry or binding is needed. This input has no atomic ranges.
+	widths, err := owner.MeasureIntrinsic(ctx, prepared, khipu.MeasureRequest{})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("min-content:", int64(widths.MinContent/dimen.PT), "pt")
+	fmt.Println("max-content:", int64(widths.MaxContent/dimen.PT), "pt")
+	// Output:
+	// min-content: 25 pt
+	// max-content: 55 pt
 }

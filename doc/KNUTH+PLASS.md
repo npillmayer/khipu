@@ -79,9 +79,11 @@ opportunity to penalty 0; only mandatory and prohibited boundaries keep their
 sentinels (see [KNUTH_PLASS_SCORING.md](KNUTH_PLASS_SCORING.md#unicode-boundary-translation)). Other
 penalty values come from hand-built knots or from discretionary fragments.
 
-A **breakpoint** is a `BreakRef{At, Variant}`. Variant 0 is an ordinary break
+A **search breakpoint** is a `BreakRef{At, Variant}`. Variant 0 is an ordinary break
 after knot `At`. A nonzero variant is a break inside the textbox at `At`, using
-one of its discretionary alternatives.
+one of its discretionary alternatives. These exported search-record helpers are
+deprecated compatibility names; client results are integer indices plus selected
+discretionaries. See [compatibility guidance](../linebreak/knuthplass/ReadMe.md#compatibility-names).
 
 **Trimming.** The `KFDiscardable` flag, not the knot kind, decides what is
 removed at line edges. For each line the breaker tracks the total width, the
@@ -132,12 +134,47 @@ Each knot is processed in three phases (`processKnot` in `boundary.go`):
 3. **Commit** (only if a break is permitted after the knot). Every working
    state, including states created in phase 2, is evaluated as the start of a
    line ending here. Acceptable lines become transitions to the new state
-   `(here, line+1)`. Then states are retired and, where applicable, a fallback
-   is created (`finishBoundary`).
+   `(here, line+1)`. Any final-pass fallback is inserted before eligible working
+   states are retired (`finishBoundary`), while its source still exists.
 
 Evaluation results of phase 2 are reused in phase 3 for breakpoints whose
 working states did not change in between (`evaluation_cache.go`). Any change to
 a breakpoint's working states invalidates its cached results.
+
+### Boundary Transaction And Lifetimes
+
+```mermaid
+flowchart TB
+    X["Next knot; cache explicit candidates<br/>when enabled and present"] --> A["Snapshot horizon;<br/>advance existing origins once"]
+    A --> D["Passes 2/3: evaluate discretionaries,<br/>request rescue, activate successors"]
+    D --> Q{"Ordinary break permitted?"}
+    Q -->|no| N["Optional uniform compaction;<br/>continue scan"]
+    Q -->|yes| C["Snapshot expanded horizon;<br/>score and commit accepted transitions"]
+    C --> F["If needed in final pass:<br/>choose fallback while source state is live"]
+    F --> R["Retire eligible working states;<br/>enforce forced-boundary barrier"]
+    R --> N
+    C -. "record predecessor" .-> H["Pass-local predecessor history"]
+    F -. "record fallback predecessor" .-> H
+    H --> W["Collect winning complete path"]
+```
+
+New discretionary successors already include the relevant scanned suffix, so
+commit scores them without advancing the same knot again. Fallback insertion
+precedes retirement. Retirement removes working widths/seeds and marks tombstones;
+it does not delete predecessor history needed by descendants. Forced boundaries
+remove other origins even when signed widths disable early overfull pruning.
+An exhausted pass may trigger the next configured pass; provider/validation
+errors abort the call instead. Only a complete winning pass publishes selections.
+
+| Lifetime | Retained data |
+| --- | --- |
+| One boundary | Cached ordinary evaluations; invalidated when working buckets change and discarded when processing ends. |
+| One pass | Working horizon, widths/seeds, scratch, tombstones and predecessor history. All start fresh on the next pass. |
+| Working paragraph / binding | Discretionary candidate caches, reusable across passes; selections replaced only by a successful complete call. |
+
+Prepared explicit replacement memoization, when used by the owner, can also be
+shared across bindings. It does not share their working states or selections;
+see [preparation ownership](PREPARED_PARAGRAPHS.md#ownership-and-reuse).
 
 ### Line Evaluation
 
@@ -311,6 +348,12 @@ breakpoints.
 
 ## Parameters
 
+The five score fields use `knuthplass.Merits`, an alias of the existing
+`int64`-based score type. Convert typed application values with
+`knuthplass.Merits(value)`; numeric literals continue to work. The
+[configuration example and range guidance](../linebreak/knuthplass/ReadMe.md#configure-typed-values)
+distinguish dimensionless scores from physical dimensions and breakpoint penalties.
+
 | Setting | Meaning |
 |---|---|
 | `PreTolerance` | badness limit in pass 1 |
@@ -438,19 +481,27 @@ Benchmarks and measurements are described in
 | File | Contents |
 |---|---|
 | `doc.go` | package overview |
-| `knuthplass.go` | `BreakParagraph`, bookkeeping, demerits, collection |
+| `knuthplass.go` | `BreakParagraph`, working-state definition and setup |
 | `passes.go` | pass sequence and pass configuration |
+| `search.go` | knot scan, horizon snapshots and predecessor updates |
 | `boundary.go` | per-knot phases, commit, retirement, fallback |
-| `geometry.go` | shared line classification, emergency stretch |
+| `bookkeeping.go` | accumulated widths and line-edge trimming |
+| `evaluation.go` | ordinary candidate evaluation and pass screening limits |
+| `geometry.go` | adjustment ratio, badness, shared line classification, emergency stretch |
+| `scoring.go` | demerits, penalty clamping and terminal-hyphen extras |
+| `results.go` | winning-path collection, index projection and selection publication |
 | `uniform.go` | uniform-shape compaction |
 | `discretionary.go` | provider access, lookup heuristics, discretionary evaluation |
 | `evaluation_cache.go` | reuse of evaluations within one boundary |
-| `path.go` | `BreakRef`, predecessor table |
-| `definitions.go` | `Parameters`, profiles, constants |
+| `path.go` | predecessor table |
+| `legacy.go` | compatibility search-record helpers and classification constants |
+| `definitions.go` | `Merits`, `Parameters`, profiles, constants |
 | `metrics.go` | optional work counters for tests and benchmarks |
+| `diagnostics.go` | tracing and deterministic state formatting |
 
 Start with `BreakParagraph`, follow it into `selectParagraphBreaks`
-(`passes.go`) and then into `processKnot` (`boundary.go`).
+(`passes.go`), `buildBreakpointPaths` (`search.go`) and `processKnot`
+(`boundary.go`). Follow `collectOptimalBreakRefs` in `results.go` for publication.
 
 
 ## Tests

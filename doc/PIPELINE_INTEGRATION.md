@@ -1,5 +1,73 @@
 # Typesetting Pipeline Integration
 
+> **Historical integration record — snapshot of November 15, 2026.** This file
+> preserves staged plans, superseded API proposals and completion evidence across
+> several repositories. Statements of “current” behavior below refer to their
+> recorded stage. Use [Prepared Paragraphs](PREPARED_PARAGRAPHS.md) for supported
+> client usage and [the documentation index](README.md) for canonical contracts.
+>
+> Sibling-checkout links (`../../typography`, `../../tytui`, `../../css-box-layout`
+> and others) are developer-workspace references. They are intentionally retained
+> as historical evidence and are not portable links in a standalone checkout.
+> Cross-repository validation claims are records of those runs, not a claim that
+> this module's test suite verifies the entire typesetting stack.
+
+## Record Navigation
+
+- [Objective and recommendation](#objective-and-recommendation)
+- [Evidence and baseline boundaries](#evidence-and-baseline-boundaries)
+- [Ownership and dependency direction](#ownership-and-dependency-direction)
+- [Measurement: shape first, defer final layout](#measurement-shape-first-defer-final-layout)
+  - [Intrinsic semantics](#intrinsic-semantics)
+  - [Hyphenation limitation](#hyphenation-limitation)
+- [Atomic input and source coordinates](#atomic-input-and-source-coordinates)
+  - [Separate intrinsic, horizontal, and vertical data](#separate-intrinsic-horizontal-and-vertical-data)
+- [DOM, styled document, and normalized group extraction](#dom-styled-document-and-normalized-group-extraction)
+- [Required changes inside khipu](#required-changes-inside-khipu)
+- [Paragraph assembly and CSS adaptation](#paragraph-assembly-and-css-adaptation)
+- [Proposed public API capabilities](#proposed-public-api-capabilities)
+- [Staged implementation plan](#staged-implementation-plan)
+  - [1. Freeze mixed-input and ownership contracts](#1-freeze-mixed-input-and-ownership-contracts)
+  - [2. Encode fixed-size atomics through freezing](#2-encode-fixed-size-atomics-through-freezing)
+  - [3. Complete fixed-size paragraph/CSS integration](#3-complete-fixed-size-paragraphcss-integration)
+    - [Module boundaries](#module-boundaries)
+    - [Initial supported policies](#initial-supported-policies)
+    - [3A. Make typography itemization atomic-aware](#3a-make-typography-itemization-atomic-aware)
+    - [3B. Add prepared paragraph orchestration](#3b-add-prepared-paragraph-orchestration)
+    - [3C. Assemble atomic vertical geometry and placements](#3c-assemble-atomic-vertical-geometry-and-placements)
+    - [3D. Extract normalized groups with source correspondence](#3d-extract-normalized-groups-with-source-correspondence)
+    - [3E. Implement the CSS callback and transactional publication](#3e-implement-the-css-callback-and-transactional-publication)
+    - [3F. Verify nested fixed-size integration and align documentation](#3f-verify-nested-fixed-size-integration-and-align-documentation)
+  - [4. Add intrinsic measurement and preparation reuse](#4-add-intrinsic-measurement-and-preparation-reuse)
+    - [4A. Implement ordinary intrinsic measurement in khipu](#4a-implement-ordinary-intrinsic-measurement-in-khipu)
+    - [4B. Expose measurement through typography's prepared paragraph](#4b-expose-measurement-through-typographys-prepared-paragraph)
+    - [4C. Separate preparation from accepted layout results in tytui](#4c-separate-preparation-from-accepted-layout-results-in-tytui)
+    - [4D. Connect the CSS intrinsic callback and bounded auto-width path](#4d-connect-the-css-intrinsic-callback-and-bounded-auto-width-path)
+    - [4E. Explicit discretionary measurement and preparation reuse](#4e-explicit-discretionary-measurement-and-preparation-reuse)
+    - [Stage 4 completion and validation boundaries](#stage-4-completion-and-validation-boundaries)
+  - [5. Verify nested auto sizing and result lifetime](#5-verify-nested-auto-sizing-and-result-lifetime)
+    - [Module boundaries](#module-boundaries-1)
+    - [5A. Verify nested scheduling through the actual paragraph engine](#5a-verify-nested-scheduling-through-the-actual-paragraph-engine)
+    - [5B. Add independent nested geometry oracles](#5b-add-independent-nested-geometry-oracles)
+    - [5C. Verify resize, failure recovery and result lifetime](#5c-verify-resize-failure-recovery-and-result-lifetime)
+    - [5D. Add a retained nested-auto document proof](#5d-add-a-retained-nested-auto-document-proof)
+    - [5E. Align documentation and complete validation](#5e-align-documentation-and-complete-validation)
+    - [Supported policies and deferred work](#supported-policies-and-deferred-work)
+- [Initial design questions](#initial-design-questions)
+- [Stage 1 API proposal](#stage-1-api-proposal)
+  - [Shared object vocabulary and ordering](#shared-object-vocabulary-and-ordering)
+  - [Khipu preparation and boundary policy](#khipu-preparation-and-boundary-policy)
+  - [Intrinsic query and final binding](#intrinsic-query-and-final-binding)
+  - [Frozen object identity](#frozen-object-identity)
+  - [Typography itemization](#typography-itemization)
+  - [Typography paragraph preparation and layout](#typography-paragraph-preparation-and-layout)
+  - [Ownership, concurrency and failure contracts](#ownership-concurrency-and-failure-contracts)
+  - [Stage 1 resolutions: geometry and unit conversion](#stage-1-resolutions-geometry-and-unit-conversion)
+  - [Stage 1 resolutions: errors and compatibility](#stage-1-resolutions-errors-and-compatibility)
+  - [Recommended scope and deferred decisions](#recommended-scope-and-deferred-decisions)
+  - [Stage 1 contract examples and acceptance](#stage-1-contract-examples-and-acceptance)
+- [Verification strategy](#verification-strategy)
+
 Planning analysis and implementation status, 2026-11-15.
 The stage 1 section records the agreed implementation contract, including
 the resolutions of its remaining design questions. Stage 2 is implemented in

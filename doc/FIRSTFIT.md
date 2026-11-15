@@ -81,6 +81,41 @@ For every knot:
 
 The final knot is always the last breakpoint.
 
+### Checkpoint And Carry Transitions
+
+This diagram follows **ordinary permitted candidates**, after any discretionary
+rescue attempt. The carry accumulates the scanned material after the current
+checkpoint; accepting a newer checkpoint resets that carry.
+
+```mermaid
+flowchart TB
+    A["Append knots to line and carry<br/>until an ordinary permitted candidate"] --> Q{"Permitted candidate fits?"}
+    Q -->|yes| C["Remember this checkpoint;<br/>reset carry to empty"]
+    C --> N["Scan next knot"]
+    Q -->|no| H{"Earlier checkpoint?"}
+    H -->|yes| R["Emit earlier checkpoint;<br/>restore carry as the next line"]
+    R --> E["Recheck current candidate at next line target;<br/>remember it if it fits"]
+    H -->|no| O["Emit current candidate as overfull;<br/>clear line and carry"]
+    E --> N
+    O --> N
+    N --> A
+```
+
+For fixed advances `A=20`, `B=20`, `C=20` and spaces of 5, a target of 50 can
+retain `[A][space][B]` at width 45. If the checkpoint is after the following
+space, scanning `C` overflows the line: commit that checkpoint, trim its trailing
+space, and restore `[C]` from carry. `C` is not scanned twice.
+
+| Other transition | State after committing |
+| --- | --- |
+| Forced break | If overfull with a checkpoint, emit that checkpoint first; then emit the forced endpoint and clear line/carry. No rescue crosses it. |
+| Successful discretionary rescue | Emit the textbox with its selected pre-break fragment; seed the next line with the post-break fragment and clear the ordinary checkpoint. |
+| Provider error | Abort without publishing partial selections; previously published selections remain. |
+
+Line/carry/checkpoint state and staged selections live for one breaker call.
+Paragraph candidate caches can survive the call, including discoveries made
+before a later error. Only complete success replaces the input's selections.
+
 ### Fitting
 
 A line **fits** when its effective minimum width is at most the target:
@@ -166,8 +201,11 @@ Benchmarks and current measurements are in [PERFORMANCE.md](PERFORMANCE.md#first
 
 | File | Contents |
 |---|---|
-| `firstfit.go` | package overview |
-| `khipu.go` | `BreakParagraph`, line and carry bookkeeping, discretionary rescue, parameters |
+| `doc.go` | package overview |
+| `parameters.go` | algorithm parameters, default layout and penalty limits |
+| `break.go` | `BreakParagraph` and its sequential greedy scan |
+| `segment.go` | current-line widths, edge trimming and checkpoint carry |
+| `discretionary.go` | provider contract, candidate eligibility and rescue selection |
 
 Shared width arithmetic (`WSS`) and the rectangular shape live in package
 `linebreak`.

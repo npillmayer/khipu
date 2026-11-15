@@ -16,8 +16,8 @@ import (
 // After publication, the record and its referenced data must remain immutable
 // while producer, consumer, or later paragraph processing uses them.
 //
-// prepareParagraphRuns constructs these records independently. The current
-// encoder does not yet prepare or consume them.
+// prepareMixedRuns constructs these records before the encoding producer starts.
+// The consumer uses them for knot metrics; shaping storage retains their contexts.
 type preparedRun struct {
 	source runSourceRange
 	params runParameters
@@ -65,8 +65,3 @@ type runParameters struct {
 // Although the zero value denotes fixed spacing, preparation must resolve the
 // policy explicitly rather than treat zero as an unspecified paragraph default.
 type spacingMode = contracts.SpacingMode
-
-const (
-	spacingFixed   = contracts.SpacingFixed
-	spacingElastic = contracts.SpacingElastic
-)
