@@ -28,7 +28,7 @@ digraph PublicLifecycle {
     measure [label="MeasureIntrinsic\nRepeat with new ranges", fillcolor="#e0f2fe", color="#0284c7"];
     bind [label="BindParagraph\nRepeat with new advances", fillcolor="#e0f2fe", color="#0284c7"];
     working [label="Working Khipu"];
-    layout [label="One resolved\nlayout Params", fillcolor="#fef3c7", color="#d97706"];
+    layout [label="Shared layout settings:\nline widths + side skips", fillcolor="#fef3c7", color="#d97706"];
     breaker [label="BreakParagraph", fillcolor="#e0f2fe", color="#0284c7"];
     decisions [label="Break indices + selections\non this Khipu"];
     freeze [label="Freeze", fillcolor="#e0f2fe", color="#0284c7"];

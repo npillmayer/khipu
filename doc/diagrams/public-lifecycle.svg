@@ -93,77 +93,77 @@
 <!-- breaker -->
 <g id="node9" class="node">
 <title>breaker</title>
-<path fill="#e0f2fe" stroke="#0284c7" d="M241.55,-265.56C241.55,-265.56 151.88,-265.56 151.88,-265.56 145.88,-265.56 139.88,-259.56 139.88,-253.56 139.88,-253.56 139.88,-241.56 139.88,-241.56 139.88,-235.56 145.88,-229.56 151.88,-229.56 151.88,-229.56 241.55,-229.56 241.55,-229.56 247.55,-229.56 253.55,-235.56 253.55,-241.56 253.55,-241.56 253.55,-253.56 253.55,-253.56 253.55,-259.56 247.55,-265.56 241.55,-265.56"/>
-<text xml:space="preserve" text-anchor="middle" x="196.71" y="-242.53" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">BreakParagraph</text>
+<path fill="#e0f2fe" stroke="#0284c7" d="M253.55,-265.56C253.55,-265.56 163.88,-265.56 163.88,-265.56 157.88,-265.56 151.88,-259.56 151.88,-253.56 151.88,-253.56 151.88,-241.56 151.88,-241.56 151.88,-235.56 157.88,-229.56 163.88,-229.56 163.88,-229.56 253.55,-229.56 253.55,-229.56 259.55,-229.56 265.55,-235.56 265.55,-241.56 265.55,-241.56 265.55,-253.56 265.55,-253.56 265.55,-259.56 259.55,-265.56 253.55,-265.56"/>
+<text xml:space="preserve" text-anchor="middle" x="208.71" y="-242.53" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">BreakParagraph</text>
 </g>
 <!-- working&#45;&gt;breaker -->
 <g id="edge7" class="edge">
 <title>working&#45;&gt;breaker</title>
-<path fill="none" stroke="#64748b" stroke-width="1.2" d="M144.83,-304.56C153.8,-294.87 165.1,-282.67 174.87,-272.14"/>
-<polygon fill="#64748b" stroke="#64748b" stroke-width="1.2" points="176.52,-273.96 179.48,-267.16 172.92,-270.63 176.52,-273.96"/>
+<path fill="none" stroke="#64748b" stroke-width="1.2" d="M147.67,-304.56C158.43,-294.69 172.03,-282.21 183.66,-271.54"/>
+<polygon fill="#64748b" stroke="#64748b" stroke-width="1.2" points="185.05,-273.59 188.55,-267.06 181.73,-269.98 185.05,-273.59"/>
 </g>
 <!-- freeze -->
 <g id="node11" class="node">
 <title>freeze</title>
-<path fill="#e0f2fe" stroke="#0284c7" d="M216.42,-114.78C216.42,-114.78 177,-114.78 177,-114.78 171,-114.78 165,-108.78 165,-102.78 165,-102.78 165,-90.78 165,-90.78 165,-84.78 171,-78.78 177,-78.78 177,-78.78 216.42,-78.78 216.42,-78.78 222.42,-78.78 228.42,-84.78 228.42,-90.78 228.42,-90.78 228.42,-102.78 228.42,-102.78 228.42,-108.78 222.42,-114.78 216.42,-114.78"/>
-<text xml:space="preserve" text-anchor="middle" x="196.71" y="-91.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">Freeze</text>
+<path fill="#e0f2fe" stroke="#0284c7" d="M228.42,-114.78C228.42,-114.78 189,-114.78 189,-114.78 183,-114.78 177,-108.78 177,-102.78 177,-102.78 177,-90.78 177,-90.78 177,-84.78 183,-78.78 189,-78.78 189,-78.78 228.42,-78.78 228.42,-78.78 234.42,-78.78 240.42,-84.78 240.42,-90.78 240.42,-90.78 240.42,-102.78 240.42,-102.78 240.42,-108.78 234.42,-114.78 228.42,-114.78"/>
+<text xml:space="preserve" text-anchor="middle" x="208.71" y="-91.75" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">Freeze</text>
 </g>
 <!-- working&#45;&gt;freeze -->
 <g id="edge11" class="edge">
 <title>working&#45;&gt;freeze</title>
-<path fill="none" stroke="#64748b" stroke-width="1.2" d="M118.28,-304.53C100.25,-271.94 67.92,-200.53 97.71,-150.78 110.5,-129.42 135.16,-116.19 156.67,-108.28"/>
-<polygon fill="#64748b" stroke="#64748b" stroke-width="1.2" points="157.19,-110.69 163.01,-106.1 155.59,-106.06 157.19,-110.69"/>
+<path fill="none" stroke="#64748b" stroke-width="1.2" d="M120.32,-304.69C105.78,-272.06 80.14,-200.16 109.71,-150.78 122.5,-129.42 147.16,-116.19 168.67,-108.28"/>
+<polygon fill="#64748b" stroke="#64748b" stroke-width="1.2" points="169.19,-110.69 175.01,-106.1 167.59,-106.06 169.19,-110.69"/>
 </g>
 <!-- layout -->
 <g id="node8" class="node">
 <title>layout</title>
-<path fill="#fef3c7" stroke="#d97706" d="M335.92,-344.34C335.92,-344.34 257.5,-344.34 257.5,-344.34 251.5,-344.34 245.5,-338.34 245.5,-332.34 245.5,-332.34 245.5,-313.56 245.5,-313.56 245.5,-307.56 251.5,-301.56 257.5,-301.56 257.5,-301.56 335.92,-301.56 335.92,-301.56 341.92,-301.56 347.92,-307.56 347.92,-313.56 347.92,-313.56 347.92,-332.34 347.92,-332.34 347.92,-338.34 341.92,-344.34 335.92,-344.34"/>
-<text xml:space="preserve" text-anchor="middle" x="296.71" y="-324.3" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">One resolved</text>
-<text xml:space="preserve" text-anchor="middle" x="296.71" y="-311.55" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">layout Params</text>
+<path fill="#fef3c7" stroke="#d97706" d="M376.17,-344.34C376.17,-344.34 251.25,-344.34 251.25,-344.34 245.25,-344.34 239.25,-338.34 239.25,-332.34 239.25,-332.34 239.25,-313.56 239.25,-313.56 239.25,-307.56 245.25,-301.56 251.25,-301.56 251.25,-301.56 376.17,-301.56 376.17,-301.56 382.17,-301.56 388.17,-307.56 388.17,-313.56 388.17,-313.56 388.17,-332.34 388.17,-332.34 388.17,-338.34 382.17,-344.34 376.17,-344.34"/>
+<text xml:space="preserve" text-anchor="middle" x="313.71" y="-324.3" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">Shared layout settings:</text>
+<text xml:space="preserve" text-anchor="middle" x="313.71" y="-311.55" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">line widths + side skips</text>
 </g>
 <!-- layout&#45;&gt;breaker -->
 <g id="edge8" class="edge">
 <title>layout&#45;&gt;breaker</title>
-<path fill="none" stroke="#64748b" stroke-width="1.2" d="M268.32,-301.12C255.56,-291.75 240.46,-280.67 227.44,-271.11"/>
-<polygon fill="#64748b" stroke="#64748b" stroke-width="1.2" points="228.99,-269.21 221.9,-267.05 226.09,-273.16 228.99,-269.21"/>
+<path fill="none" stroke="#64748b" stroke-width="1.2" d="M283.9,-301.12C270.37,-291.66 254.36,-280.47 240.59,-270.84"/>
+<polygon fill="#64748b" stroke="#64748b" stroke-width="1.2" points="242.25,-269.02 235.11,-267.01 239.45,-273.03 242.25,-269.02"/>
 </g>
 <!-- layout&#45;&gt;freeze -->
 <g id="edge12" class="edge">
 <title>layout&#45;&gt;freeze</title>
-<path fill="none" stroke="#64748b" stroke-width="1.2" d="M302.93,-301.17C311.85,-267.03 324.25,-198.12 295.71,-150.78 282.86,-129.46 258.2,-116.22 236.7,-108.31"/>
-<polygon fill="#64748b" stroke="#64748b" stroke-width="1.2" points="237.79,-106.09 230.37,-106.12 236.19,-110.72 237.79,-106.09"/>
+<path fill="none" stroke="#64748b" stroke-width="1.2" d="M319.17,-301.08C326.87,-266.81 336.96,-197.72 307.71,-150.78 294.61,-129.74 270.1,-116.53 248.75,-108.56"/>
+<polygon fill="#64748b" stroke="#64748b" stroke-width="1.2" points="249.58,-106.25 242.17,-106.25 247.97,-110.88 249.58,-106.25"/>
 </g>
 <!-- decisions -->
 <g id="node10" class="node">
 <title>decisions</title>
-<path fill="#f1f5f9" stroke="#94a3b8" d="M267.42,-193.56C267.42,-193.56 126,-193.56 126,-193.56 120,-193.56 114,-187.56 114,-181.56 114,-181.56 114,-162.78 114,-162.78 114,-156.78 120,-150.78 126,-150.78 126,-150.78 267.42,-150.78 267.42,-150.78 273.42,-150.78 279.42,-156.78 279.42,-162.78 279.42,-162.78 279.42,-181.56 279.42,-181.56 279.42,-187.56 273.42,-193.56 267.42,-193.56"/>
-<text xml:space="preserve" text-anchor="middle" x="196.71" y="-173.52" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">Break indices + selections</text>
-<text xml:space="preserve" text-anchor="middle" x="196.71" y="-160.77" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">on this Khipu</text>
+<path fill="#f1f5f9" stroke="#94a3b8" d="M279.42,-193.56C279.42,-193.56 138,-193.56 138,-193.56 132,-193.56 126,-187.56 126,-181.56 126,-181.56 126,-162.78 126,-162.78 126,-156.78 132,-150.78 138,-150.78 138,-150.78 279.42,-150.78 279.42,-150.78 285.42,-150.78 291.42,-156.78 291.42,-162.78 291.42,-162.78 291.42,-181.56 291.42,-181.56 291.42,-187.56 285.42,-193.56 279.42,-193.56"/>
+<text xml:space="preserve" text-anchor="middle" x="208.71" y="-173.52" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">Break indices + selections</text>
+<text xml:space="preserve" text-anchor="middle" x="208.71" y="-160.77" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">on this Khipu</text>
 </g>
 <!-- breaker&#45;&gt;decisions -->
 <g id="edge9" class="edge">
 <title>breaker&#45;&gt;decisions</title>
-<path fill="none" stroke="#64748b" stroke-width="1.2" d="M196.71,-229.17C196.71,-221.22 196.71,-211.58 196.71,-202.56"/>
-<polygon fill="#64748b" stroke="#64748b" stroke-width="1.2" points="199.16,-202.64 196.71,-195.64 194.26,-202.64 199.16,-202.64"/>
+<path fill="none" stroke="#64748b" stroke-width="1.2" d="M208.71,-229.17C208.71,-221.22 208.71,-211.58 208.71,-202.56"/>
+<polygon fill="#64748b" stroke="#64748b" stroke-width="1.2" points="211.16,-202.64 208.71,-195.64 206.26,-202.64 211.16,-202.64"/>
 </g>
 <!-- decisions&#45;&gt;freeze -->
 <g id="edge10" class="edge">
 <title>decisions&#45;&gt;freeze</title>
-<path fill="none" stroke="#64748b" stroke-width="1.2" d="M196.71,-150.34C196.71,-142.03 196.71,-132.39 196.71,-123.64"/>
-<polygon fill="#64748b" stroke="#64748b" stroke-width="1.2" points="199.16,-123.77 196.71,-116.77 194.26,-123.77 199.16,-123.77"/>
+<path fill="none" stroke="#64748b" stroke-width="1.2" d="M208.71,-150.34C208.71,-142.03 208.71,-132.39 208.71,-123.64"/>
+<polygon fill="#64748b" stroke="#64748b" stroke-width="1.2" points="211.16,-123.77 208.71,-116.77 206.26,-123.77 211.16,-123.77"/>
 </g>
 <!-- frozen -->
 <g id="node12" class="node">
 <title>frozen</title>
-<path fill="#dcfce7" stroke="#16a34a" d="M246.8,-42.78C246.8,-42.78 146.62,-42.78 146.62,-42.78 140.62,-42.78 134.62,-36.78 134.62,-30.78 134.62,-30.78 134.62,-12 134.62,-12 134.62,-6 140.62,0 146.62,0 146.62,0 246.8,0 246.8,0 252.8,0 258.8,-6 258.8,-12 258.8,-12 258.8,-30.78 258.8,-30.78 258.8,-36.78 252.8,-42.78 246.8,-42.78"/>
-<text xml:space="preserve" text-anchor="middle" x="196.71" y="-22.74" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">FrozenKhipu</text>
-<text xml:space="preserve" text-anchor="middle" x="196.71" y="-9.99" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">Read&#45;only queries</text>
+<path fill="#dcfce7" stroke="#16a34a" d="M258.8,-42.78C258.8,-42.78 158.62,-42.78 158.62,-42.78 152.62,-42.78 146.62,-36.78 146.62,-30.78 146.62,-30.78 146.62,-12 146.62,-12 146.62,-6 152.62,0 158.62,0 158.62,0 258.8,0 258.8,0 264.8,0 270.8,-6 270.8,-12 270.8,-12 270.8,-30.78 270.8,-30.78 270.8,-36.78 264.8,-42.78 258.8,-42.78"/>
+<text xml:space="preserve" text-anchor="middle" x="208.71" y="-22.74" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">FrozenKhipu</text>
+<text xml:space="preserve" text-anchor="middle" x="208.71" y="-9.99" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#172b4d">Read&#45;only queries</text>
 </g>
 <!-- freeze&#45;&gt;frozen -->
 <g id="edge13" class="edge">
 <title>freeze&#45;&gt;frozen</title>
-<path fill="none" stroke="#64748b" stroke-width="1.2" d="M196.71,-78.39C196.71,-70.44 196.71,-60.8 196.71,-51.78"/>
-<polygon fill="#64748b" stroke="#64748b" stroke-width="1.2" points="199.16,-51.86 196.71,-44.86 194.26,-51.86 199.16,-51.86"/>
+<path fill="none" stroke="#64748b" stroke-width="1.2" d="M208.71,-78.39C208.71,-70.44 208.71,-60.8 208.71,-51.78"/>
+<polygon fill="#64748b" stroke="#64748b" stroke-width="1.2" points="211.16,-51.86 208.71,-44.86 206.26,-51.86 211.16,-51.86"/>
 </g>
 </g>
 </svg>
