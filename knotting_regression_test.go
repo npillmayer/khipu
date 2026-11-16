@@ -136,3 +136,7 @@ func TestPublicStyleBoundaryDoesNotCreateBreak(t *testing.T) {
 		t.Fatal("style boundary lost parameters or authorized a break", k)
 	}
 }
+
+func (*boundaryTestShaper) CheckFace(face contracts.FontFace) error {
+	return new(helpers.SyntheticStreamingShaper).CheckFace(face)
+}

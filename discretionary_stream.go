@@ -77,8 +77,9 @@ func shapeDiscretionaryInput(ctx context.Context, input discretionaryInput, pre,
 // on the calling path. Completion is separate from channel closure because a
 // pre-Shape failure need not close output. Every launched producer is cancelled
 // and joined before return, including malformed output and terminal failures.
+// The owner preflights each actual stream and finishes it even on pre-launch errors.
 func streamReplacement(ctx context.Context, input replacementInput, params runParameters,
-	newShaper func() (contracts.StreamingShaper, error), options contracts.ShapeBufferOptions) (shapedReplacement, error) {
+	newShaper func() (contracts.StreamingShaper, error), options contracts.ShapeBufferOptions) (result shapedReplacement, err error) {
 	if err := ctx.Err(); err != nil {
 		return shapedReplacement{}, err
 	}
@@ -87,7 +88,22 @@ func streamReplacement(ctx context.Context, input replacementInput, params runPa
 	if err != nil {
 		return shapedReplacement{}, err
 	}
-	result := shapedReplacement{input: input, params: params}
+	if nilRunService(shaper) {
+		return shapedReplacement{}, fmt.Errorf("%w: factory returned nil replacement shaper", contracts.ErrIllegalArguments)
+	}
+	defer func() {
+		err = finishStream(shaper, err)
+		if err != nil {
+			result = shapedReplacement{}
+		}
+	}()
+	if err := ctx.Err(); err != nil {
+		return shapedReplacement{}, err
+	}
+	if err := shaper.CheckFace(params.shaping.Font); err != nil {
+		return shapedReplacement{}, fmt.Errorf("khipu: replacement shaping face: %w", err)
+	}
+	result = shapedReplacement{input: input, params: params}
 	var width candidateWidth
 	err = consumeShaper(ctx, shaper, func(ctx context.Context) error {
 		if err := shaper.SetInitialCluster(0); err != nil {

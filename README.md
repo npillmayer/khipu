@@ -242,3 +242,13 @@ about the original
 
 Implementation records and unimplemented proposals are
 listed separately in the [history index](doc/history/README.md).
+
+## Font acceptance before shaping
+
+`contracts.StreamingShaper` embeds `FontAcceptor.CheckFace`. Encoding checks every
+resolved run on its actual stream before any glyph production; lazy replacements
+check their own fresh streams. Acceptance is read-only and may support multiple
+face types. Failed checks publish no partial paragraph/replacement, and acquired
+streams are finished after any producer has joined. Synthetic defaults and
+nongeneric prepared/frozen result APIs are unchanged. See
+[the contract](contracts/ReadMe.md#face-compatibility) for backend obligations.

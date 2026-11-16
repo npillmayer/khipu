@@ -109,6 +109,20 @@ func (s *SyntheticStreamingShaper) Finish() error {
 	return s.err
 }
 
+// CheckFace accepts synthetic values and nonnil pointers without querying the
+// face or touching stream state. Rejected checks do not terminate the stream.
+func (*SyntheticStreamingShaper) CheckFace(face contracts.FontFace) error {
+	if isNilInterface(face) {
+		return fmt.Errorf("%w: nil synthetic face", contracts.ErrIllegalArguments)
+	}
+	switch face.(type) {
+	case SyntheticFont, *SyntheticFont:
+		return nil
+	default:
+		return fmt.Errorf("%w: %w: synthetic shaper requires SyntheticFont, got %T", contracts.ErrIllegalArguments, contracts.ErrUnsupportedFontFace, face)
+	}
+}
+
 // Shape consumes one uniform run. Source and parameters must remain stable
 // during the call; they are not retained afterwards. Only LTR/RTL directions,
 // SyntheticFont faces, empty Features, and zero input buffer sizes are supported.
@@ -147,14 +161,8 @@ func (s *SyntheticStreamingShaper) Shape(ctx context.Context, params contracts.S
 	if isNilInterface(ctx) || isNilInterface(source) {
 		return fmt.Errorf("%w: shaping requires a context and source", contracts.ErrIllegalArguments)
 	}
-	switch font := params.Font.(type) {
-	case SyntheticFont:
-	case *SyntheticFont:
-		if font == nil {
-			return fmt.Errorf("%w: nil synthetic font", contracts.ErrIllegalArguments)
-		}
-	default:
-		return fmt.Errorf("%w: synthetic shaper requires SyntheticFont", contracts.ErrIllegalArguments)
+	if err := s.CheckFace(params.Font); err != nil {
+		return err
 	}
 	if params.Direction != bidi.LeftToRight && params.Direction != bidi.RightToLeft {
 		return fmt.Errorf("%w: shaping requires an LTR or RTL run", contracts.ErrIllegalArguments)

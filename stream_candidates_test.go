@@ -62,6 +62,7 @@ type pipelineShaper struct {
 	entered                                   chan struct{}
 	exited                                    chan struct{}
 	baseErr, shapeErr, finishErr, terminalErr error
+	closed                                    bool
 	badAnchor                                 bool
 	wait                                      bool
 }
@@ -70,11 +71,11 @@ func (s *pipelineShaper) Glyphs() <-chan contracts.ShapedGlyph { return s.out }
 func (s *pipelineShaper) Err() error                           { return s.terminalErr }
 func (s *pipelineShaper) SetInitialCluster(uint32) error       { return s.baseErr }
 func (s *pipelineShaper) Finish() error {
-	if s.finishErr != nil {
-		return s.finishErr
+	if !s.closed {
+		close(s.out)
+		s.closed = true
 	}
-	close(s.out)
-	return nil
+	return s.finishErr
 }
 func (s *pipelineShaper) Shape(ctx context.Context, _ contracts.ShapeParams, _ contracts.RuneReader, _ contracts.ShapeBufferOptions) error {
 	close(s.entered)
@@ -84,16 +85,19 @@ func (s *pipelineShaper) Shape(ctx context.Context, _ contracts.ShapeParams, _ c
 		case s.out <- contracts.ShapedGlyph{Cluster: 100}:
 		case <-ctx.Done():
 			close(s.out)
+			s.closed = true
 			return ctx.Err()
 		}
 	}
 	if s.wait {
 		<-ctx.Done()
 		close(s.out)
+		s.closed = true
 		return ctx.Err()
 	}
 	if s.shapeErr != nil {
 		close(s.out)
+		s.closed = true
 		return s.shapeErr
 	}
 	return nil
@@ -198,4 +202,8 @@ func TestStreamCandidatePreparationAndFinalizationFailures(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (*pipelineShaper) CheckFace(face contracts.FontFace) error {
+	return new(helpers.SyntheticStreamingShaper).CheckFace(face)
 }

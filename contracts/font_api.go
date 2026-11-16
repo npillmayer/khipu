@@ -1,10 +1,25 @@
 package contracts
 
 import (
+	"errors"
 	"io"
 
 	"github.com/npillmayer/khipu/dimen"
 )
+
+// ErrUnsupportedFontFace identifies a representation a font consumer cannot use.
+var ErrUnsupportedFontFace = errors.New("khipu: unsupported font face")
+
+// FontAcceptor checks whether a consumer can use a particular face instance.
+// CheckFace rejects nil, typed-nil and unusable instances with ErrIllegalArguments,
+// and unsupported representations with ErrUnsupportedFontFace. It is a cheap,
+// concurrent-safe, read-only check: no I/O, parsing, metrics, glyph queries,
+// shaping, or stream-state changes. Capabilities and faces must remain stable
+// throughout service lifetimes. Acceptance does not promise glyph coverage or
+// support for every script, feature or shaping option, or imply stream readiness.
+type FontAcceptor interface {
+	CheckFace(FontFace) error
+}
 
 // FontLoader is the draft font-loading boundary. An adapter owns parsing and
 // retains any backing storage needed by the returned face. Font discovery,

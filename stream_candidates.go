@@ -22,7 +22,8 @@ type candidateParagraph struct {
 // streamCandidateParagraph connects preparation, shaping and knot accumulation.
 // The caller supplies a fresh, exclusively owned shaper; this function does not
 // change public Config or install defaults. Do not reuse the shaper afterward.
-// Preparation completes before launching the single producer goroutine. Glyph
+// Run preparation and face acceptance complete before launching the producer.
+// The owner finishes the stream on every exit, after any producer joins. Glyph
 // consumption and candidate construction run on the calling execution path.
 //
 // Every exit after launch cancels and joins the producer. As with the shaping
@@ -38,7 +39,15 @@ func streamCandidateParagraph(ctx context.Context, para *styled.Paragraph, resol
 
 func streamMixedCandidateParagraph(ctx context.Context, para *styled.Paragraph, resolver contracts.StyleResolver,
 	defaults contracts.ResolvedRunStyle, params Params, fill KnotCore,
-	shaper contracts.StreamingShaper, options contracts.ShapeBufferOptions, anchors []contracts.AtomicAnchor, overrides []AtomicBoundary) (*candidateParagraph, error) {
+	shaper contracts.StreamingShaper, options contracts.ShapeBufferOptions, anchors []contracts.AtomicAnchor, overrides []AtomicBoundary) (result *candidateParagraph, err error) {
+	if !nilRunService(shaper) {
+		defer func() {
+			err = finishStream(shaper, err)
+			if err != nil {
+				result = nil
+			}
+		}()
+	}
 	if ctx == nil || nilRunService(shaper) {
 		return nil, fmt.Errorf("%w: missing streaming context or shaper", contracts.ErrIllegalArguments)
 	}
@@ -59,6 +68,17 @@ func streamMixedCandidateParagraph(ctx context.Context, para *styled.Paragraph, 
 	runs, err := prepareMixedRuns(para, resolver, defaults, boundaries, atomics)
 	if err != nil {
 		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	for i, run := range runs {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := shaper.CheckFace(run.params.shaping.Font); err != nil {
+			return nil, fmt.Errorf("khipu: shaping run %d (bytes %d:%d): %w", i, run.source.byteStart, run.source.byteEnd, err)
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err

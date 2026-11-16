@@ -14,7 +14,7 @@ import "github.com/npillmayer/khipu/contracts"
 ```
 
 The package contains interfaces, their parameter and result types, constants,
-and a shared argument-error sentinel. Concrete defaults are in
+and shared argument/unsupported-face error sentinels. Concrete defaults are in
 [`helpers`](../helpers/ReadMe.md).
 
 ## Scope and Integration Status
@@ -22,6 +22,7 @@ and a shared argument-error sentinel. Concrete defaults are in
 | Service | Associated types | Current use |
 | --- | --- | --- |
 | `FontLoader`, `FontFace`, `FontScale` | `FontMetrics` | Font metrics/scaling used by encoding; loading remains the adapter's responsibility |
+| `FontAcceptor` | `CheckFace(FontFace) error` | Read-only instance compatibility, embedded in `StreamingShaper` and typography coverage |
 | `StyleResolver` | `ResolvedRunStyle`, `SpacingMode` | Active run resolution; a default implementation is available in `helpers` |
 | `StreamingShaper` | `ShapeParams`, `ShapeFeature`, `ShapeBufferOptions`, `ShapeFlushBoundary`, `ShapedGlyph` | Active shaping boundary; a synthetic implementation is available in `helpers` |
 
@@ -72,6 +73,28 @@ mean beginning/end; empty overlaps are omitted and positive reversed ranges
 are errors. Explicit bounds beyond the span are clipped. The encoder performs
 this preparation before starting its shaping producer.
 
+## Face compatibility
+
+`FontAcceptor.CheckFace` is a mandatory, cheap, concurrent-safe capability check.
+It rejects nil/typed-nil or uninitialized instances with `ErrIllegalArguments`
+and unsupported representations with `ErrUnsupportedFontFace`. A consumer may
+support several representations. It must use the same acceptance rules at its
+actual operation boundary, keeping all concrete conversion inside its adapter.
+Acceptance is runtime validation, not compile-time pairing or a promise of
+coverage, shaping-feature support or renderer compatibility.
+
+Checks perform no I/O, parsing, metric/glyph queries or shaping and do not change
+stream state, including terminal errors and cluster bases. Capabilities and
+prepared faces remain stable for their service lifetimes. A bridge must preserve
+the font instance/glyph identity and emit the units expected by `FontScale`.
+Expensive bridge preparation belongs before selection, not inside the check.
+
+Khipu checks every resolved run against the actual stream after run preparation
+and before launching any producer. Each fresh lazy pre/post replacement stream
+is checked again. Atomics create no text face to check. Successful cached
+replacements are reused without shaping; failures publish no partial pair and
+remain retryable. Font scaling still occurs during run preparation.
+
 ## Streaming Shaping
 
 [`StreamingShaper`](shaping_stream.go) accepts uniform runs and publishes glyph
@@ -81,7 +104,7 @@ consumer drains output. Run the producer and consumer concurrently.
 | Operation or outcome | Contract |
 | --- | --- |
 | Successful `Shape` | Leaves output open for subsequent runs |
-| `Finish` | Closes output after the final run |
+| `Finish` | Idempotently closes idle output and releases stream resources, including unused streams; no drainer needed for unused streams |
 | Accepted shaping failure or cancellation | Closes output with terminal `Err`; previously emitted glyphs remain drainable |
 | `Finish` or `SetInitialCluster` during `Shape` | Reports an error without disrupting the active call |
 | Consumer stops draining | Consumer cancels the producer context; an executing source read need not be interrupted |
@@ -128,6 +151,15 @@ sequenceDiagram
     end
     Note over C,P: Every exit cancels and joins the launched producer
 ```
+
+The base/replacement stream owner finishes every abandoned idle stream, including
+preflight/preparation failures before producer launch. After launch, cleanup
+happens only after cancel/join. Cleanup preserves the primary error and independent
+resource-release failures. It does not re-add terminal shaping errors already
+handled by the coordinator, such as cancellation used to stop the producer after
+a consumer failure. Wrapped/joined release errors remain visible through
+`errors.Is`. CheckFace itself does not terminate a stream; direct callers can
+check a rejected face and then use a supported one.
 
 A completed producer is not proof that all buffered glyphs have been consumed.
 Conversely, closed output is not proof of successful production. On failure,

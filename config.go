@@ -51,6 +51,8 @@ type StreamingConfig struct {
 	// NewShaper must return a fresh, exclusively owned stream for every call.
 	// A completed or failed stream must never be returned again. The factory
 	// must not start shaping; the encoder owns producer/consumer coordination.
+	// On error, the factory owns cleanup and must return no stream. Successful
+	// streams undergo CheckFace preflight and are finished even if never shaped.
 	NewShaper     func() (contracts.StreamingShaper, error)
 	Resolver      contracts.StyleResolver
 	Defaults      contracts.ResolvedRunStyle

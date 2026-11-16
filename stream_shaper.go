@@ -2,10 +2,62 @@ package khipu
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/npillmayer/khipu/contracts"
 )
+
+// finishStream releases an exclusively owned idle stream, after any producer
+// has joined. Err is sampled before Finish so newly reported cleanup failures
+// cannot be mistaken for an earlier terminal shaping error. When a primary
+// failure already exists, that terminal error has already been handled by the
+// coordinator (and may simply be its internal cancellation of the producer).
+func finishStream(shaper contracts.StreamingShaper, primary error) error {
+	terminal := shaper.Err()
+	cleanup := shaper.Finish()
+	if primary == nil {
+		return cleanup
+	}
+	cleanup, _ = withoutStreamTerminal(cleanup, terminal)
+	if cleanup != nil && !errors.Is(primary, cleanup) {
+		return errors.Join(primary, fmt.Errorf("khipu: finishing stream: %w", cleanup))
+	}
+	return primary
+}
+
+// withoutStreamTerminal removes repeated terminal causes from a Finish error.
+// Inspect joined causes separately: a joined terminal error must not hide an
+// independent cleanup failure. Preserve untouched wrappers; when a wrapper
+// contains both removed and surviving causes, return only the surviving tree.
+func withoutStreamTerminal(err, terminal error) (error, bool) {
+	if err == nil || terminal == nil {
+		return err, false
+	}
+	if errors.Is(terminal, err) {
+		return nil, true
+	}
+	switch wrapped := err.(type) {
+	case interface{ Unwrap() []error }:
+		var remaining []error
+		changed := false
+		for _, cause := range wrapped.Unwrap() {
+			keep, removed := withoutStreamTerminal(cause, terminal)
+			changed = changed || removed
+			if keep != nil {
+				remaining = append(remaining, keep)
+			}
+		}
+		if changed {
+			return errors.Join(remaining...), true
+		}
+	case interface{ Unwrap() error }:
+		if keep, removed := withoutStreamTerminal(wrapped.Unwrap(), terminal); removed {
+			return keep, true
+		}
+	}
+	return err, false
+}
 
 // consumeShaper owns the common streaming lifecycle, not glyph interpretation.
 // produce runs in one goroutine and is responsible for input and Finish;

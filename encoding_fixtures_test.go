@@ -97,3 +97,7 @@ func (s *encodingScriptStream) finish(err error) error {
 	}
 	return s.err
 }
+
+func (*encodingScriptStream) CheckFace(face contracts.FontFace) error {
+	return new(helpers.SyntheticStreamingShaper).CheckFace(face)
+}

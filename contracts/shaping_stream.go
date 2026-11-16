@@ -24,6 +24,7 @@ import (
 // context; cancellation need not interrupt an already executing source read.
 // A finished instance cannot be reused for later discretionary shaping.
 type StreamingShaper interface {
+	FontAcceptor
 	// Shape consumes a uniform run synchronously while the caller drains Glyphs.
 	// Success leaves the stream open for another run; accepted failure is terminal.
 	Shape(context.Context, ShapeParams, RuneReader, ShapeBufferOptions) error
@@ -34,6 +35,9 @@ type StreamingShaper interface {
 	// channel closure alone does not establish successful producer completion.
 	Glyphs() <-chan ShapedGlyph
 	// Finish closes output after the final run. It must not disrupt active Shape.
+	// It is idempotent and releases stream-owned resources even when Shape was
+	// never called. Finishing an unused idle stream emits no glyphs and needs no
+	// drainer. Callers finish abandoned streams after any active producer joins.
 	Finish() error
 	// Err reports terminal stream failure. Check it after draining output and
 	// observing producer completion; it may be queried concurrently with Shape.

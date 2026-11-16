@@ -251,3 +251,12 @@ Run the existing examples from the repository root with:
 ```sh
 go test . ./helpers -run '^Example' -count=1 -timeout=30s
 ```
+
+## Face acceptance
+
+`SyntheticStreamingShaper.CheckFace` accepts `SyntheticFont` values and nonnil
+pointers. It performs no queries and does not alter stream state. Unsupported
+representations wrap both `contracts.ErrUnsupportedFontFace` and the existing
+`contracts.ErrIllegalArguments`; nil instances wrap the latter. Direct `Shape`
+uses the same rules inside its terminal-error lifecycle. `Finish` safely closes
+unused streams as well as streams that have shaped text.
