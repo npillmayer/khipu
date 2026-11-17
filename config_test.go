@@ -32,7 +32,7 @@ func TestPublicConfigShaperError(t *testing.T) {
 	if !errors.Is(err, wantErr) || khp != nil {
 		t.Fatalf("expected shaper error without partial paragraph, got %v, %v", khp, err)
 	}
-	if shaper.input != "breaking" || shaper.params.Font != cfg.Defaults.Font {
+	if shaper.input != "breaking" || shaper.params.Font.Face() != cfg.Defaults.Font {
 		t.Fatalf("configured shaper did not receive source and style: %+v", shaper)
 	}
 }

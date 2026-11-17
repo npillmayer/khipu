@@ -2,7 +2,6 @@ package khipu
 
 import (
 	"github.com/npillmayer/khipu/contracts"
-	"github.com/npillmayer/khipu/dimen"
 )
 
 // preparedRun describes one uniform shaping run before submission to a
@@ -47,15 +46,9 @@ type runSourceRange struct {
 // preparation procedure. All shaping properties are uniform over the run.
 //
 // Preparation must take an owned copy of shaping.Features. Its ranges remain
-// run-relative scalar indices, as specified by contracts.ShapeFeature. contracts.FontFace and
-// contracts.FontScale implementations obey their immutable-query contracts.
+// run-relative scalar indices, as specified by contracts.ShapeFeature. the retained FontInstance shares immutable face and scale services.
 type runParameters struct {
 	shaping contracts.ShapeParams
-	// emSize records the positive selected size; scale must be obtained from
-	// shaping.Font for this same size. Keeping the size allows later reshaping
-	// without attempting to recover it from an opaque conversion object.
-	emSize dimen.DU
-	scale  contracts.FontScale
 	// spacing governs interword spaces, not the adjustability of textboxes.
 	spacing spacingMode
 }

@@ -76,7 +76,7 @@ func streamMixedCandidateParagraph(ctx context.Context, para *styled.Paragraph, 
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if err := shaper.CheckFace(run.params.shaping.Font); err != nil {
+		if err := shaper.CheckFace(run.params.shaping.Font.Face()); err != nil {
 			return nil, fmt.Errorf("khipu: shaping run %d (bytes %d:%d): %w", i, run.source.byteStart, run.source.byteEnd, err)
 		}
 	}

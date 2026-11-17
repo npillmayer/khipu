@@ -20,7 +20,7 @@ import (
 )
 
 func syntheticParams() contracts.ShapeParams {
-	return contracts.ShapeParams{Font: helpers.NewSyntheticFont(), Direction: bidi.LeftToRight}
+	return contracts.ShapeParams{Font: testInstance(helpers.NewSyntheticFont(), 10*dimen.BP), Direction: bidi.LeftToRight}
 }
 
 func testStream(t *testing.T, capacity int) *helpers.SyntheticStreamingShaper {
@@ -37,7 +37,7 @@ func TestSyntheticStreamingCellsAndLogicalOrder(t *testing.T) {
 		stream := testStream(t, len(syntheticCells)+2)
 		params := syntheticParams()
 		params.Direction = direction
-		params.Font = helpers.SyntheticFont{} // both value and pointer faces are supported
+		params.Font = testInstance(helpers.SyntheticFont{}, 10*dimen.BP) // both value and pointer faces are supported
 		var text strings.Builder
 		var want []contracts.ShapedGlyph
 		for i, cell := range syntheticCells {
@@ -117,7 +117,7 @@ func TestSyntheticStreamingRunBasesAndCompletion(t *testing.T) {
 }
 
 func TestSyntheticStreamingTerminalErrors(t *testing.T) {
-	var nilFont *helpers.SyntheticFont
+
 	var nilSource *strings.Reader
 	readerErr := errors.New("source failure")
 	for _, tc := range []struct {
@@ -128,12 +128,12 @@ func TestSyntheticStreamingTerminalErrors(t *testing.T) {
 		want   error
 	}{
 		{"nil font", contracts.ShapeParams{}, strings.NewReader("a"), contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
-		{"typed nil font", contracts.ShapeParams{Font: nilFont}, strings.NewReader("a"), contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
-		{"foreign font", contracts.ShapeParams{Font: unqueriedFont{}}, strings.NewReader("a"), contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
-		{"mixed direction", contracts.ShapeParams{Font: helpers.SyntheticFont{}, Direction: bidi.Mixed}, strings.NewReader("a"), contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
-		{"neutral direction", contracts.ShapeParams{Font: helpers.SyntheticFont{}, Direction: bidi.Neutral}, strings.NewReader("a"), contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
-		{"enabled feature", contracts.ShapeParams{Font: helpers.SyntheticFont{}, Features: []contracts.ShapeFeature{{Enabled: true}}}, strings.NewReader("a"), contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
-		{"disabled feature", contracts.ShapeParams{Font: helpers.SyntheticFont{}, Features: []contracts.ShapeFeature{{}}}, strings.NewReader("a"), contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
+		{"typed nil font", contracts.ShapeParams{Font: contracts.FontInstance{}}, strings.NewReader("a"), contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
+		{"foreign font", contracts.ShapeParams{Font: testInstance(foreignSizedFace{}, 10*dimen.BP)}, strings.NewReader("a"), contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
+		{"mixed direction", contracts.ShapeParams{Font: testInstance(helpers.SyntheticFont{}, 10*dimen.BP), Direction: bidi.Mixed}, strings.NewReader("a"), contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
+		{"neutral direction", contracts.ShapeParams{Font: testInstance(helpers.SyntheticFont{}, 10*dimen.BP), Direction: bidi.Neutral}, strings.NewReader("a"), contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
+		{"enabled feature", contracts.ShapeParams{Font: testInstance(helpers.SyntheticFont{}, 10*dimen.BP), Features: []contracts.ShapeFeature{{Enabled: true}}}, strings.NewReader("a"), contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
+		{"disabled feature", contracts.ShapeParams{Font: testInstance(helpers.SyntheticFont{}, 10*dimen.BP), Features: []contracts.ShapeFeature{{}}}, strings.NewReader("a"), contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
 		{"nil source", syntheticParams(), nil, contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
 		{"typed nil source", syntheticParams(), nilSource, contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
 		{"bad UTF8", syntheticParams(), strings.NewReader("\xff"), contracts.ShapeBufferOptions{}, contracts.ErrIllegalArguments},
@@ -329,7 +329,7 @@ func ExampleSyntheticStreamingShaper() {
 	if err != nil {
 		panic(err)
 	}
-	scale, err := style.Font.Scale(style.EmSize)
+	instance, err := contracts.NewFontInstance(style.Font, style.EmSize)
 	if err != nil {
 		panic(err)
 	}
@@ -341,7 +341,7 @@ func ExampleSyntheticStreamingShaper() {
 	defer cancel()
 	result := make(chan error, 1)
 	go func() {
-		params := contracts.ShapeParams{Font: style.Font, Direction: bidi.LeftToRight,
+		params := contracts.ShapeParams{Font: instance, Direction: bidi.LeftToRight,
 			Script: style.Script, Language: style.Language, Features: style.Features}
 		err := stream.Shape(ctx, params, strings.NewReader("aéz"), contracts.ShapeBufferOptions{})
 		if err == nil {
@@ -354,7 +354,7 @@ func ExampleSyntheticStreamingShaper() {
 	var width float64
 	for glyph := range stream.Glyphs() {
 		clusters = append(clusters, glyph.Cluster)
-		width += scale.ToDU(glyph.XAdvance)
+		width += instance.Scale().ToDU(glyph.XAdvance)
 	}
 	if err := <-result; err != nil {
 		panic(err) // accumulated output must not be published after failure

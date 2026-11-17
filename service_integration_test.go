@@ -39,7 +39,11 @@ func TestIntegrationAcrossServicePackages(t *testing.T) {
 		t.Fatal(err)
 	}
 	var shaper contracts.StreamingShaper = stream
-	if err := shaper.Shape(t.Context(), contracts.ShapeParams{Font: style.Font},
+	instance, err := contracts.NewFontInstance(style.Font, style.EmSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := shaper.Shape(t.Context(), contracts.ShapeParams{Font: instance},
 		strings.NewReader("é"), contracts.ShapeBufferOptions{Flush: contracts.ShapeFlushCluster}); err != nil {
 		t.Fatal(err)
 	}

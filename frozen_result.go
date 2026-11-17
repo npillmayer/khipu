@@ -168,8 +168,6 @@ type FrozenCluster struct {
 type FrozenTextContext struct {
 	Input  SourceRange
 	Params contracts.ShapeParams
-	EmSize dimen.DU
-	Scale  contracts.FontScale
 }
 
 // CopyText copies glyphs, clusters and features only for the requested knot.
@@ -189,7 +187,7 @@ func (f *FrozenKhipu) CopyText(index int) (FrozenText, bool) {
 	params := r.params.shaping
 	params.Features = slices.Clone(params.Features)
 	t := FrozenText{Glyphs: slices.Clone(f.shaping.glyphs[b.glyphs.start:b.glyphs.end]),
-		Context: FrozenTextContext{publicSource(r.source), params, r.params.emSize, r.params.scale}}
+		Context: FrozenTextContext{publicSource(r.source), params}}
 	for _, c := range f.shaping.clusters[b.clusters.start:b.clusters.end] {
 		t.Clusters = append(t.Clusters, FrozenCluster{publicSource(c.source), c.glyphs.start - b.glyphs.start, c.glyphs.end - c.glyphs.start})
 	}

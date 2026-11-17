@@ -45,11 +45,11 @@ type StreamingShaper interface {
 }
 
 // ShapeParams describes one uniform run. Font, script, language, and direction
-// stay fixed during a call. Spacing, font size/scale, and
-// source mappings remain in Khipukamayuq's run metadata. Publish metadata needed
+// stay fixed during a call. Font carries its immutable size/scale binding; output remains in font units.
+// Spacing and source mappings remain in Khipukamayuq's run metadata. Publish metadata needed
 // by the consumer before the corresponding glyphs can arrive.
 type ShapeParams struct {
-	Font      FontFace
+	Font      FontInstance
 	Direction bidi.Direction
 	Script    language.Script
 	Language  language.Tag

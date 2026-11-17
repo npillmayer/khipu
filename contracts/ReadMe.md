@@ -233,3 +233,20 @@ identity. See the [integration guide](../README.md#integration-and-ownership).
 For concrete usage, see the [helper guide](../helpers/ReadMe.md), the
 [encoding example](../helpers_example_test.go), and the
 [testing strategy](../doc/TESTING.md).
+
+## Size-bound fonts
+
+NewFontInstance(face, emSize) binds a size-independent FontFace to a physical DU
+em size and the scale returned by that face. Construction rejects nil/typed-nil
+faces and scales, sizes outside (0, dimen.Fil), and nonpositive/nonfinite unit
+conversions. Backend errors remain unwrap-compatible. The zero value is invalid.
+Face(), EmSize(), Scale() and Valid() do not query backend services.
+
+ResolvedRunStyle retains independent Font/EmSize inputs during style resolution.
+Run preparation binds them once. ShapeParams.Font carries the resulting
+FontInstance through prepared runs, discretionary fragments and frozen
+FrozenTextContext.Params. There are no separate retained size/scale fields.
+The backend unwraps Font.Face() for representation checks and shaping; glyph
+positions remain in signed font units. Bind, freeze and CopyText never rescale.
+Instances are copied by value and share immutable services, not cloned fonts.
+They do not configure variations, synthetic styling, hinting or rasterization.

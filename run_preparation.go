@@ -39,7 +39,7 @@ func prepareMixedRuns(para *styled.Paragraph, resolver contracts.StyleResolver, 
 	var result []preparedRun
 	var span runSourceRange
 	var resolved contracts.ResolvedRunStyle
-	var scale contracts.FontScale
+	var instance contracts.FontInstance
 	for i, item := range items {
 		if i == 0 || item.styleSource != span {
 			span = item.styleSource
@@ -54,12 +54,9 @@ func prepareMixedRuns(para *styled.Paragraph, resolver contracts.StyleResolver, 
 				return nil, fmt.Errorf("%w: invalid resolved style at byte %d", contracts.ErrIllegalArguments, span.byteStart)
 			}
 			resolved.Features = slices.Clone(resolved.Features)
-			scale, err = resolved.Font.Scale(resolved.EmSize)
+			instance, err = contracts.NewFontInstance(resolved.Font, resolved.EmSize)
 			if err != nil {
 				return nil, fmt.Errorf("khipu: scaling font at byte %d: %w", span.byteStart, err)
-			}
-			if nilRunService(scale) {
-				return nil, fmt.Errorf("%w: font returned nil scale", contracts.ErrIllegalArguments)
 			}
 		}
 		features, err := intersectFeatures(resolved.Features, span.scalarEnd-span.scalarStart,
@@ -74,9 +71,9 @@ func prepareMixedRuns(para *styled.Paragraph, resolver contracts.StyleResolver, 
 			direction = textbidi.RightToLeft
 		}
 		result = append(result, preparedRun{source: item.source, params: runParameters{
-			shaping: contracts.ShapeParams{Font: resolved.Font, Direction: direction,
+			shaping: contracts.ShapeParams{Font: instance, Direction: direction,
 				Script: resolved.Script, Language: resolved.Language, Features: features},
-			emSize: resolved.EmSize, scale: scale, spacing: resolved.Spacing,
+			spacing: resolved.Spacing,
 		}})
 	}
 	return result, nil

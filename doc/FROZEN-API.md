@@ -293,8 +293,6 @@ type FrozenCluster struct {
 type FrozenTextContext struct {
     Input SourceRange
     Params contracts.ShapeParams
-    EmSize dimen.DU
-    Scale contracts.FontScale
 }
 ```
 
@@ -302,14 +300,15 @@ CopyText returns false for invalid indices or knots without retained text
 shaping. A silent textbox returns true with empty Glyphs/Clusters. The boolean
 must not be inferred from glyph count. The call copies glyphs, cluster records
 and Params.Features; mutating those slices cannot affect frozen storage.
-FontFace and FontScale remain shared immutable services. ReplacementText is an
+Params.Font is an immutable contracts.FontInstance; its Face() and Scale()
+remain shared immutable services. ReplacementText is an
 immutable string; IsReplacement distinguishes an empty replacement from ordinary
 source-backed text. Repeated calls make independent snapshots, costing
 O(glyphs + clusters + features) time and storage for the requested knot only.
 
 Glyph order, IDs, advances and offsets are exactly the retained shaping output,
-not physical pen positions. Positions remain in signed font units, with EmSize
-and Scale for interpretation; they are not silently converted or rounded to DU.
+not physical pen positions. Positions remain in signed font units, with Params.Font.EmSize()
+and Params.Font.Scale() for interpretation; they are not silently converted or rounded to DU.
 Direction comes from Context.Params. The outer visual permutation never reverses
 glyph arrays. Subsequent box creation must interpret these records according to
 the shaping contract rather than infer glyph direction from line order.

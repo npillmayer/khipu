@@ -161,7 +161,7 @@ func (s *SyntheticStreamingShaper) Shape(ctx context.Context, params contracts.S
 	if isNilInterface(ctx) || isNilInterface(source) {
 		return fmt.Errorf("%w: shaping requires a context and source", contracts.ErrIllegalArguments)
 	}
-	if err := s.CheckFace(params.Font); err != nil {
+	if err := s.CheckFace(params.Font.Face()); err != nil {
 		return err
 	}
 	if params.Direction != bidi.LeftToRight && params.Direction != bidi.RightToLeft {

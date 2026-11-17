@@ -63,7 +63,7 @@ func TestPrepareParagraphRuns(t *testing.T) {
 		t.Fatal("lost gap or direction")
 	}
 	for _, r := range runs {
-		if r.params.scale.ToDU(500) != float64(5*dimen.PT) || r.params.emSize != d.EmSize || r.params.spacing != d.Spacing || r.params.shaping.Language != d.Language || r.params.shaping.Font != d.Font {
+		if r.params.shaping.Font.Scale().ToDU(500) != float64(5*dimen.PT) || r.params.shaping.Font.EmSize() != d.EmSize || r.params.spacing != d.Spacing || r.params.shaping.Language != d.Language || r.params.shaping.Font.Face() != d.Font {
 			t.Fatalf("parameters %+v", r.params)
 		}
 	}
@@ -94,7 +94,7 @@ func TestPreparationIndependentStyles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 2 || len(runs) != 2 || runs[0].params.scale.ToDU(500) != float64(10*dimen.PT) || runs[1].params.scale.ToDU(500) != float64(5*dimen.PT) {
+	if calls != 2 || len(runs) != 2 || runs[0].params.shaping.Font.Scale().ToDU(500) != float64(10*dimen.PT) || runs[1].params.shaping.Font.Scale().ToDU(500) != float64(5*dimen.PT) {
 		t.Fatal("incorrect span resolution", runs)
 	}
 }

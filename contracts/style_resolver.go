@@ -25,7 +25,7 @@ import (
 //
 // This interface does not inspect or subdivide text for script changes or font
 // fallback. Script and language are resolved from defaults and explicit style
-// information. Bidi analysis remains separate. Khipukamayuq obtains FontScale
+// information. Bidi analysis remains separate. Khipukamayuq constructs a FontInstance
 // from the resolved Font and EmSize after this operation succeeds.
 // EncodeParagraph uses this interface during run preparation.
 type StyleResolver interface {
@@ -38,8 +38,8 @@ type StyleResolver interface {
 // Start/End mean the span's beginning/end. Preparation clips features to the
 // span and each bidi intersection, omits empty overlaps, and rebases them to
 // shaping-run coordinates. Positive reversed ranges are invalid.
-// Direction comes from paragraph analysis, while scale is derived from Font
-// and EmSize; none of those is resolved through the style interface.
+// Direction comes from paragraph analysis. Font and EmSize remain independent
+// here during resolution; preparation binds them into a FontInstance.
 type ResolvedRunStyle struct {
 	Font     FontFace
 	EmSize   dimen.DU

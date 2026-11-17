@@ -49,8 +49,7 @@ func shapeDiscretionaryInput(ctx context.Context, input discretionaryInput, pre,
 		params runParameters
 	}{{input.pre, pre}, {input.post, post}} {
 		if !utf8.ValidString(side.input.text) || side.input.scalarCount != uint64(utf8.RuneCountInString(side.input.text)) ||
-			side.input.scalarCount > uint64(math.MaxUint32)+1 || nilRunService(side.params.shaping.Font) ||
-			nilRunService(side.params.scale) || side.params.emSize <= 0 {
+			side.input.scalarCount > uint64(math.MaxUint32)+1 || !side.params.shaping.Font.Valid() {
 			return nil, fmt.Errorf("%w: invalid replacement input or context", contracts.ErrIllegalArguments)
 		}
 		for _, f := range side.params.shaping.Features {
@@ -100,7 +99,7 @@ func streamReplacement(ctx context.Context, input replacementInput, params runPa
 	if err := ctx.Err(); err != nil {
 		return shapedReplacement{}, err
 	}
-	if err := shaper.CheckFace(params.shaping.Font); err != nil {
+	if err := shaper.CheckFace(params.shaping.Font.Face()); err != nil {
 		return shapedReplacement{}, fmt.Errorf("khipu: replacement shaping face: %w", err)
 	}
 	result = shapedReplacement{input: input, params: params}
@@ -121,7 +120,7 @@ func streamReplacement(ctx context.Context, input replacementInput, params runPa
 			(len(result.glyphs) > 0 && glyph.Cluster < result.glyphs[len(result.glyphs)-1].Cluster) {
 			return fmt.Errorf("%w: invalid replacement cluster anchor", contracts.ErrIllegalArguments)
 		}
-		if err := width.add([]contracts.ShapedGlyph{glyph}, params.scale); err != nil {
+		if err := width.add([]contracts.ShapedGlyph{glyph}, params.shaping.Font.Scale()); err != nil {
 			return err
 		}
 		result.glyphs = append(result.glyphs, glyph)

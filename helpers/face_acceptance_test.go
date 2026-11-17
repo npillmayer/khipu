@@ -13,8 +13,10 @@ import (
 
 type acceptanceTrap []byte
 
-func (acceptanceTrap) Metrics() (contracts.FontMetrics, error)     { panic("acceptance queried metrics") }
-func (acceptanceTrap) Scale(dimen.DU) (contracts.FontScale, error) { panic("acceptance queried scale") }
+func (acceptanceTrap) Metrics() (contracts.FontMetrics, error) { panic("acceptance queried metrics") }
+func (acceptanceTrap) Scale(dimen.DU) (contracts.FontScale, error) {
+	panic("acceptance queried scale")
+}
 
 func TestSyntheticFaceAcceptanceIsPure(t *testing.T) {
 	s := testStream(t, 8)
@@ -70,7 +72,7 @@ func TestSyntheticFaceAcceptanceIsPure(t *testing.T) {
 	// Direct Shape retains the historical argument classification and terminal error.
 	direct := testStream(t, 1)
 	p := syntheticParams()
-	p.Font = acceptanceTrap{1}
+	p.Font = testInstance(foreignSizedFace{}, 10*dimen.BP)
 	err := direct.Shape(t.Context(), p, strings.NewReader("a"), contracts.ShapeBufferOptions{})
 	if !errors.Is(err, contracts.ErrIllegalArguments) || !errors.Is(err, contracts.ErrUnsupportedFontFace) || !errors.Is(direct.Err(), contracts.ErrUnsupportedFontFace) {
 		t.Fatal(err, direct.Err())

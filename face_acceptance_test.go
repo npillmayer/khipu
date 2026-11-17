@@ -43,8 +43,8 @@ func (s *acceptanceStream) CheckFace(f contracts.FontFace) error {
 }
 func (s *acceptanceStream) Shape(ctx context.Context, p contracts.ShapeParams, r contracts.RuneReader, o contracts.ShapeBufferOptions) error {
 	s.shapes++
-	if _, ok := p.Font.(acceptanceFace); ok {
-		p.Font = helpers.NewSyntheticFont()
+	if _, ok := p.Font.Face().(acceptanceFace); ok {
+		p.Font = testInstance(helpers.NewSyntheticFont(), p.Font.EmSize())
 	}
 	return s.StreamingShaper.Shape(ctx, p, r, o)
 }

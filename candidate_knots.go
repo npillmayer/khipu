@@ -177,7 +177,7 @@ func (a *candidateKnotAccumulator) push(c *glyphCluster) error {
 		a.class = class
 		a.width = candidateWidth{}
 	}
-	if err := a.width.add(c.glyphs, a.runs[c.runIndex].params.scale); err != nil {
+	if err := a.width.add(c.glyphs, a.runs[c.runIndex].params.shaping.Font.Scale()); err != nil {
 		return a.fail(err)
 	}
 	copyCluster := *c

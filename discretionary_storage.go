@@ -78,7 +78,7 @@ func prepareStoredReplacement(fragment shapedReplacement, offset uint64) (shapin
 	if !utf8.ValidString(in.text) || in.scalarCount != uint64(utf8.RuneCountInString(in.text)) ||
 		in.scalarCount > uint64(math.MaxUint32)+1 || s.byteStart > s.byteEnd || s.scalarStart > s.scalarEnd ||
 		s.byteEnd-s.byteStart > math.MaxUint16 || offset > math.MaxUint64-s.byteEnd ||
-		nilRunService(fragment.params.shaping.Font) || nilRunService(fragment.params.scale) || fragment.params.emSize <= 0 {
+		!fragment.params.shaping.Font.Valid() {
 		return bad()
 	}
 	for _, f := range fragment.params.shaping.Features {
@@ -92,7 +92,7 @@ func prepareStoredReplacement(fragment shapedReplacement, offset uint64) (shapin
 			return bad()
 		}
 	}
-	if err := width.add(fragment.glyphs, fragment.params.scale); err != nil {
+	if err := width.add(fragment.glyphs, fragment.params.shaping.Font.Scale()); err != nil {
 		return bad()
 	}
 	w, err := width.finish(candidateText, contracts.SpacingFixed, Params{})

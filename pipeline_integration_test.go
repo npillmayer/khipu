@@ -83,7 +83,7 @@ func checkPipelineResult(t *testing.T, f *khipu.FrozenKhipu, source string, ends
 				// silently disagree with the retained glyph advances.
 				var advance float64
 				for _, g := range text.Glyphs {
-					advance += text.Context.Scale.ToDU(g.XAdvance)
+					advance += text.Context.Params.Font.Scale().ToDU(g.XAdvance)
 				}
 				if delta := advance - float64(knot.W); delta < -1 || delta > 1 {
 					t.Fatal("width/glyph mismatch", at, advance, knot.W)

@@ -56,7 +56,7 @@ func TestCandidateRejectsUnsupportedGapBreaks(t *testing.T) {
 
 func TestCandidateWidthFailureIsAtomic(t *testing.T) {
 	a, g := candidateFixture(t, "a b")
-	a.runs[0].params.scale = candidateScale(func(int32) float64 { return math.Inf(1) })
+	a.runs[0].params.shaping.Font = testInstance(candidateBadFace{}, 1)
 	_, _ = g.push(contracts.ShapedGlyph{Cluster: 0, XAdvance: 500})
 	c, _ := g.finish()
 	if err := a.push(c); err == nil {
@@ -218,4 +218,15 @@ func TestCandidateRunBoundaryAndOwnership(t *testing.T) {
 	if knots[0].clusters[0].glyphs[0].GlyphID == 999 {
 		t.Fatal("borrowed glyph storage")
 	}
+}
+
+type candidateBadFace struct{ contracts.FontFace }
+
+func (candidateBadFace) Scale(dimen.DU) (contracts.FontScale, error) {
+	return candidateScale(func(n int32) float64 {
+		if n == 1 {
+			return 1
+		}
+		return math.Inf(1)
+	}), nil
 }

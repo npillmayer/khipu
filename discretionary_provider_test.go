@@ -51,7 +51,7 @@ func TestExplicitProviderBatchAndRetry(t *testing.T) {
 		if pre.replacement.text != want[0] || post.replacement.text != want[1] {
 			t.Fatal("incorrect stored input")
 		}
-		if k.shaping.contexts[pre.context].params.shaping.Font != owner.env.streaming.Defaults.Font {
+		if k.shaping.contexts[pre.context].params.shaping.Font.Face() != owner.env.streaming.Defaults.Font {
 			t.Fatal("lost retained font")
 		}
 	}

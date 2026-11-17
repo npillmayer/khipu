@@ -50,8 +50,7 @@ func (s *fragmentRecordingShaper) Shape(ctx context.Context, params contracts.Sh
 
 func TestShapeDiscretionaryRetainsGeometryAndContext(t *testing.T) {
 	in, params := fragmentFixture(t)
-	params.emSize = 1
-	params.scale, _ = params.shaping.Font.Scale(1)
+	params.shaping.Font = testInstance(params.shaping.Font.Face(), 1)
 	params.shaping.Direction = bidi.RightToLeft
 	params.shaping.Features = []contracts.ShapeFeature{{Tag: [4]byte{'l', 'i', 'g', 'a'}, Enabled: true}}
 	glyphs := []contracts.ShapedGlyph{
@@ -121,11 +120,11 @@ func fragmentFixture(t *testing.T) (discretionaryInput, runParameters) {
 		t.Fatal(err)
 	}
 	d := preparationDefaults()
-	scale, err := d.Font.Scale(d.EmSize)
+	instance, err := contracts.NewFontInstance(d.Font, d.EmSize)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return in, runParameters{shaping: contracts.ShapeParams{Font: d.Font}, emSize: d.EmSize, scale: scale}
+	return in, runParameters{shaping: contracts.ShapeParams{Font: instance}}
 }
 
 func TestShapeDiscretionaryInput(t *testing.T) {
