@@ -32,9 +32,10 @@ const defaultInitialKhipuCapa = 20
 // but lack the ownership/provenance required by [Khipukamayuq.Freeze] and
 // [Khipu.BreakpointPositions]. Prefer owner operations for normal client use.
 type Khipu struct {
-	owner     *Khipukamayuq
-	paragraph *styled.Paragraph
-	prepared  *PreparedParagraph // Explicit-only lazy cache association; never frozen.
+	owner         *Khipukamayuq
+	paragraph     *styled.Paragraph
+	prepared      *PreparedParagraph // Explicit-only lazy cache association; never frozen.
+	boundMaterial *preparedMaterial  // Preparation identity for checkpoints; never frozen.
 	// W, MinW and MaxW contain natural, minimum and maximum widths in DU.
 	W    []dimen.DU
 	MinW []dimen.DU
@@ -100,6 +101,7 @@ func unwireKhipu(khipu *Khipu) *Khipu {
 	khipu.owner = nil
 	khipu.paragraph = nil
 	khipu.prepared = nil
+	khipu.boundMaterial = nil
 	khipu.W = nil
 	khipu.MinW = nil
 	khipu.MaxW = nil

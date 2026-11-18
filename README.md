@@ -89,6 +89,15 @@ Freeze uses both the indices and those selections. Owner operations are serializ
 and source/font services remain stable. The [ownership diagram](doc/PREPARED_PARAGRAPHS.md#ownership-and-reuse)
 shows what is copied and what remains shared.
 
+For fixed-prefix flow with `NoHyphenation`, certify a complete successful path
+using `owner.Checkpoint(ctx, prepared, breaks, acceptedLines)`, bind the same
+preparation again, and call `firstfit.ContinueParagraph`. The opaque checkpoint
+locks logical boundaries; only the suffix is searched. KP prefixes are supported.
+Keep the original width schedule for accepted lines when freezing the complete
+result. See [checkpoint continuation](doc/PREPARED_PARAGRAPHS.md#checkpoint-continuation)
+for the admission and lifetime contract. Frame heights and flow dispatch belong
+to the caller; this API does not paginate documents.
+
 ### Fixed-Size Atomic Inline Items
 
 Attach paragraph-local IDs to U+FFFC markers at their UTF-8 byte offsets. Prepare
@@ -252,3 +261,17 @@ face types. Failed checks publish no partial paragraph/replacement, and acquired
 streams are finished after any producer has joined. Synthetic defaults and
 nongeneric prepared/frozen result APIs are unchanged. See
 [the contract](contracts/ReadMe.md#face-compatibility) for backend obligations.
+
+
+### Production continuation verification (P6)
+
+Typography's owning-package benchmarks exercise production `Checkpoint` and
+`firstfit.ContinueParagraph` through `Prepared.StartFlow`/`Continuation.Fit`, with
+separate component measurements of checkpoint certification and suffix breaking.
+See the [production cost report](../typography/doc/FLOW_COSTS.md) for five-process
+evidence and the bounded application profile. No benchmark hook or serialized
+checkpoint is added to khipu. Certification still checks the complete path;
+seeded search skips accepted prefix knots, while binding/freezing may process the
+whole paragraph. Release preparation and checkpoints when a paragraph completes
+or is abandoned; retain only frozen fragments. The upstream synchronous bidi
+preparation limitation remains unfixed and is not a frame-boundary defect.

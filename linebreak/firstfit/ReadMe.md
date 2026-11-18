@@ -61,10 +61,37 @@ explicitly. Failures return an error and preserve prior selections, although
 provider discovery may populate caches. Overfull fallback can be a successful
 break result; inspect frozen fit diagnostics. Serialize use of the input/owner.
 
-Breaking and provider calls are synchronous and have no context argument. The
+Ordinary `BreakParagraph` and provider calls are synchronous and have no context argument. The
 context in the example controls freezing; it does not cancel the preceding
 search or lazy shaping. See the [algorithm and limits](../../doc/FIRSTFIT.md),
 [hyphenation contract](../../doc/HYPHENATION.md), and [freeze guide](../../doc/FREEZE.md).
+
+## Checkpoint continuation
+
+`ContinueParagraph(ctx, binding, geometry, checkpoint)` searches only the suffix
+after an opaque `khipu.BreakCheckpoint`. Obtain the checkpoint with
+`owner.Checkpoint(ctx, prepared, completeBreakPath, acceptedLines)` after a
+successful ordinary layout. It certifies the complete legal path and copies the
+accepted prefix. A KP prefix may be retained even when first-fit would have
+chosen different boundaries. No KP optimization state is resumed.
+
+Bind the same `NoHyphenation` preparation; nil/zero checkpoints and bindings from
+another preparation are rejected. The seeded search has no discretionary provider
+or replacement carry and performs no base shaping or font acceptance. Prefix
+knots are not searched. Zero accepted lines starts from the beginning; accepting
+all lines returns the copied path without a search. Ordinary `BreakParagraph`
+behavior is unchanged.
+
+Use the original widths for every accepted line and the new width for the suffix
+in a stable one-based `LineShape`, with unchanged skips. Freeze the entire result
+using that same geometry. A new checkpoint can lock more lines on the next call.
+Errors/cancellation publish no partial path and preserve previous selections.
+Cancellation is checked between search knots, after width callbacks and before
+publication; one synchronous callback is not interruptible.
+
+Checkpoints retain preparation while flow/retry remains possible. Drop working
+handles when each paragraph finishes; frozen content stays usable. See the
+[preparation and lifecycle guide](../../doc/PREPARED_PARAGRAPHS.md#checkpoint-continuation).
 
 For source reading, start with [the sequential scan](break.go), then follow
 [segment and carry bookkeeping](segment.go) or [discretionary rescue](discretionary.go).

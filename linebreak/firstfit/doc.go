@@ -33,5 +33,12 @@ the same profile. Layout is resolved separately with DefaultLayout. Discretionar
 selections are staged until the complete call succeeds. Errors preserve previous
 selections, although provider-owned candidate caches may have been populated.
 Providers must not modify the published selection map themselves.
+
+ContinueParagraph accepts an opaque khipu.BreakCheckpoint from a NoHyphenation
+preparation and searches only after its locked logical prefix. A KP prefix may
+be retained without resuming KP optimization. The caller preserves committed
+line widths and skips when freezing the complete result. This entry checks
+cancellation during search and invokes no preparation or discretionary services;
+ordinary BreakParagraph retains its synchronous, context-free contract.
 */
 package firstfit

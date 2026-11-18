@@ -55,6 +55,7 @@ aliases have been removed. Import services from `contracts` and defaults from
 | Stream lifecycle | Consumer failures cancel/join the producer; channel closure and producer completion are checked separately. | [stream coordinator tests](../stream_shaper_test.go), [producer tests](../run_producer_test.go) |
 | Discretionaries | Discovery and replacement publication are lazy and transactional; successful empty responses can be cached. Explicit markers require a configured material policy. | [provider tests](../discretionary_provider_test.go), [cache tests](../discretionary_cache_test.go), [explicit tests](../discretionary_explicit_test.go) |
 | Prepared input | Anchors and supplied advances are validated; bindings own working planes and selections. | [input tests](../paragraph_input_test.go), [pipeline integration](../pipeline_integration_test.go) |
+| Continuation | Certified preparation-bound paths retain FF/KP prefix boundaries; suffix search makes zero prefix visits or preparation-service calls. | [checkpoint guards](../checkpoint_test.go), [continuation regressions](../linebreak/firstfit/continue_test.go) |
 | Intrinsic measurement | Ordinary and bounded explicit modes work without binding. Automatic intrinsic hyphenation and multiple eligible explicit splits/variants per textbox are unsupported. | [intrinsic tests](../intrinsic_test.go), [explicit measurement](../intrinsic_explicit_test.go), [preparation cache](../discretionary_prepared_test.go) |
 | Breaking | Firstfit and Knuth–Plass have separate policies; successful calls publish choices, failures preserve earlier selections. | [firstfit ownership](../linebreak/firstfit/ownership_test.go), [Knuth–Plass passes](../linebreak/knuthplass/pass_test.go), [public examples](../example_test.go) |
 | Freezing | Logical materialization, visual knot order, glue allocation and opaque queries are implemented. Fit shortfalls are outcomes; unsupported adjustment remains an error. | [public freeze API](../freeze_api_test.go), [width outcomes](../width_outcomes_test.go), [result queries](../frozen_result_test.go) |
@@ -64,7 +65,8 @@ This is an evidence map, not a claim of exhaustive Unicode conformance or
 coverage of every external font backend. Bidi L1 uses the documented
 [approximation](FREEZE.md#accepted-l1-approximation). Lazy breaker/provider calls
 have no context argument; cancellation supplied to encoding or freezing does
-not cancel a subsequent linebreaking call.
+not cancel an ordinary `BreakParagraph` call. `firstfit.ContinueParagraph` has
+its own context and checks cancellation during its NoHyphenation suffix search.
 
 ## Deterministic Services And Fixtures
 

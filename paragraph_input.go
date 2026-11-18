@@ -146,7 +146,7 @@ func (kq *Khipukamayuq) BindParagraph(ctx context.Context, prepared *PreparedPar
 	if kq == nil {
 		return nil, ErrVoidKhipukamayuq
 	}
-	if prepared == nil || prepared.owner != kq || len(atomics) != prepared.atomicCount {
+	if prepared == nil || prepared.preparedMaterial == nil || prepared.owner != kq || len(atomics) != prepared.atomicCount {
 		return nil, ErrIllegalArguments
 	}
 	advances := make(map[contracts.AtomicID]dimen.DU, len(atomics))
@@ -159,6 +159,7 @@ func (kq *Khipukamayuq) BindParagraph(ctx context.Context, prepared *PreparedPar
 	}
 	k := kq.allocKhipu(len(prepared.knots))
 	k.paragraph = prepared.paragraph
+	k.boundMaterial = prepared.preparedMaterial
 	k.hyphenationPolicy, k.hyphenation = true, prepared.hyphenation
 	if prepared.hyphenation == ExplicitHyphenation {
 		k.prepared = prepared

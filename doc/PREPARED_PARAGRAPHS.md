@@ -6,7 +6,7 @@ atomic advances. Text-only callers who need a single layout can start with
 [`EncodeParagraph`](../README.md#encode-and-break-a-paragraph).
 
 This is the current client guide for `ParagraphInput`, `PrepareParagraph`,
-`MeasureIntrinsic` and `BindParagraph`. Exact declarations and validation rules
+`MeasureIntrinsic`, `BindParagraph` and checkpoint continuation. Exact declarations and validation rules
 are documented in [paragraph_input.go](../paragraph_input.go),
 [intrinsic.go](../intrinsic.go) and [contracts/atomic.go](../contracts/atomic.go).
 The [pipeline integration record](history/INTEGRATION_HISTORY.md) preserves the earlier
@@ -57,6 +57,53 @@ headers or selections, or on the owner remaining alive. Rebinding or rebreaking
 cannot invalidate an earlier frozen result; caller-owned source and services
 must still obey their stable-lifetime contracts. The preparation's explicit cache
 is memoization controlled by the owner, not client-mutable base text.
+
+## Checkpoint Continuation
+
+For a paragraph prepared with `NoHyphenation`, retain already accepted lines and
+search for new suffix breaks without shaping its text again:
+
+1. Bind and break the paragraph with either first-fit or KP, then freeze the
+   successful complete path using its original geometry.
+2. Call `owner.Checkpoint(ctx, prepared, breaks, acceptedLines)`. Supply the
+   **complete** path, including the final trailer. Certification checks all
+   boundaries, including the unaccepted suffix, against the preparation's
+   immutable policy. It rejects prohibited, decreasing, duplicate and out-of-range
+   boundaries, incomplete paths and skipped mandatory breaks. Zero or all accepted
+   lines are valid. This certifies legal boundaries, not width fit or optimality.
+3. Bind the same preparation afresh. Call
+   `firstfit.ContinueParagraph(ctx, binding, geometry, checkpoint)`. It copies
+   the certified prefix and enters the ordinary first-fit loop after the last
+   accepted logical knot. It never searches the prefix or resumes KP optimization
+   state. It performs no base shaping, font acceptance or discretionary discovery.
+4. Freeze the complete returned path using the same stable, one-based width
+   schedule. Accepted lines must retain their original target widths and skips;
+   apply new widths only to suffix lines. Geometry history is the caller's
+   responsibility, not part of the checkpoint. Keep atomic geometry stable for
+   fixed-prefix flow. The khipu checkpoint itself certifies boundaries only.
+5. A successful continuation can certify a longer checkpoint, preserving all
+   accepted A/B boundaries before a further C-width suffix search.
+
+[`BreakCheckpoint`](../checkpoint.go) is opaque and preparation-bound. It copies
+the prefix and retains the preparation, never mutable binding arrays or frozen
+visual indexes. `PrefixFor` is the breaker-facing seam: it verifies the exact
+binding identity and returns a detached copy, with no prefix knot scan. Nil/zero
+handles, another preparation (even on the same owner), or legacy encoded material
+are invalid. Enabled hyphenation is explicitly unsupported; no replacement carry
+is guessed. Source offsets and retained paragraph bidi analysis are unchanged.
+
+Operations on one owner remain serialized. Errors and cancellation return no
+new result and leave checkpoints and earlier results reusable; continuation
+checks cancellation within search and before publishing selections. It cannot
+interrupt one synchronous `LineLength` call. Full binding/materialization is
+allowed; this is not suffix-only freezing or vertical assembly.
+
+Process paragraphs in turn. Retain the current preparation and checkpoints only
+while content remains to flow or an explicit retry is possible. On completion or
+abandonment, drop all checkpoints, bindings and preparation references before
+moving on. Go then may reclaim working state; there is no `Close` or document-wide
+preparation cache. Frozen results retain immutable source, shaping and services
+independently and remain usable after those working handles are released.
 
 ## Anchors And Atomic Boundaries
 
@@ -229,8 +276,9 @@ preparation reusable. Errors preserve wrapped causes; use `errors.Is`.
 | Context/backend error | Cancellation, deadline or collaborator failure. |
 
 Cancellation cannot interrupt every synchronous backend/source operation.
-Breakers have no context argument; an encoding/freezing context does not cancel
-their search or lazy provider calls. Failed breaker calls preserve prior
+Ordinary `BreakParagraph` entries have no context argument; an encoding/freezing
+context does not cancel their search or lazy provider calls. The bounded
+`firstfit.ContinueParagraph` entry accepts its own search context. Failed calls preserve prior
 selections but may leave successfully discovered candidates cached.
 
 Frozen `Atomic(index)` identifies occurrences in visual knot order; `Knot(index)`

@@ -33,6 +33,13 @@ import (
 // or freezing does not cancel this search or its provider calls. The standard
 // owner provider shapes lazy replacements with context.Background().
 func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) ([]kinx, error) {
+	return breakParagraph(khp, layout, params, nil)
+}
+
+func breakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters, seed *breakSeed) ([]kinx, error) {
+	if err := seed.err(); err != nil {
+		return nil, err
+	}
 	if err := layout.ValidateGeometry(); err != nil {
 		return nil, err
 	}
@@ -54,9 +61,17 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 	lastFeasible := noinx
 	lastFeasibleWidth := linebreak.WSS{}
 	breakpoints := make([]kinx, 0, 8)
+	start := 0
+	if seed != nil && len(seed.prefix) > 0 {
+		breakpoints = append(breakpoints, seed.prefix...)
+		start = seed.prefix[len(seed.prefix)-1] + 1
+	}
 	trace := tracer()
 	debug := trace.GetTraceLevel() >= tracing.LevelDebug
-	for i := range len(khp.Kind) {
+	for i := start; i < len(khp.Kind); i++ {
+		if err := seed.err(); err != nil {
+			return nil, err
+		}
 		k := khp.KnotByIndex(i)
 		prevSeg := seg.segmentState()
 		if debug {
@@ -72,6 +87,9 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 			firstInLine = false
 		}
 		linelen := parshape.LineLength(int32(len(breakpoints) + 1))
+		if err := seed.err(); err != nil {
+			return nil, err
+		}
 		segw := seg.width(layout)
 		if err := segw.Err(); err != nil {
 			return nil, err
@@ -83,7 +101,7 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 		// the internal discretionary has its own penalty. Forced endpoints must
 		// instead follow mandatory-break handling below, without provider calls.
 		// Explicit markers can also rescue a first word without a checkpoint.
-		if k.Penalty > InfinityMerits && k.Kind == khipu.KTTextBox && segw.Min > linelen &&
+		if seed == nil && k.Penalty > InfinityMerits && k.Kind == khipu.KTTextBox && segw.Min > linelen &&
 			(lastFeasible >= 0 || khp.HasExplicitDiscretionary(i)) {
 			cand, nextSeg, ok, err := tryLooseHyphenation(khp, i, prevSeg, lastFeasibleWidth, linelen, layout, params)
 			if err != nil {
@@ -154,7 +172,11 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 				if err := nextWidth.Err(); err != nil {
 					return nil, err
 				}
-				if nextWidth.Min <= parshape.LineLength(int32(len(breakpoints)+1)) {
+				nextLength := parshape.LineLength(int32(len(breakpoints) + 1))
+				if err := seed.err(); err != nil {
+					return nil, err
+				}
+				if nextWidth.Min <= nextLength {
 					seg.trackcarry()
 					lastFeasible = i
 					lastFeasibleWidth = nextWidth
@@ -173,6 +195,9 @@ func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
 	// explicit breakpoint has been committed yet, fall back to the last knot.
 	if len(breakpoints) == 0 || breakpoints[len(breakpoints)-1] != len(khp.Kind)-1 {
 		breakpoints = append(breakpoints, len(khp.Kind)-1)
+	}
+	if err := seed.err(); err != nil {
+		return nil, err
 	}
 	// No remaining operation can fail. Replace the previous decisions, including
 	// clearing stale selections when this successful run chose no discretionaries.
