@@ -1,7 +1,6 @@
 package khipu
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -85,28 +84,20 @@ type frozenShaping struct {
 // selected fragments and orders knots; geometry snapshots inclusive targets.
 // No shaper or hyphenator is consulted. Failure publishes no partial paragraph
 // and leaves the elastic input and its decisions unchanged.
-// Pass a nonnil context and the same resolved Params used for breaking.
-// Cancellation is checked between stages and lines and after client shape calls;
-// it cannot interrupt a synchronous LineLength call or a single bidi/allocation
-// operation. Capacity shortfalls are reported in the result, not as errors.
-func (kq *Khipukamayuq) Freeze(ctx context.Context, k *Khipu, breaks []int, params Params) (*FrozenKhipu, error) {
-	if ctx == nil {
-		return nil, fmt.Errorf("%w: nil freeze context", ErrIllegalArguments)
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+// Pass the same resolved Params used for breaking. Execution is synchronous.
+// Capacity shortfalls are reported in the result, not as errors.
+func (kq *Khipukamayuq) Freeze(k *Khipu, breaks []int, params Params) (*FrozenKhipu, error) {
 	if kq == nil {
 		return nil, ErrVoidKhipukamayuq
 	}
 	if err := params.ValidateGeometry(); err != nil {
 		return nil, err
 	}
-	p, err := kq.materializeLineGeometry(ctx, k, breaks, params)
+	p, err := kq.materializeLineGeometry(k, breaks, params)
 	if err != nil {
 		return nil, err
 	}
-	return p.freeze(ctx)
+	return p.freeze()
 }
 
 // freeze realizes the currently supported subset: only glue can change width.
@@ -120,10 +111,7 @@ func (kq *Khipukamayuq) Freeze(ctx context.Context, k *Khipu, breaks []int, para
 // Each line uses the allocator's exact integer assignment (including fill
 // precedence and bounded shrink). All output remains private until every line
 // succeeds. Geometry and immutable shaping storage are never modified.
-func (p *geometryParagraph) freeze(ctx context.Context) (*FrozenKhipu, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+func (p *geometryParagraph) freeze() (*FrozenKhipu, error) {
 	if p == nil || p.paragraph == nil || len(p.lines) == 0 {
 		return nil, fmt.Errorf("%w: freeze requires prepared geometry", ErrIllegalArguments)
 	}
@@ -132,9 +120,6 @@ func (p *geometryParagraph) freeze(ctx context.Context) (*FrozenKhipu, error) {
 		shaping: frozenShaping{p.arena.boxes, p.arena.glyphs, p.arena.clusters, p.arena.contexts},
 		lines:   make([]frozenLine, len(p.lines))}
 	for i, line := range p.lines {
-		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("freeze line %d: %w", i+1, err)
-		}
 		for j, knot := range line.content.knots {
 			core := knot.core
 			if core.Kind != KTGlue && (core.MinW != core.W || core.MaxW != core.W) {
@@ -160,8 +145,6 @@ func (p *geometryParagraph) freeze(ctx context.Context) (*FrozenKhipu, error) {
 			adjustment: plan.adjustment,
 			byteStart:  line.content.byteStart, byteEnd: line.content.byteEnd}
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+
 	return result, nil
 }

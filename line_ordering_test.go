@@ -1,7 +1,6 @@
 package khipu
 
 import (
-	"context"
 	"errors"
 	"reflect"
 	"slices"
@@ -73,7 +72,7 @@ func l1Materialized(t *testing.T, k *Khipu, ends ...uint64) *logicalParagraph {
 		breaks = append(breaks, at)
 	}
 	breaks = append(breaks, len(k.Kind)-1)
-	p, err := k.owner.materializeLogicalLines(context.Background(), k, breaks)
+	p, err := k.owner.materializeLogicalLines(k, breaks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +105,7 @@ func TestLineOrderingsApplyTrailingGlueL1(t *testing.T) {
 				t.Fatal(err)
 			}
 			para.Offset = 100 // L1 coordinates must not include this offset.
-			k, err := NewKhipukamayuq(Config{}).EncodeParagraph(t.Context(), para)
+			k, err := NewKhipukamayuq(Config{}).EncodeParagraph(para)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -121,7 +120,7 @@ func TestLineOrderingsApplyTrailingGlueL1(t *testing.T) {
 			}
 			before := para.BidiLevels().Clone()
 			cores := slices.Clone(p.lines[0].knots)
-			orders, err := p.lineOrderings(context.Background())
+			orders, err := p.lineOrderings()
 			if err != nil || len(orders) != 2 {
 				t.Fatal(orders, err)
 			}
@@ -137,7 +136,7 @@ func TestLineOrderingsApplyTrailingGlueL1(t *testing.T) {
 			if !reflect.DeepEqual(before, para.BidiLevels()) || !reflect.DeepEqual(cores, p.lines[0].knots) {
 				t.Fatal("mutated input")
 			}
-			again, err := p.lineOrderings(context.Background())
+			again, err := p.lineOrderings()
 			if err != nil || !reflect.DeepEqual(orders, again) {
 				t.Fatal("ordering not repeatable", err)
 			}
@@ -173,7 +172,7 @@ func TestLineOrderingsFinalAndHeuristicLimits(t *testing.T) {
 			if p.lines[0].l1Glue != tc.want {
 				t.Fatalf("got %+v, want %+v", p.lines[0].l1Glue, tc.want)
 			}
-			if orders, err := p.lineOrderings(context.Background()); err != nil || len(orders) != 1 {
+			if orders, err := p.lineOrderings(); err != nil || len(orders) != 1 {
 				t.Fatal(orders, err)
 			}
 		})
@@ -199,7 +198,7 @@ func TestLineOrderingsSplitStyleGlueAndClipMarker(t *testing.T) {
 	if count != 2 {
 		t.Fatal("fixture did not split glue at style boundary", count)
 	}
-	if _, err := p.lineOrderings(context.Background()); err != nil {
+	if _, err := p.lineOrderings(); err != nil {
 		t.Fatal(err)
 	}
 	_, k = logicalTestParagraph(t, "a \u00adb")
@@ -207,14 +206,14 @@ func TestLineOrderingsSplitStyleGlueAndClipMarker(t *testing.T) {
 	if p.lines[0].l1Glue != (sourceByteInterval{1, 2}) {
 		t.Fatal("L1 crossed line into marker", p.lines[0].l1Glue)
 	}
-	if _, err := p.lineOrderings(context.Background()); err != nil {
+	if _, err := p.lineOrderings(); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestLineOrderingsDiscretionaryAndEmptyLines(t *testing.T) {
 	owner, k, _ := logicalTestDiscretionary(t)
-	p, err := owner.materializeLogicalLines(context.Background(), k, []int{0, len(k.Kind) - 1})
+	p, err := owner.materializeLogicalLines(k, []int{0, len(k.Kind) - 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +222,7 @@ func TestLineOrderingsDiscretionaryAndEmptyLines(t *testing.T) {
 			t.Fatal("reset replacement source")
 		}
 	}
-	if _, err := p.lineOrderings(context.Background()); err != nil {
+	if _, err := p.lineOrderings(); err != nil {
 		t.Fatal(err)
 	}
 	_, k = logicalTestParagraph(t, "  aa ")
@@ -231,7 +230,7 @@ func TestLineOrderingsDiscretionaryAndEmptyLines(t *testing.T) {
 	if len(p.lines[0].knots) != 0 || p.lines[0].l1Glue != (sourceByteInterval{0, 2}) {
 		t.Fatal("lost empty line's L1")
 	}
-	if orders, err := p.lineOrderings(context.Background()); err != nil || len(orders) != 2 {
+	if orders, err := p.lineOrderings(); err != nil || len(orders) != 2 {
 		t.Fatal(orders, err)
 	}
 }
@@ -241,7 +240,7 @@ func TestLineOrderingsSuccessiveSplitsInsideIsolate(t *testing.T) {
 	p := l1Materialized(t, k, 11, 17)
 	want := []sourceByteInterval{{9, 11}, {15, 17}, {26, 27}}
 	before := k.paragraph.BidiLevels().Clone()
-	orders, err := p.lineOrderings(context.Background())
+	orders, err := p.lineOrderings()
 	if err != nil || len(orders) != len(want) {
 		t.Fatal(orders, err)
 	}
@@ -259,7 +258,7 @@ func TestLineOrderingsSuccessiveSplitsInsideIsolate(t *testing.T) {
 			t.Fatalf("line %d: glue not reset to paragraph direction: %+v", i+1, orderingSegments(orders[i]))
 		}
 	}
-	again, err := p.lineOrderings(context.Background())
+	again, err := p.lineOrderings()
 	if err != nil || !reflect.DeepEqual(orders, again) || !reflect.DeepEqual(before, k.paragraph.BidiLevels()) {
 		t.Fatal("successive isolate splits consumed input", err)
 	}
@@ -295,7 +294,7 @@ func TestLineOrderingsRejectInvalidInput(t *testing.T) {
 			case "L1 not suffix":
 				p.lines[1].l1Glue = sourceByteInterval{3, 4}
 			}
-			if got, err := p.lineOrderings(context.Background()); got != nil || !errors.Is(err, ErrIllegalArguments) {
+			if got, err := p.lineOrderings(); got != nil || !errors.Is(err, ErrIllegalArguments) {
 				t.Fatal(got, err)
 			}
 			if !reflect.DeepEqual(before, k.paragraph.BidiLevels()) {

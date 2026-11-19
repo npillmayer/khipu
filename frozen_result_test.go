@@ -1,7 +1,6 @@
 package khipu
 
 import (
-	"context"
 	"errors"
 	"io"
 	"reflect"
@@ -39,7 +38,7 @@ func TestFrozenResultEmptyQueries(t *testing.T) {
 
 func TestFrozenResultEmptyParagraph(t *testing.T) {
 	owner, k := logicalTestParagraph(t, "")
-	f, err := owner.Freeze(context.Background(), k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT })})
+	f, err := owner.Freeze(k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT })})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,12 +67,12 @@ func TestFrozenResultValuesAndSnapshots(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner := NewKhipukamayuq(Config{})
-	k, err := owner.EncodeParagraph(t.Context(), para)
+	k, err := owner.EncodeParagraph(para)
 	if err != nil {
 		t.Fatal(err)
 	}
 	k.shaping.contexts[0].params.shaping.Features = []contracts.ShapeFeature{{Enabled: true, Start: 1, End: 2}}
-	f, err := owner.Freeze(context.Background(), k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 30 * dimen.PT })})
+	f, err := owner.Freeze(k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 30 * dimen.PT })})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +170,7 @@ func TestFrozenResultReplacementCoordinates(t *testing.T) {
 			t.Fatal(err)
 		}
 		k.SelectDiscretionary(0, DiscretionarySelection{0, 1})
-		f, err := k.owner.Freeze(context.Background(), k, []int{0, len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 20 * dimen.PT }), RightSkip: KnotCore{MaxW: dimen.Fil}})
+		f, err := k.owner.Freeze(k, []int{0, len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 20 * dimen.PT }), RightSkip: KnotCore{MaxW: dimen.Fil}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -200,7 +199,7 @@ func TestFrozenResultReplacementCoordinates(t *testing.T) {
 func TestFrozenSourceReadersAndConcurrentQueries(t *testing.T) {
 	text := strings.Repeat("aé ", 400)
 	owner, k := logicalTestParagraph(t, text)
-	f, err := owner.Freeze(context.Background(), k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT })})
+	f, err := owner.Freeze(k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT })})
 	if err != nil {
 		t.Fatal(err)
 	}

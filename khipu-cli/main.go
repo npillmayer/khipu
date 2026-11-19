@@ -3,12 +3,10 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"math"
 	"os"
-	"os/signal"
 	"unicode/utf8"
 
 	"github.com/npillmayer/cords/styled"
@@ -37,9 +35,7 @@ func main() {
 			direction, _ := flags["direction"].GetString()
 			width, err := flags["width"].GetInt()
 			if err == nil {
-				ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-				defer cancel()
-				err = runView(ctx, input, output, breaker, direction, width, os.Stdin, os.Stdout)
+				err = runView(input, output, breaker, direction, width, os.Stdin, os.Stdout)
 			}
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "khipu-cli:", err)
@@ -52,7 +48,7 @@ func main() {
 // runView keeps I/O separate from command parsing for reproducible tests. Input
 // is bounded and preserved verbatim, including trailing newlines. No dictionary
 // or explicit-material policy is installed, so no alternatives are discovered.
-func runView(ctx context.Context, input, output, breaker, direction string, width int, stdin io.Reader, stdout io.Writer) error {
+func runView(input, output, breaker, direction string, width int, stdin io.Reader, stdout io.Writer) error {
 	if width <= 0 || width >= math.MaxInt32/int(dimen.BP) {
 		return fmt.Errorf("width must be in [1,32766] big points")
 	}
@@ -91,7 +87,7 @@ func runView(ctx context.Context, input, output, breaker, direction string, widt
 		return err
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	k, err := owner.EncodeParagraph(ctx, para)
+	k, err := owner.EncodeParagraph(para)
 	if err != nil {
 		return err
 	}
@@ -112,7 +108,7 @@ func runView(ctx context.Context, input, output, breaker, direction string, widt
 	if err != nil {
 		return err
 	}
-	frozen, err := owner.Freeze(ctx, k, breaks, layout)
+	frozen, err := owner.Freeze(k, breaks, layout)
 	if err != nil {
 		return err
 	}
@@ -120,9 +116,6 @@ func runView(ctx context.Context, input, output, breaker, direction string, widt
 	var svg bytes.Buffer
 	err = debug.WriteFrozenSVG(&svg, frozen, debug.SVGOptions{Title: "Synthetic shaping / " + breaker + " / " + direction})
 	if err != nil {
-		return err
-	}
-	if err = ctx.Err(); err != nil {
 		return err
 	}
 	if output == "-" {

@@ -16,7 +16,7 @@ func eligibilityParagraph(t *testing.T, p *styled.Paragraph) *Khipu {
 		Defaults:  preparationDefaults(),
 		NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(0) },
 	}})
-	k, err := owner.EncodeParagraph(t.Context(), p)
+	k, err := owner.EncodeParagraph(p)
 	if err != nil {
 		t.Fatal(err)
 	}

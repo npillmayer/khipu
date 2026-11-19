@@ -1,7 +1,6 @@
 package khipu
 
 import (
-	"context"
 	"errors"
 	"maps"
 	"reflect"
@@ -61,12 +60,12 @@ func TestFreezeFiniteGlue(t *testing.T) {
 		// A fixed terminal makes finite interword capacity observable.
 		k.MaxW[len(k.Kind)-1] = 0
 		shape := geometryShapeFunc(func(int32) dimen.DU { return 25*dimen.PT + delta })
-		g, err := owner.materializeLineGeometry(context.Background(), k, []int{len(k.Kind) - 1}, Params{LineShape: shape, LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
+		g, err := owner.materializeLineGeometry(k, []int{len(k.Kind) - 1}, Params{LineShape: shape, LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		before := slices.Clone(g.lines[0].content.knots)
-		got, err := g.freeze(context.Background())
+		got, err := g.freeze()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -77,7 +76,7 @@ func TestFreezeFiniteGlue(t *testing.T) {
 		got.w[0]++
 		wantSource := got.origins[0].source
 		got.origins[0].source.byteStart++
-		again, err := g.freeze(context.Background())
+		again, err := g.freeze()
 		if err != nil || again.w[0] != k.W[0] || again.origins[0].source != wantSource {
 			t.Fatal("output shares mutable planes", err)
 		}
@@ -88,11 +87,11 @@ func TestFreezeSideSkipsAndFill(t *testing.T) {
 	// Side skips are glue by role even when supplied with a textbox Kind.
 	left, right := allocationItem(dimen.PT, 0, 10*dimen.PT), allocationItem(2*dimen.PT, 0, 10*dimen.PT)
 	left.Kind = KTTextBox
-	g, err := geometryFixture(t).prepareGeometry(context.Background(), Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 20 * dimen.PT }), LeftSkip: left, RightSkip: right})
+	g, err := geometryFixture(t).prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 20 * dimen.PT }), LeftSkip: left, RightSkip: right})
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := g.freeze(context.Background())
+	got, err := g.freeze()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,21 +112,21 @@ func TestFreezeRejectsElasticNonGlue(t *testing.T) {
 			} else {
 				core.MaxW++
 			}
-			g, err := p.prepareGeometry(context.Background(), Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
+			g, err := p.prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got, err := g.freeze(context.Background()); got != nil || !errors.Is(err, ErrUnsupportedAdjustment) || !strings.Contains(err.Error(), "line 2 knot 0") {
+			if got, err := g.freeze(); got != nil || !errors.Is(err, ErrUnsupportedAdjustment) || !strings.Contains(err.Error(), "line 2 knot 0") {
 				t.Fatal("accepted declared non-glue capacity on exact-fit line", got, err)
 			}
 			g.lines[1].targetWidth++
 			g.lines[1].delta++
-			if got, err := g.freeze(context.Background()); got != nil || !errors.Is(err, ErrUnsupportedAdjustment) {
+			if got, err := g.freeze(); got != nil || !errors.Is(err, ErrUnsupportedAdjustment) {
 				t.Fatal("fill concealed unsupported capacity", got, err)
 			}
 			g.lines[1].content.knots[0].core.MinW = core.W
 			g.lines[1].content.knots[0].core.MaxW = core.W
-			got, err := g.freeze(context.Background())
+			got, err := g.freeze()
 			if err != nil {
 				t.Fatal("fixed material rejected", err)
 			}
@@ -139,14 +138,14 @@ func TestFreezeRejectsElasticNonGlue(t *testing.T) {
 func TestFreezeFailureAndRetry(t *testing.T) {
 	p := geometryFixture(t)
 	p.lines[1].knots[len(p.lines[1].knots)-1].core.MaxW = 0
-	g, err := p.prepareGeometry(context.Background(), Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
+	g, err := p.prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	g.lines[1].targetWidth++
 	want := ErrIllegalArguments
 	before := slices.Clone(g.lines[1].content.knots)
-	if got, err := g.freeze(context.Background()); got != nil || !errors.Is(err, want) || !strings.Contains(err.Error(), "line 2") {
+	if got, err := g.freeze(); got != nil || !errors.Is(err, want) || !strings.Contains(err.Error(), "line 2") {
 		t.Fatal("published a prefix or lost cause", got, err)
 	}
 	if !reflect.DeepEqual(before, g.lines[1].content.knots) {
@@ -154,16 +153,16 @@ func TestFreezeFailureAndRetry(t *testing.T) {
 	}
 	g.lines[1].targetWidth--
 	g.lines[1].delta = 0
-	got, err := g.freeze(context.Background())
+	got, err := g.freeze()
 	if err != nil {
 		t.Fatal(err)
 	}
 	checkFrozenGeometry(t, got, g)
 
-	if got, err := (*geometryParagraph)(nil).freeze(context.Background()); got != nil || !errors.Is(err, ErrIllegalArguments) {
+	if got, err := (*geometryParagraph)(nil).freeze(); got != nil || !errors.Is(err, ErrIllegalArguments) {
 		t.Fatal(got, err)
 	}
-	if got, err := (*Khipukamayuq)(nil).Freeze(context.Background(), nil, nil, Params{LineShape: nil, LeftSkip: KnotCore{}, RightSkip: KnotCore{}}); got != nil || !errors.Is(err, ErrVoidKhipukamayuq) {
+	if got, err := (*Khipukamayuq)(nil).Freeze(nil, nil, Params{LineShape: nil, LeftSkip: KnotCore{}, RightSkip: KnotCore{}}); got != nil || !errors.Is(err, ErrVoidKhipukamayuq) {
 		t.Fatal(got, err)
 	}
 }
@@ -176,7 +175,7 @@ func TestFreezeSelectedReplacementLifetime(t *testing.T) {
 	widths := slices.Clone(k.W)
 	shape := geometryShapeFunc(func(int32) dimen.DU { return 30 * dimen.PT })
 	right := KnotCore{MaxW: dimen.Fil}
-	got, err := owner.Freeze(context.Background(), k, []int{0, len(k.Kind) - 1}, Params{LineShape: shape, LeftSkip: KnotCore{}, RightSkip: right})
+	got, err := owner.Freeze(k, []int{0, len(k.Kind) - 1}, Params{LineShape: shape, LeftSkip: KnotCore{}, RightSkip: right})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +210,7 @@ func TestFreezeSilentReplacements(t *testing.T) {
 		t.Fatal(err)
 	}
 	k.SelectDiscretionary(0, DiscretionarySelection{0, 1})
-	got, err := k.owner.Freeze(context.Background(), k, []int{0, len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{MaxW: dimen.Fil}})
+	got, err := k.owner.Freeze(k, []int{0, len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{MaxW: dimen.Fil}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +224,7 @@ func TestFreezeSilentReplacements(t *testing.T) {
 func TestFreezeEmptyAndTrimmed(t *testing.T) {
 	for _, text := range []string{"", "   ", "  aa  "} {
 		owner, k := logicalTestParagraph(t, text)
-		got, err := owner.Freeze(context.Background(), k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 20 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
+		got, err := owner.Freeze(k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 20 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -156,7 +156,7 @@ func TestKhipukamayuqShapesAndCachesHyphenatorDiscretionaries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParagraphFromText failed: %v", err)
 	}
-	k, err := kq.EncodeParagraph(t.Context(), para)
+	k, err := kq.EncodeParagraph(para)
 	if err != nil {
 		t.Fatal(err)
 	}

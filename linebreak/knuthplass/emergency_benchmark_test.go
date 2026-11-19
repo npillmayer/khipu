@@ -58,7 +58,7 @@ func newEmergencyWorkload(tb testing.TB, tc emergencyWorkload, words int) emerge
 	if err != nil {
 		tb.Fatal(err)
 	}
-	f.khp, err = owner.EncodeParagraph(tb.Context(), para)
+	f.khp, err = owner.EncodeParagraph(para)
 	if err != nil {
 		tb.Fatal(err)
 	}

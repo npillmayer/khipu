@@ -1,7 +1,6 @@
 package khipu_test
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/npillmayer/cords/styled"
@@ -24,7 +23,7 @@ func ExampleConfig_syntheticFontSize() {
 		Resolver:  helpers.DefaultStyleResolver{},
 		Defaults:  contracts.ResolvedRunStyle{Font: helpers.NewSyntheticFont(), EmSize: 14 * dimen.PT},
 	}})
-	paragraph, err := owner.EncodeParagraph(context.Background(), para)
+	paragraph, err := owner.EncodeParagraph(para)
 	if err != nil {
 		panic(err)
 	}

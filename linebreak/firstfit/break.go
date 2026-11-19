@@ -29,17 +29,13 @@ import (
 // explicitly (for example with DefaultLayout) and reused unchanged for freezing.
 // Configure DiscretionaryProvider for lazy discovery.
 //
-// This synchronous call has no context argument. Cancellation passed to encoding
-// or freezing does not cancel this search or its provider calls. The standard
-// owner provider shapes lazy replacements with context.Background().
+// This synchronous call has no context argument. The standard owner provider
+// shapes lazy replacements with internal streaming cancellation and joining.
 func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) ([]kinx, error) {
 	return breakParagraph(khp, layout, params, nil)
 }
 
 func breakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters, seed *breakSeed) ([]kinx, error) {
-	if err := seed.err(); err != nil {
-		return nil, err
-	}
 	if err := layout.ValidateGeometry(); err != nil {
 		return nil, err
 	}
@@ -69,9 +65,6 @@ func breakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters, s
 	trace := tracer()
 	debug := trace.GetTraceLevel() >= tracing.LevelDebug
 	for i := start; i < len(khp.Kind); i++ {
-		if err := seed.err(); err != nil {
-			return nil, err
-		}
 		k := khp.KnotByIndex(i)
 		prevSeg := seg.segmentState()
 		if debug {
@@ -87,9 +80,7 @@ func breakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters, s
 			firstInLine = false
 		}
 		linelen := parshape.LineLength(int32(len(breakpoints) + 1))
-		if err := seed.err(); err != nil {
-			return nil, err
-		}
+
 		segw := seg.width(layout)
 		if err := segw.Err(); err != nil {
 			return nil, err
@@ -173,9 +164,7 @@ func breakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters, s
 					return nil, err
 				}
 				nextLength := parshape.LineLength(int32(len(breakpoints) + 1))
-				if err := seed.err(); err != nil {
-					return nil, err
-				}
+
 				if nextWidth.Min <= nextLength {
 					seg.trackcarry()
 					lastFeasible = i
@@ -196,9 +185,7 @@ func breakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters, s
 	if len(breakpoints) == 0 || breakpoints[len(breakpoints)-1] != len(khp.Kind)-1 {
 		breakpoints = append(breakpoints, len(khp.Kind)-1)
 	}
-	if err := seed.err(); err != nil {
-		return nil, err
-	}
+
 	// No remaining operation can fail. Replace the previous decisions, including
 	// clearing stale selections when this successful run chose no discretionaries.
 	clear(khp.SelectedDiscretionaries)

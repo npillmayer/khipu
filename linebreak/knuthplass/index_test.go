@@ -31,7 +31,7 @@ func TestIndexedCorpusBaseline(t *testing.T) {
 		{linebreak.RectangularParShape(150 * dimen.PT), []kinx{9, 13, 23, 33, 41, 49, 57, 65, 75, 85, 91, 100}, pathQuality{6481, 43}},
 		{alternatingIndexShape{}, []kinx{7, 11, 21, 25, 35, 41, 49, 55, 63, 71, 81, 87, 97, 100}, pathQuality{5003, 47}},
 	} {
-		khp, err := khipu.NewKhipukamayuq(khipu.Config{}).EncodeParagraph(t.Context(), loremParagraph(t, 50))
+		khp, err := khipu.NewKhipukamayuq(khipu.Config{}).EncodeParagraph(loremParagraph(t, 50))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -68,7 +68,7 @@ func TestAtomicShapingBoundariesAndFeatures(t *testing.T) {
 	boundaries := []AtomicBoundary{{ByteOffset: 4, Action: ProhibitBoundary}, {ByteOffset: 7, Action: AllowBoundary}}
 	para := preparationParagraph(t, "éβ\uFFFCcd")
 	para.Offset = 37
-	p, err := owner.PrepareParagraph(t.Context(), ParagraphInput{para, anchors}, PrepareOptions{AtomicBoundaries: boundaries})
+	p, err := owner.PrepareParagraph(ParagraphInput{para, anchors}, PrepareOptions{AtomicBoundaries: boundaries})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestAtomicShapingBoundariesAndFeatures(t *testing.T) {
 	}
 	anchors[0].ID = 99
 	boundaries[1].Action = ProhibitBoundary
-	k, err := owner.BindParagraph(t.Context(), p, []AtomicAdvance{{7, 15}})
+	k, err := owner.BindParagraph(p, []AtomicAdvance{{7, 15}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,11 +94,11 @@ func TestAtomicShapingBoundariesAndFeatures(t *testing.T) {
 		t.Fatal("lost original scalar coordinates")
 	}
 	resolves = 0
-	_, err = owner.PrepareParagraph(t.Context(), ParagraphInput{preparationParagraph(t, "\uFFFC"), []contracts.AtomicAnchor{{ID: 1}}}, PrepareOptions{})
+	_, err = owner.PrepareParagraph(ParagraphInput{preparationParagraph(t, "\uFFFC"), []contracts.AtomicAnchor{{ID: 1}}}, PrepareOptions{})
 	if err != nil || resolves != 0 || len(stream.texts) != 0 {
 		t.Fatal("object-only input resolved or shaped", err, resolves, stream.texts)
 	}
-	_, err = owner.PrepareParagraph(t.Context(), ParagraphInput{Paragraph: preparationParagraph(t, "\uFFFC")}, PrepareOptions{})
+	_, err = owner.PrepareParagraph(ParagraphInput{Paragraph: preparationParagraph(t, "\uFFFC")}, PrepareOptions{})
 	if err != nil || !slices.Equal(stream.texts, []string{"\uFFFC"}) {
 		t.Fatal("unattached marker is not ordinary text", err, stream.texts)
 	}
@@ -114,44 +114,44 @@ func TestAtomicInputValidation(t *testing.T) {
 		{{ID: 1, ByteOffset: 0}}, {{ID: 1, ByteOffset: 1}}, {{ID: 1, ByteOffset: 3}},
 		{{ID: 1, ByteOffset: 8}}, {{ID: 1, ByteOffset: 9}}, {{ID: 1, ByteOffset: ^uint64(0)}},
 	} {
-		if p, err := owner.PrepareParagraph(t.Context(), ParagraphInput{para, anchors}, PrepareOptions{}); p != nil || !errors.Is(err, ErrIllegalArguments) {
+		if p, err := owner.PrepareParagraph(ParagraphInput{para, anchors}, PrepareOptions{}); p != nil || !errors.Is(err, ErrIllegalArguments) {
 			t.Fatalf("anchors %v: %v %v", anchors, p, err)
 		}
 	}
 	for _, bounds := range [][]AtomicBoundary{
 		{{0, AllowBoundary}}, {{9, AllowBoundary}}, {{3, AllowBoundary}}, {{2, 0}}, {{2, 99}}, {{5, AllowBoundary}, {2, AllowBoundary}}, {{5, AllowBoundary}, {5, ProhibitBoundary}},
 	} {
-		if p, err := owner.PrepareParagraph(t.Context(), ParagraphInput{para, valid}, PrepareOptions{AtomicBoundaries: bounds}); p != nil || !errors.Is(err, ErrIllegalArguments) {
+		if p, err := owner.PrepareParagraph(ParagraphInput{para, valid}, PrepareOptions{AtomicBoundaries: bounds}); p != nil || !errors.Is(err, ErrIllegalArguments) {
 			t.Fatalf("boundaries %v: %v %v", bounds, p, err)
 		}
 	}
 	mandatory := ParagraphInput{preparationParagraph(t, "a\n\uFFFC"), []contracts.AtomicAnchor{{ID: 1, ByteOffset: 2}}}
 	for _, action := range []BoundaryAction{AllowBoundary, ProhibitBoundary} {
-		if p, err := owner.PrepareParagraph(t.Context(), mandatory, PrepareOptions{AtomicBoundaries: []AtomicBoundary{{2, action}}}); p != nil || !errors.Is(err, ErrUnsupportedPolicy) {
+		if p, err := owner.PrepareParagraph(mandatory, PrepareOptions{AtomicBoundaries: []AtomicBoundary{{2, action}}}); p != nil || !errors.Is(err, ErrUnsupportedPolicy) {
 			t.Fatal(p, err)
 		}
 	}
 	for _, mode := range []HyphenationMode{ExplicitHyphenation, AutomaticHyphenation, 99} {
-		if p, err := owner.PrepareParagraph(t.Context(), ParagraphInput{para, valid}, PrepareOptions{Hyphenation: mode}); p != nil || !errors.Is(err, ErrIllegalArguments) {
+		if p, err := owner.PrepareParagraph(ParagraphInput{para, valid}, PrepareOptions{Hyphenation: mode}); p != nil || !errors.Is(err, ErrIllegalArguments) {
 			t.Fatal(p, err)
 		}
 	}
-	p, err := owner.PrepareParagraph(t.Context(), ParagraphInput{para, valid}, PrepareOptions{})
+	p, err := owner.PrepareParagraph(ParagraphInput{para, valid}, PrepareOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, advances := range [][]AtomicAdvance{
 		nil, {{1, 1}}, {{1, 1}, {1, 2}}, {{1, 1}, {3, 2}}, {{0, 1}, {2, 2}}, {{1, dimen.Fil}, {2, 2}}, {{1, -dimen.Fil}, {2, 2}}, {{1, dimen.Infinity}, {2, 2}},
 	} {
-		if k, err := owner.BindParagraph(t.Context(), p, advances); k != nil || !errors.Is(err, ErrIllegalArguments) {
+		if k, err := owner.BindParagraph(p, advances); k != nil || !errors.Is(err, ErrIllegalArguments) {
 			t.Fatal(advances, k, err)
 		}
 	}
-	if k, err := NewKhipukamayuq(Config{}).BindParagraph(t.Context(), p, []AtomicAdvance{{1, 1}, {2, 2}}); k != nil || !errors.Is(err, ErrIllegalArguments) {
+	if k, err := NewKhipukamayuq(Config{}).BindParagraph(p, []AtomicAdvance{{1, 1}, {2, 2}}); k != nil || !errors.Is(err, ErrIllegalArguments) {
 		t.Fatal(k, err)
 	}
 	for _, p := range []*PreparedParagraph{nil, {}} {
-		if k, err := owner.BindParagraph(t.Context(), p, nil); k != nil || !errors.Is(err, ErrIllegalArguments) {
+		if k, err := owner.BindParagraph(p, nil); k != nil || !errors.Is(err, ErrIllegalArguments) {
 			t.Fatal(k, err)
 		}
 	}
@@ -165,17 +165,17 @@ func TestAtomicBindingOwnershipAndHyphenation(t *testing.T) {
 			Resolver: helpers.DefaultStyleResolver{}, Defaults: preparationDefaults(),
 			NewShaper: func() (contracts.StreamingShaper, error) { streams++; return helpers.NewSyntheticStreamingShaper(0) },
 		}})
-		p, err := owner.PrepareParagraph(t.Context(), ParagraphInput{preparationParagraph(t, "ab\u00adcd\uFFFC"), []contracts.AtomicAnchor{{ID: 1, ByteOffset: 6}}}, PrepareOptions{Hyphenation: mode})
+		p, err := owner.PrepareParagraph(ParagraphInput{preparationParagraph(t, "ab\u00adcd\uFFFC"), []contracts.AtomicAnchor{{ID: 1, ByteOffset: 6}}}, PrepareOptions{Hyphenation: mode})
 		if err != nil {
 			t.Fatal(err)
 		}
 		advances := []AtomicAdvance{{1, 10}}
-		a, err := owner.BindParagraph(t.Context(), p, advances)
+		a, err := owner.BindParagraph(p, advances)
 		if err != nil {
 			t.Fatal(err)
 		}
 		advances[0].Advance = 20
-		b, err := owner.BindParagraph(t.Context(), p, advances)
+		b, err := owner.BindParagraph(p, advances)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -208,14 +208,14 @@ func TestAtomicBindingOwnershipAndHyphenation(t *testing.T) {
 			t.Fatal("atom reached hyphenator", c, err)
 		}
 		// A fresh binding after arena growth retains precisely the initial state.
-		c, err := owner.BindParagraph(t.Context(), p, advances)
+		c, err := owner.BindParagraph(p, advances)
 		if err != nil || !reflect.DeepEqual(c.shaping, b.shaping) || len(c.DiscretionaryCandidates) != 0 {
 			t.Fatal("later binding changed", err)
 		}
 	}
 }
 
-func TestAtomicPreparationFailureAndCancellation(t *testing.T) {
+func TestAtomicPreparationFailureAndRetry(t *testing.T) {
 	failure := errors.New("backend failure")
 	fail := true
 	owner := NewKhipukamayuq(Config{Streaming: &StreamingConfig{Resolver: helpers.DefaultStyleResolver{}, Defaults: preparationDefaults(), NewShaper: func() (contracts.StreamingShaper, error) {
@@ -225,29 +225,18 @@ func TestAtomicPreparationFailureAndCancellation(t *testing.T) {
 		return helpers.NewSyntheticStreamingShaper(0)
 	}}})
 	in := ParagraphInput{preparationParagraph(t, "x\uFFFC"), []contracts.AtomicAnchor{{ID: 1, ByteOffset: 1}}}
-	if p, err := owner.PrepareParagraph(t.Context(), in, PrepareOptions{}); p != nil || !errors.Is(err, failure) {
+	if p, err := owner.PrepareParagraph(in, PrepareOptions{}); p != nil || !errors.Is(err, failure) {
 		t.Fatal(p, err)
 	}
 	fail = false
-	p, err := owner.PrepareParagraph(t.Context(), in, PrepareOptions{})
+	p, err := owner.PrepareParagraph(in, PrepareOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if p, err := (*Khipukamayuq)(nil).PrepareParagraph(ctx, ParagraphInput{}, PrepareOptions{}); p != nil || !errors.Is(err, context.Canceled) {
-		t.Fatal(p, err)
-	}
-	if k, err := (*Khipukamayuq)(nil).BindParagraph(ctx, nil, nil); k != nil || !errors.Is(err, context.Canceled) {
+	if k, err := owner.BindParagraph(p, nil); k != nil || !errors.Is(err, ErrIllegalArguments) {
 		t.Fatal(k, err)
 	}
-	if p, err := owner.PrepareParagraph(nil, in, PrepareOptions{}); p != nil || !errors.Is(err, ErrIllegalArguments) {
-		t.Fatal(p, err)
-	}
-	if k, err := owner.BindParagraph(nil, p, nil); k != nil || !errors.Is(err, ErrIllegalArguments) {
-		t.Fatal(k, err)
-	}
-	if k, err := owner.BindParagraph(t.Context(), p, []AtomicAdvance{{1, 10}}); err != nil || k == nil {
+	if k, err := owner.BindParagraph(p, []AtomicAdvance{{1, 10}}); err != nil || k == nil {
 		t.Fatal(k, err)
 	}
 }
@@ -259,14 +248,14 @@ func TestAtomicHyphenationDiscoveryModes(t *testing.T) {
 			words = append(words, word)
 			return nil, nil
 		}), nil)
-		p, err := owner.PrepareParagraph(t.Context(), ParagraphInput{
+		p, err := owner.PrepareParagraph(ParagraphInput{
 			Paragraph: preparationParagraph(t, "abcd\uFFFCefgh"),
 			Atomics:   []contracts.AtomicAnchor{{ID: 1, ByteOffset: 4}},
 		}, PrepareOptions{Hyphenation: mode})
 		if err != nil {
 			t.Fatal(err)
 		}
-		k, err := owner.BindParagraph(t.Context(), p, []AtomicAdvance{{ID: 1, Advance: 10}})
+		k, err := owner.BindParagraph(p, []AtomicAdvance{{ID: 1, Advance: 10}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -298,7 +287,7 @@ func TestAtomicPreparationStreamFailurePublishesNothing(t *testing.T) {
 		}
 		owner := NewKhipukamayuq(Config{Streaming: &StreamingConfig{Resolver: helpers.DefaultStyleResolver{}, Defaults: preparationDefaults(), NewShaper: func() (contracts.StreamingShaper, error) { return s, nil }}})
 		in := ParagraphInput{Paragraph: preparationParagraph(t, "\uFFFCa"), Atomics: []contracts.AtomicAnchor{{ID: 1}}}
-		if p, err := owner.PrepareParagraph(t.Context(), in, PrepareOptions{}); p != nil || !errors.Is(err, want) {
+		if p, err := owner.PrepareParagraph(in, PrepareOptions{}); p != nil || !errors.Is(err, want) {
 			t.Fatal(p, err)
 		}
 		select {
@@ -307,7 +296,7 @@ func TestAtomicPreparationStreamFailurePublishesNothing(t *testing.T) {
 			t.Fatal("producer not joined")
 		}
 		owner.env.streaming.NewShaper = func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(0) }
-		if p, err := owner.PrepareParagraph(t.Context(), in, PrepareOptions{}); p == nil || err != nil {
+		if p, err := owner.PrepareParagraph(in, PrepareOptions{}); p == nil || err != nil {
 			t.Fatal("retry failed", p, err)
 		}
 	}

@@ -39,7 +39,7 @@ func TestEmptyDiscoveryCachePreservesPassWork(t *testing.T) {
 				config.Hyphenator = productive
 			}
 			owner := khipu.NewKhipukamayuq(config)
-			khp, err := owner.EncodeParagraph(t.Context(), loremParagraph(t, 50))
+			khp, err := owner.EncodeParagraph(loremParagraph(t, 50))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -118,7 +118,7 @@ func BenchmarkRetirementWorkloads(b *testing.B) {
 							config.Hyphenator = empty
 						}
 						owner := khipu.NewKhipukamayuq(config)
-						khp, err := owner.EncodeParagraph(b.Context(), loremParagraph(b, words))
+						khp, err := owner.EncodeParagraph(loremParagraph(b, words))
 						if err != nil {
 							b.Fatal(err)
 						}

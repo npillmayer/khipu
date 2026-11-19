@@ -50,7 +50,7 @@ func firstfitWorkload(tb testing.TB, words int, mode string) (*khipu.Khipu, *Par
 	if err != nil {
 		tb.Fatal(err)
 	}
-	k, err := owner.EncodeParagraph(tb.Context(), para)
+	k, err := owner.EncodeParagraph(para)
 	if err != nil {
 		tb.Fatal(err)
 	}

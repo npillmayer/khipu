@@ -70,7 +70,7 @@ func continuationFixture(t *testing.T, source string, dir bidi.Direction, elasti
 		t.Fatal(err)
 	}
 	paragraph.Offset = 37
-	p, err := q.PrepareParagraph(t.Context(), khipu.ParagraphInput{Paragraph: paragraph}, khipu.PrepareOptions{})
+	p, err := q.PrepareParagraph(khipu.ParagraphInput{Paragraph: paragraph}, khipu.PrepareOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func continuationFixture(t *testing.T, source string, dir bidi.Direction, elasti
 }
 func continuationBind(t *testing.T, q *khipu.Khipukamayuq, p *khipu.PreparedParagraph) *khipu.Khipu {
 	t.Helper()
-	k, err := q.BindParagraph(t.Context(), p, nil)
+	k, err := q.BindParagraph(p, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func (s continuationOffsetShape) LineLength(n int32) dimen.DU {
 
 func checkContinuationFrozen(t *testing.T, q *khipu.Khipukamayuq, k *khipu.Khipu, path []int, layout khipu.Params) *khipu.FrozenKhipu {
 	t.Helper()
-	f, err := q.Freeze(t.Context(), k, path, layout)
+	f, err := q.Freeze(k, path, layout)
 	if err != nil {
 		t.Fatal(err)
 	}

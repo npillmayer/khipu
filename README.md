@@ -1,5 +1,14 @@
 # Khipu: From Text to Typesetting
 
+Context policy (2026-11-19): typesetting, geometry, retained proofs, replay,
+and document execution are synchronous and have no context argument. Contexts
+are confined to streaming coordination and font discovery/loading. Streaming
+callers create a local background context; consumer failure still cancels and
+joins the producer before cleanup. Errors publish no partial result and preserve
+previous immutable output. TUI layout jobs finish serially; stale results are
+discarded, while font work remains cancellable. This supersedes earlier
+cancellation requirements for typesetting in this document.
+
 Khipu prepares styled text for linebreaking, chooses line endings with firstfit
 or Knuth–Plass, and freezes the decisions into final widths and visual knot order.
 Its working paragraph stores widths, source spans, flags and penalties in aligned
@@ -24,7 +33,6 @@ in this checkout and run `go run .` there; see [local setup](#development-and-re
 package main
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/npillmayer/cords/styled"
@@ -36,14 +44,13 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
 	text := styled.TextFromString("Hello world")
 	para, err := styled.ParagraphFromText(&text, 0, text.Raw().Len(), bidi.LeftToRight, nil)
 	if err != nil {
 		panic(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	input, err := owner.EncodeParagraph(ctx, para)
+	input, err := owner.EncodeParagraph(para)
 	if err != nil {
 		panic(err)
 	}
@@ -54,7 +61,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	frozen, err := owner.Freeze(ctx, input, breaks, layout)
+	frozen, err := owner.Freeze(input, breaks, layout)
 	if err != nil {
 		panic(err)
 	}
@@ -90,7 +97,7 @@ and source/font services remain stable. The [ownership diagram](doc/PREPARED_PAR
 shows what is copied and what remains shared.
 
 For fixed-prefix flow with `NoHyphenation`, certify a complete successful path
-using `owner.Checkpoint(ctx, prepared, breaks, acceptedLines)`, bind the same
+using `owner.Checkpoint(prepared, breaks, acceptedLines)`, bind the same
 preparation again, and call `firstfit.ContinueParagraph`. The opaque checkpoint
 locks logical boundaries; only the suffix is searched. KP prefixes are supported.
 Keep the original width schedule for accepted lines when freezing the complete

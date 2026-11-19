@@ -1,7 +1,6 @@
 package khipu
 
 import (
-	"context"
 	"math"
 	"reflect"
 	"slices"
@@ -71,17 +70,17 @@ func TestFrozenOutcomesAcrossDirections(t *testing.T) {
 				t.Fatal(err)
 			}
 			owner := NewKhipukamayuq(Config{ParFillSkip: &KnotCore{}})
-			k, err := owner.EncodeParagraph(t.Context(), para)
+			k, err := owner.EncodeParagraph(para)
 			if err != nil {
 				t.Fatal(err)
 			}
 			before := slices.Clone(k.W)
 			layout := Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return target })}
-			g, err := owner.materializeLineGeometry(context.Background(), k, []int{len(k.Kind) - 1}, layout)
+			g, err := owner.materializeLineGeometry(k, []int{len(k.Kind) - 1}, layout)
 			if err != nil {
 				t.Fatal(err)
 			}
-			f, err := g.freeze(context.Background())
+			f, err := g.freeze()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -121,11 +120,11 @@ func TestFreezePublishesImperfectLines(t *testing.T) {
 		p := geometryFixture(t)
 		// Remove terminal stretch so both lines have fixed 10pt content.
 		p.lines[1].knots[len(p.lines[1].knots)-1].core.MaxW = 0
-		g, err := p.prepareGeometry(context.Background(), Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return target })})
+		g, err := p.prepareGeometry(Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return target })})
 		if err != nil {
 			t.Fatal(err)
 		}
-		f, err := g.freeze(context.Background())
+		f, err := g.freeze()
 		if err != nil || len(f.lines) != 2 {
 			t.Fatal(f, err)
 		}

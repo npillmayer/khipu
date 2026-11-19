@@ -24,7 +24,7 @@
 // and bidi analysis but bypass shaping; callers supply their signed advances.
 // [Khipukamayuq.Checkpoint] certifies a copied ordinary-break prefix from a
 // complete legal NoHyphenation path. linebreak/firstfit.ContinueParagraph searches
-// only the suffix of a fresh binding of that preparation, with cancellation.
+// only the suffix of a fresh binding of that preparation.
 // Callers preserve accepted line widths for freezing and release checkpoints and
 // preparation when that paragraph has fully flowed; frozen results are independent.
 //

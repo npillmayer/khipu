@@ -38,7 +38,7 @@ ContinueParagraph accepts an opaque khipu.BreakCheckpoint from a NoHyphenation
 preparation and searches only after its locked logical prefix. A KP prefix may
 be retained without resuming KP optimization. The caller preserves committed
 line widths and skips when freezing the complete result. This entry checks
-cancellation during search and invokes no preparation or discretionary services;
+synchronous search and invokes no preparation or discretionary services;
 ordinary BreakParagraph retains its synchronous, context-free contract.
 */
 package firstfit

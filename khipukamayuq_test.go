@@ -9,7 +9,7 @@ import (
 func TestNewKhipukamayuqDefaultShaper(t *testing.T) {
 	first, second := NewKhipukamayuq(Config{}), NewKhipukamayuq(Config{})
 	for _, owner := range []*Khipukamayuq{first, second, first} {
-		k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, "x"))
+		k, err := owner.EncodeParagraph(preparationParagraph(t, "x"))
 		if err != nil {
 			t.Fatal(err)
 		}

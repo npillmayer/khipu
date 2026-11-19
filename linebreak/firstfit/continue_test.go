@@ -1,7 +1,6 @@
 package firstfit
 
 import (
-	"context"
 	"errors"
 	"maps"
 	"runtime"
@@ -27,7 +26,7 @@ func TestContinueIndependentBreakpoints(t *testing.T) {
 		t.Fatal(positions, err)
 	}
 	original := checkContinuationFrozen(t, q, k, path, layout)
-	c, err := q.Checkpoint(t.Context(), p, path, 1)
+	c, err := q.Checkpoint(p, path, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +42,7 @@ func TestContinueIndependentBreakpoints(t *testing.T) {
 		fresh := continuationBind(t, q, p)
 		shape := &continuationShape{prefix: []dimen.DU{40 * dimen.BP}, tail: tc.width * dimen.BP}
 		layout.LineShape = shape
-		got, err := ContinueParagraph(t.Context(), fresh, layout, c)
+		got, err := ContinueParagraph(fresh, layout, c)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -84,13 +83,13 @@ func TestContinueDistinctKPPrefixAndThirdWidth(t *testing.T) {
 		t.Fatal("distinct KP oracle changed", ffpos, kppos)
 	}
 	original := checkContinuationFrozen(t, q, k, path, layout)
-	c, err := q.Checkpoint(t.Context(), p, path, 2)
+	c, err := q.Checkpoint(p, path, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	b := continuationBind(t, q, p)
 	layout.LineShape = &continuationShape{prefix: []dimen.DU{40 * dimen.BP, 40 * dimen.BP}, tail: 30 * dimen.BP}
-	continued, err := ContinueParagraph(t.Context(), b, layout, c)
+	continued, err := ContinueParagraph(b, layout, c)
 	if err != nil || !slices.Equal(continued[:2], path[:2]) {
 		t.Fatal(continued, err)
 	}
@@ -99,19 +98,19 @@ func TestContinueDistinctKPPrefixAndThirdWidth(t *testing.T) {
 	}
 	bf := checkContinuationFrozen(t, q, b, continued, layout)
 	checkContinuationPrefix(t, original, bf, 2)
-	next, err := q.Checkpoint(t.Context(), p, continued, 3)
+	next, err := q.Checkpoint(p, continued, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
 	third := continuationBind(t, q, p)
 	layout.LineShape = &continuationShape{prefix: []dimen.DU{40 * dimen.BP, 40 * dimen.BP, 30 * dimen.BP}, tail: 20 * dimen.BP}
-	last, err := ContinueParagraph(t.Context(), third, layout, next)
+	last, err := ContinueParagraph(third, layout, next)
 	if err != nil || !slices.Equal(last[:3], continued[:3]) {
 		t.Fatal(last, err)
 	}
 	checkContinuationPrefix(t, bf, checkContinuationFrozen(t, q, third, last, layout), 3)
 	// The newer checkpoint cannot mutate an earlier one.
-	old, _ := c.PrefixFor(t.Context(), third)
+	old, _ := c.PrefixFor(third)
 	if !slices.Equal(old, path[:2]) {
 		t.Fatal(old, path)
 	}
@@ -135,7 +134,7 @@ func TestContinueForcedTrimmingBidiAndEndPrefixes(t *testing.T) {
 		}
 		original := checkContinuationFrozen(t, q, k, path, layout)
 		for count := 0; count <= len(path); count++ {
-			c, err := q.Checkpoint(t.Context(), p, path, count)
+			c, err := q.Checkpoint(p, path, count)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -146,20 +145,9 @@ func TestContinueForcedTrimmingBidiAndEndPrefixes(t *testing.T) {
 			}
 			shape := &continuationShape{prefix: widths, tail: 20 * dimen.BP}
 			layout.LineShape = shape
-			probe := &continueCancelContext{Context: t.Context()}
-			got, err := ContinueParagraph(probe, fresh, layout, c)
+			got, err := ContinueParagraph(fresh, layout, c)
 			if err != nil {
 				t.Fatal(err)
-			}
-			// Two PrefixFor checks, search entry/publication, one check per
-			// visited knot, and one after each recorded width query. Count the
-			// actual loop visits independently of which lines request widths.
-			start := 0
-			if count > 0 {
-				start = path[count-1] + 1
-			}
-			if visits := probe.calls - 4 - len(shape.visits); visits != len(k.Kind)-start {
-				t.Fatal("search revisited prefix knots", visits, len(k.Kind)-start)
 			}
 			for _, n := range shape.visits {
 				if int(n) <= count {
@@ -182,12 +170,12 @@ func TestContinueFrozenLifetime(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		c, err := q.Checkpoint(t.Context(), p, path, 1)
+		c, err := q.Checkpoint(p, path, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		layout.LineShape = &continuationShape{prefix: []dimen.DU{40 * dimen.BP}, tail: 20 * dimen.BP}
-		path, err = ContinueParagraph(t.Context(), k, layout, c)
+		path, err = ContinueParagraph(k, layout, c)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -220,7 +208,7 @@ func TestContinueGeometryFailureDoesNotPublish(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := q.Checkpoint(t.Context(), p, path, 1)
+	c, err := q.Checkpoint(p, path, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,66 +216,39 @@ func TestContinueGeometryFailureDoesNotPublish(t *testing.T) {
 	before := maps.Clone(k.SelectedDiscretionaries)
 	bad := layout
 	bad.LeftSkip = khipu.KnotCore{W: 0, MinW: 1, MaxW: 1}
-	if got, err := ContinueParagraph(t.Context(), k, bad, c); got != nil || err == nil || !maps.Equal(before, k.SelectedDiscretionaries) {
+	if got, err := ContinueParagraph(k, bad, c); got != nil || err == nil || !maps.Equal(before, k.SelectedDiscretionaries) {
 		t.Fatal(got, err)
 	}
-	if got, err := ContinueParagraph(t.Context(), k, layout, c); err != nil || !slices.Equal(got, path) || len(k.SelectedDiscretionaries) != 0 {
+	if got, err := ContinueParagraph(k, layout, c); err != nil || !slices.Equal(got, path) || len(k.SelectedDiscretionaries) != 0 {
 		t.Fatal("retry", got, err)
 	}
 }
 
-type continueCancelContext struct {
-	context.Context
-	at, calls int
-}
-
-func (c *continueCancelContext) Err() error {
-	c.calls++
-	if c.at > 0 && c.calls >= c.at {
-		return context.DeadlineExceeded
-	}
-	return nil
-}
-
-func TestContinueCancellationFailureAndRetry(t *testing.T) {
+func TestContinueFailureAndRetry(t *testing.T) {
 	q, p, k := continuationFixture(t, "aa bb cc dd ee ff gg hh ii jj", bidi.LeftToRight, false)
 	layout := DefaultLayout(linebreak.RectangularParShape(40 * dimen.BP))
 	path, err := BreakParagraph(k, layout, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := q.Checkpoint(t.Context(), p, path, 1)
+	c, err := q.Checkpoint(p, path, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	layout.LineShape = &continuationShape{prefix: []dimen.DU{40 * dimen.BP}, tail: 20 * dimen.BP}
-	probe := &continueCancelContext{Context: t.Context()}
-	want, err := ContinueParagraph(probe, k, layout, c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for at := 1; at <= probe.calls; at++ {
-		// Sentinel selections expose clearing or publication on any failed call.
-		k.SelectedDiscretionaries[0] = khipu.DiscretionarySelection{Source: 0, Variant: 9}
-		before := maps.Clone(k.SelectedDiscretionaries)
-		ctx := &continueCancelContext{Context: t.Context(), at: at}
-		if got, err := ContinueParagraph(ctx, k, layout, c); got != nil || !errors.Is(err, context.DeadlineExceeded) || !maps.Equal(before, k.SelectedDiscretionaries) {
-			t.Fatal(at, got, err)
-		}
-		got, err := ContinueParagraph(t.Context(), k, layout, c)
-		if err != nil || !slices.Equal(got, want) || len(k.SelectedDiscretionaries) > 0 {
-			t.Fatal("retry", got, err)
-		}
-	}
+	k.SelectedDiscretionaries[0] = khipu.DiscretionarySelection{Source: 0, Variant: 9}
+	before := maps.Clone(k.SelectedDiscretionaries)
 	for _, seed := range []*khipu.BreakCheckpoint{nil, {}} {
-		if got, err := ContinueParagraph(t.Context(), k, layout, seed); got != nil || !errors.Is(err, khipu.ErrIllegalArguments) {
+		if got, err := ContinueParagraph(k, layout, seed); got != nil || !errors.Is(err, khipu.ErrIllegalArguments) {
 			t.Fatal(got, err)
 		}
 	}
-	if got, err := ContinueParagraph(nil, k, layout, c); got != nil || !errors.Is(err, khipu.ErrIllegalArguments) {
+	if got, err := ContinueParagraph(k, khipu.Params{}, c); got != nil || !errors.Is(err, khipu.ErrIllegalArguments) {
 		t.Fatal(got, err)
 	}
-	if got, err := ContinueParagraph(t.Context(), k, khipu.Params{}, c); got != nil || !errors.Is(err, khipu.ErrIllegalArguments) {
-		t.Fatal(got, err)
+	if !maps.Equal(before, k.SelectedDiscretionaries) {
+		t.Fatal("failure mutated selections")
+	}
+	if got, err := ContinueParagraph(k, layout, c); err != nil || len(got) == 0 || len(k.SelectedDiscretionaries) != 0 {
+		t.Fatal("retry", got, err)
 	}
 }

@@ -26,7 +26,7 @@ func TestDiscretionaryEmptyResultsAreCached(t *testing.T) {
 				streams++
 				return helpers.NewSyntheticStreamingShaper(0)
 			})
-			k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, tc.text))
+			k, err := owner.EncodeParagraph(preparationParagraph(t, tc.text))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -64,7 +64,7 @@ func TestDiscretionaryEmptyCacheOwnership(t *testing.T) {
 	policy := &testhyphenator{}
 	owner := NewKhipukamayuq(Config{Hyphenator: policy})
 	for paragraph := range 2 {
-		k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, "abcd abcd"))
+		k, err := owner.EncodeParagraph(preparationParagraph(t, "abcd abcd"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -112,7 +112,7 @@ func TestDiscretionaryErrorsAreNotCached(t *testing.T) {
 				}
 				return helpers.NewSyntheticStreamingShaper(0)
 			})
-			k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, "abcd"))
+			k, err := owner.EncodeParagraph(preparationParagraph(t, "abcd"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -142,7 +142,7 @@ func TestDiscretionaryErrorsAreNotCached(t *testing.T) {
 
 func TestDiscretionaryEmptyCacheExcludesDisabledAndManualRequests(t *testing.T) {
 	owner := NewKhipukamayuq(Config{})
-	k, err := owner.EncodeParagraph(t.Context(), preparationParagraph(t, "abcd"))
+	k, err := owner.EncodeParagraph(preparationParagraph(t, "abcd"))
 	if err != nil {
 		t.Fatal(err)
 	}

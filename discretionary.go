@@ -101,8 +101,7 @@ func (khipu *Khipu) SelectedDiscretionaryAt(breakpoint int) (DiscretionarySelect
 // complete eligible source segment, never metric-shaped substitutes.
 // Configure the owner as the linebreaker's provider to enable lazy discovery.
 // This synchronous query has no context argument. Lazy replacement shaping uses
-// context.Background(); earlier encoding and later freezing contexts do not
-// cancel it. The returned candidate slice shares the paragraph's cache storage.
+// context.Background(). The returned candidate slice shares the paragraph's cache storage.
 func (kq *Khipukamayuq) DiscretionaryCandidates(khp *Khipu, at int) ([]DiscretionaryCandidate, error) {
 	if kq == nil {
 		return nil, ErrVoidKhipukamayuq

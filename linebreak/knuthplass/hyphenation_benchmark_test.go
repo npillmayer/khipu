@@ -43,7 +43,7 @@ func hyphenatingLorem(tb testing.TB, words int) (*khipu.Khipu, *linebreaker, *co
 	tb.Helper()
 	policy := &loremHyphenator{}
 	owner := khipu.NewKhipukamayuq(khipu.Config{Hyphenator: policy})
-	khp, err := owner.EncodeParagraph(tb.Context(), loremParagraph(tb, words))
+	khp, err := owner.EncodeParagraph(loremParagraph(tb, words))
 	if err != nil {
 		tb.Fatal(err)
 	}

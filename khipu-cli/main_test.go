@@ -2,9 +2,7 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/xml"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -19,7 +17,7 @@ func TestViewPipeline(t *testing.T) {
 				t.Run(breaker+"/"+direction+"/"+source, func(t *testing.T) {
 					var a, b bytes.Buffer
 					for _, out := range []*bytes.Buffer{&a, &b} {
-						if err := runView(t.Context(), "-", "-", breaker, direction, 25, strings.NewReader(source), out); err != nil {
+						if err := runView("-", "-", breaker, direction, 25, strings.NewReader(source), out); err != nil {
 							t.Fatal(err)
 						}
 					}
@@ -59,14 +57,9 @@ func TestViewErrorsPreserveOutput(t *testing.T) {
 		{"firstfit", "ltr", string([]byte{0xff}), 50},
 		{"firstfit", "ltr", strings.Repeat("a", (1<<20)+1), 50},
 	} {
-		if err := runView(t.Context(), "-", output, tc.breaker, tc.direction, tc.width, strings.NewReader(tc.text), io.Discard); err == nil {
+		if err := runView("-", output, tc.breaker, tc.direction, tc.width, strings.NewReader(tc.text), io.Discard); err == nil {
 			t.Fatal("expected error")
 		}
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if err := runView(ctx, "-", output, "firstfit", "ltr", 50, strings.NewReader("hello"), io.Discard); !errors.Is(err, context.Canceled) {
-		t.Fatalf("cancellation: %v", err)
 	}
 	got, err := os.ReadFile(output)
 	if err != nil || string(got) != "keep" {
@@ -80,7 +73,7 @@ func TestViewFiles(t *testing.T) {
 	if err := os.WriteFile(input, []byte("hello world"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := runView(t.Context(), input, output, "firstfit", "ltr", 100, nil, nil); err != nil {
+	if err := runView(input, output, "firstfit", "ltr", 100, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(output)

@@ -33,7 +33,7 @@ func TestLineGeometryFromBothBreakers(t *testing.T) {
 					t.Fatal(err)
 				}
 				owner := khipu.NewKhipukamayuq(khipu.Config{})
-				k, err := owner.EncodeParagraph(t.Context(), para)
+				k, err := owner.EncodeParagraph(para)
 				if err != nil {
 					t.Fatal(err)
 				}

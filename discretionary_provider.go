@@ -39,8 +39,7 @@ func (k *Khipu) HasExplicitDiscretionary(at int) bool {
 // All alternatives are shaped and staged before committing the complete batch;
 // errors leave arena/cache unchanged, so retry cannot see a partial batch.
 // The provider interface has no context: each stream uses Background,
-// with internal cancellation/joining on failure. Caller cancellation requires a
-// future provider-interface extension.
+// with internal cancellation/joining on failure. Typesetting runs synchronously.
 func (kq *Khipukamayuq) streamingDiscretionaryCandidates(k *Khipu, at int) ([]DiscretionaryCandidate, error) {
 	if k.prepared != nil {
 		return kq.importExplicitBatch(k, at)

@@ -23,7 +23,7 @@ func TestFreezeUnbrokenSoftHyphenRTL(t *testing.T) {
 				t.Fatal(err)
 			}
 			owner := khipu.NewKhipukamayuq(khipu.Config{})
-			k, err := owner.EncodeParagraph(t.Context(), p)
+			k, err := owner.EncodeParagraph(p)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -39,7 +39,7 @@ func TestFreezeUnbrokenSoftHyphenRTL(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			f, err := owner.Freeze(t.Context(), k, breaks, layout)
+			f, err := owner.Freeze(k, breaks, layout)
 			if err != nil {
 				t.Fatal(err)
 			}

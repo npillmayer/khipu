@@ -32,7 +32,7 @@ func TestFreezeFromBothBreakers(t *testing.T) {
 					t.Fatal(err)
 				}
 				owner := khipu.NewKhipukamayuq(khipu.Config{})
-				k, err := owner.EncodeParagraph(t.Context(), para)
+				k, err := owner.EncodeParagraph(para)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -53,7 +53,7 @@ func TestFreezeFromBothBreakers(t *testing.T) {
 				}
 				before := slices.Clone(k.W)
 				shape.calls = nil
-				got, err := owner.Freeze(t.Context(), k, breaks, layout)
+				got, err := owner.Freeze(k, breaks, layout)
 				if err != nil {
 					t.Fatal(err)
 				}

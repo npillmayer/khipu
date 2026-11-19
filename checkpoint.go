@@ -1,7 +1,6 @@
 package khipu
 
 import (
-	"context"
 	"fmt"
 	"slices"
 )
@@ -32,13 +31,7 @@ type BreakCheckpoint struct {
 // preparations are supported: discretionary replacement carry is not captured.
 // The prefix is copied; no working arrays or caller slices are retained.
 // Cancellation/errors return no checkpoint and preserve earlier results.
-func (q *Khipukamayuq) Checkpoint(ctx context.Context, prepared *PreparedParagraph, path []int, acceptedLines int) (*BreakCheckpoint, error) {
-	if ctx == nil {
-		return nil, ErrIllegalArguments
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+func (q *Khipukamayuq) Checkpoint(prepared *PreparedParagraph, path []int, acceptedLines int) (*BreakCheckpoint, error) {
 	if q == nil || prepared == nil || prepared.owner != q || prepared.preparedMaterial == nil {
 		return nil, ErrIllegalArguments
 	}
@@ -51,16 +44,10 @@ func (q *Khipukamayuq) Checkpoint(ctx context.Context, prepared *PreparedParagra
 	}
 	previous := -1
 	for _, at := range path {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
 		if at <= previous || at >= n || prepared.knots[at].Penalty >= MaxPenalty {
 			return nil, fmt.Errorf("%w: invalid checkpoint boundary", ErrIllegalArguments)
 		}
 		for i := previous + 1; i < at; i++ {
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
 			if prepared.knots[i].Penalty <= MaxMerit {
 				return nil, fmt.Errorf("%w: checkpoint path skips mandatory break", ErrIllegalArguments)
 			}
@@ -68,9 +55,7 @@ func (q *Khipukamayuq) Checkpoint(ctx context.Context, prepared *PreparedParagra
 		previous = at
 	}
 	c := &BreakCheckpoint{prepared: prepared, prefix: slices.Clone(path[:acceptedLines])}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+
 	return c, nil
 }
 
@@ -79,14 +64,8 @@ func (q *Khipukamayuq) Checkpoint(ctx context.Context, prepared *PreparedParagra
 // plane lengths are checked without scanning prefix knots. Base planes must stay
 // read-only, as for all owner-produced Khipus. Modifying the returned slice cannot
 // change the checkpoint. Nil/zero checkpoints or foreign/uninitialized bindings
-// return ErrIllegalArguments; cancellation returns its cause and no prefix.
-func (c *BreakCheckpoint) PrefixFor(ctx context.Context, k *Khipu) ([]int, error) {
-	if ctx == nil {
-		return nil, ErrIllegalArguments
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+// return ErrIllegalArguments and no prefix.
+func (c *BreakCheckpoint) PrefixFor(k *Khipu) ([]int, error) {
 	if c == nil || c.prepared == nil || c.prepared.owner == nil || c.prepared.preparedMaterial == nil ||
 		k == nil || k.owner != c.prepared.owner || k.boundMaterial != c.prepared.preparedMaterial || k.paragraph != c.prepared.paragraph {
 		return nil, ErrIllegalArguments
@@ -101,8 +80,6 @@ func (c *BreakCheckpoint) PrefixFor(ctx context.Context, k *Khipu) ([]int, error
 		}
 	}
 	prefix := slices.Clone(c.prefix)
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+
 	return prefix, nil
 }

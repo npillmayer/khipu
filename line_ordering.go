@@ -1,7 +1,6 @@
 package khipu
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/npillmayer/uax/bidi"
@@ -53,10 +52,7 @@ func (line logicalLine) trailingGlueL1(trailer int) sourceByteInterval {
 // paragraph resolution nor materialized knots are mutated, even on failure.
 // The result is private until every line succeeds. Source, styles and arena data
 // must remain stable under logicalParagraph's ownership contract.
-func (p *logicalParagraph) lineOrderings(ctx context.Context) ([]*bidi.Ordering, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+func (p *logicalParagraph) lineOrderings() ([]*bidi.Ordering, error) {
 	bad := func() ([]*bidi.Ordering, error) {
 		return nil, fmt.Errorf("%w: inconsistent logical-line bidi input", ErrIllegalArguments)
 	}
@@ -66,9 +62,6 @@ func (p *logicalParagraph) lineOrderings(ctx context.Context) ([]*bidi.Ordering,
 	length := p.paragraph.Raw().Len()
 	var start uint64
 	for _, line := range p.lines {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
 		if line.byteStart != start || line.byteEnd < start || line.byteEnd > length {
 			return bad()
 		}
@@ -84,9 +77,6 @@ func (p *logicalParagraph) lineOrderings(ctx context.Context) ([]*bidi.Ordering,
 	remaining := p.paragraph.BidiLevels().Clone()
 	orders := make([]*bidi.Ordering, 0, len(p.lines))
 	for i, line := range p.lines {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
 		levels := remaining
 		if i < len(p.lines)-1 {
 			levels, remaining = remaining.Split(line.byteEnd, false)
@@ -98,8 +88,6 @@ func (p *logicalParagraph) lineOrderings(ctx context.Context) ([]*bidi.Ordering,
 		}
 		orders = append(orders, levels.Reorder())
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+
 	return orders, nil
 }

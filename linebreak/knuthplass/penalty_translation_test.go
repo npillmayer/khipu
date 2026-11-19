@@ -13,7 +13,7 @@ import (
 // line count that may legitimately change with future geometry refinements.
 func TestEncodedOrdinaryBreaksHaveNoReward(t *testing.T) {
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	khp, err := owner.EncodeParagraph(t.Context(), loremParagraph(t, 250))
+	khp, err := owner.EncodeParagraph(loremParagraph(t, 250))
 	if err != nil {
 		t.Fatal(err)
 	}

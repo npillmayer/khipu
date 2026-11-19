@@ -34,7 +34,7 @@ func TestVisualLinesFromBothBreakers(t *testing.T) {
 				}
 				para.Offset = 100
 				owner := khipu.NewKhipukamayuq(khipu.Config{})
-				k, err := owner.EncodeParagraph(t.Context(), para)
+				k, err := owner.EncodeParagraph(para)
 				if err != nil {
 					t.Fatal(err)
 				}

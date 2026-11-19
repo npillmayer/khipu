@@ -37,16 +37,14 @@ var ErrUnrepresentableMandatoryBreak = errors.New("khipu: mandatory break cannot
 // source coordinates. Its location is retained, but ordinary breaks there are
 // prohibited. Configure this owner as the breaker's DiscretionaryProvider to
 // prepare and select explicit replacement fragments lazily during linebreaking.
-func (kq *Khipukamayuq) EncodeParagraph(ctx context.Context, para *styled.Paragraph) (*Khipu, error) {
+func (kq *Khipukamayuq) EncodeParagraph(para *styled.Paragraph) (*Khipu, error) {
 	if kq == nil {
 		return nil, ErrVoidKhipukamayuq
 	}
-	if ctx == nil || para == nil {
+	if para == nil {
 		return nil, ErrIllegalArguments
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+
 	cfg := kq.env.streaming
 	if cfg == nil || cfg.NewShaper == nil || nilRunService(cfg.Resolver) {
 		return nil, fmt.Errorf("%w: streaming configuration requires a factory and resolver", ErrIllegalArguments)
@@ -58,7 +56,7 @@ func (kq *Khipukamayuq) EncodeParagraph(ctx context.Context, para *styled.Paragr
 	if nilRunService(shaper) {
 		return nil, fmt.Errorf("%w: factory returned nil streaming shaper", ErrIllegalArguments)
 	}
-	candidates, err := streamCandidateParagraph(ctx, para, cfg.Resolver, cfg.Defaults, *kq.env.params, kq.env.parFillSkip, shaper, cfg.BufferOptions)
+	candidates, err := streamCandidateParagraph(context.Background(), para, cfg.Resolver, cfg.Defaults, *kq.env.params, kq.env.parFillSkip, shaper, cfg.BufferOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -66,9 +64,6 @@ func (kq *Khipukamayuq) EncodeParagraph(ctx context.Context, para *styled.Paragr
 	if err != nil {
 		return nil, err
 	}
-	if err := ctx.Err(); err != nil {
-		unwireKhipu(k)
-		return nil, err
-	}
+
 	return k, nil
 }

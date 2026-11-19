@@ -19,7 +19,7 @@ func TestZeroStretchShortOriginsStayActive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	khp, err := khipu.NewKhipukamayuq(khipu.Config{}).EncodeParagraph(t.Context(), para)
+	khp, err := khipu.NewKhipukamayuq(khipu.Config{}).EncodeParagraph(para)
 	if err != nil {
 		t.Fatal(err)
 	}

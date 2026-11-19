@@ -1,7 +1,6 @@
 package khipu_test
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/npillmayer/cords/styled"
@@ -21,7 +20,7 @@ func ExampleKhipukamayuq_EncodeParagraph() {
 		panic(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	khp, err := owner.EncodeParagraph(context.Background(), para)
+	khp, err := owner.EncodeParagraph(para)
 	if err != nil {
 		panic(err)
 	}
@@ -48,14 +47,13 @@ func ExampleKhipukamayuq_EncodeParagraph() {
 type exampleHyphenator struct{}
 
 func ExampleKhipukamayuq_Freeze() {
-	ctx := context.Background()
 	text := styled.TextFromString("Hello world")
 	para, err := styled.ParagraphFromText(&text, 0, text.Raw().Len(), bidi.LeftToRight, nil)
 	if err != nil {
 		panic(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	input, err := owner.EncodeParagraph(ctx, para)
+	input, err := owner.EncodeParagraph(para)
 	if err != nil {
 		panic(err)
 	}
@@ -66,7 +64,7 @@ func ExampleKhipukamayuq_Freeze() {
 	if err != nil {
 		panic(err)
 	}
-	frozen, err := owner.Freeze(ctx, input, breaks, layout)
+	frozen, err := owner.Freeze(input, breaks, layout)
 	if err != nil {
 		panic(err)
 	}
@@ -94,7 +92,7 @@ func ExampleConfig_hyphenator() {
 		panic(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{Hyphenator: exampleHyphenator{}})
-	khp, err := owner.EncodeParagraph(context.Background(), para)
+	khp, err := owner.EncodeParagraph(para)
 	if err != nil {
 		panic(err)
 	}
@@ -113,14 +111,13 @@ func ExampleConfig_hyphenator() {
 }
 
 func ExampleKhipukamayuq_PrepareParagraph() {
-	ctx := context.Background()
 	text := styled.TextFromString("A \uFFFC B")
 	para, err := styled.ParagraphFromText(&text, 0, text.Raw().Len(), bidi.LeftToRight, nil)
 	if err != nil {
 		panic(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	prepared, err := owner.PrepareParagraph(ctx, khipu.ParagraphInput{
+	prepared, err := owner.PrepareParagraph(khipu.ParagraphInput{
 		Paragraph: para,
 		Atomics:   []contracts.AtomicAnchor{{ID: 1, ByteOffset: 2}},
 	}, khipu.PrepareOptions{})
@@ -130,7 +127,7 @@ func ExampleKhipukamayuq_PrepareParagraph() {
 	layout := firstfit.DefaultLayout(linebreak.RectangularParShape(100 * dimen.PT))
 	for _, advance := range []dimen.DU{20 * dimen.PT, 30 * dimen.PT} {
 		// Reuse shaped text, but give each binding independent working decisions.
-		input, err := owner.BindParagraph(ctx, prepared, []khipu.AtomicAdvance{{ID: 1, Advance: advance}})
+		input, err := owner.BindParagraph(prepared, []khipu.AtomicAdvance{{ID: 1, Advance: advance}})
 		if err != nil {
 			panic(err)
 		}
@@ -138,7 +135,7 @@ func ExampleKhipukamayuq_PrepareParagraph() {
 		if err != nil {
 			panic(err)
 		}
-		frozen, err := owner.Freeze(ctx, input, breaks, layout)
+		frozen, err := owner.Freeze(input, breaks, layout)
 		if err != nil {
 			panic(err)
 		}
@@ -155,19 +152,18 @@ func ExampleKhipukamayuq_PrepareParagraph() {
 }
 
 func ExampleKhipukamayuq_MeasureIntrinsic() {
-	ctx := context.Background()
 	text := styled.TextFromString("Hello world")
 	para, err := styled.ParagraphFromText(&text, 0, text.Raw().Len(), bidi.LeftToRight, nil)
 	if err != nil {
 		panic(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	prepared, err := owner.PrepareParagraph(ctx, khipu.ParagraphInput{Paragraph: para}, khipu.PrepareOptions{})
+	prepared, err := owner.PrepareParagraph(khipu.ParagraphInput{Paragraph: para}, khipu.PrepareOptions{})
 	if err != nil {
 		panic(err)
 	}
 	// No target geometry or binding is needed. This input has no atomic ranges.
-	widths, err := owner.MeasureIntrinsic(ctx, prepared, khipu.MeasureRequest{})
+	widths, err := owner.MeasureIntrinsic(prepared, khipu.MeasureRequest{})
 	if err != nil {
 		panic(err)
 	}

@@ -46,7 +46,7 @@ func encodeEmergencyText(t *testing.T, source string, policy khipu.Hyphenator) *
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.khp, err = f.owner.EncodeParagraph(t.Context(), para)
+	f.khp, err = f.owner.EncodeParagraph(para)
 	if err != nil {
 		t.Fatal(err)
 	}

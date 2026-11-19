@@ -28,7 +28,7 @@ func TestPublicConfigShaperError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create paragraph: %v", err)
 	}
-	khp, err := kq.EncodeParagraph(t.Context(), para)
+	khp, err := kq.EncodeParagraph(para)
 	if !errors.Is(err, wantErr) || khp != nil {
 		t.Fatalf("expected shaper error without partial paragraph, got %v, %v", khp, err)
 	}

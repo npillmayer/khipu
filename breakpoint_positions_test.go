@@ -13,7 +13,7 @@ func TestBreakpointPositionsOrdinary(t *testing.T) {
 		p := preparationParagraph(t, text)
 		p.Offset = 100 // Pos is absolute; the result must not be.
 		owner := automaticTestOwner(nil, nil)
-		k, err := owner.EncodeParagraph(t.Context(), p)
+		k, err := owner.EncodeParagraph(p)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -58,7 +58,7 @@ func TestBreakpointPositionsGlyphlessGap(t *testing.T) {
 }
 
 func TestBreakpointPositionsBeforeSuppressedMarker(t *testing.T) {
-	k, err := automaticTestOwner(nil, nil).EncodeParagraph(t.Context(), preparationParagraph(t, "a \u00adb"))
+	k, err := automaticTestOwner(nil, nil).EncodeParagraph(preparationParagraph(t, "a \u00adb"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestBreakpointPositionsSelectedProvenance(t *testing.T) {
 	}}, nil)
 	p := preparationParagraph(t, "xx éclair")
 	p.Offset = 100
-	k, err := owner.EncodeParagraph(t.Context(), p)
+	k, err := owner.EncodeParagraph(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestBreakpointPositionsRejectInvalidInput(t *testing.T) {
 }
 
 func TestBreakpointPositionsRequireDiscretionaryProvenance(t *testing.T) {
-	k, err := NewKhipukamayuq(Config{}).EncodeParagraph(t.Context(), preparationParagraph(t, "éclair"))
+	k, err := NewKhipukamayuq(Config{}).EncodeParagraph(preparationParagraph(t, "éclair"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestBreakpointPositionsRequireDiscretionaryProvenance(t *testing.T) {
 }
 
 func TestBreakpointPositionsRejectMissingProvenance(t *testing.T) {
-	k, err := NewKhipukamayuq(Config{}).EncodeParagraph(t.Context(), preparationParagraph(t, "a b"))
+	k, err := NewKhipukamayuq(Config{}).EncodeParagraph(preparationParagraph(t, "a b"))
 	if err != nil {
 		t.Fatal(err)
 	}

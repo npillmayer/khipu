@@ -61,12 +61,12 @@ func TestAtomicBothBreakersThroughFreeze(t *testing.T) {
 					}
 				}
 				owner := khipu.NewKhipukamayuq(khipu.Config{})
-				prepared, err := owner.PrepareParagraph(t.Context(), khipu.ParagraphInput{Paragraph: para, Atomics: anchors}, khipu.PrepareOptions{AtomicBoundaries: overrides})
+				prepared, err := owner.PrepareParagraph(khipu.ParagraphInput{Paragraph: para, Atomics: anchors}, khipu.PrepareOptions{AtomicBoundaries: overrides})
 				if err != nil {
 					t.Fatal(err)
 				}
 				slices.Reverse(advances) // Dimension order is independent of source order.
-				k, err := owner.BindParagraph(t.Context(), prepared, advances)
+				k, err := owner.BindParagraph(prepared, advances)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -80,7 +80,7 @@ func TestAtomicBothBreakersThroughFreeze(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				f, err := owner.Freeze(t.Context(), k, breaks, layout)
+				f, err := owner.Freeze(k, breaks, layout)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -157,11 +157,11 @@ func TestAtomicLineBoundariesAndSignedCheckpoint(t *testing.T) {
 					}
 				}
 				owner := khipu.NewKhipukamayuq(khipu.Config{})
-				p, err := owner.PrepareParagraph(t.Context(), khipu.ParagraphInput{Paragraph: para, Atomics: anchors}, khipu.PrepareOptions{AtomicBoundaries: tc.bounds})
+				p, err := owner.PrepareParagraph(khipu.ParagraphInput{Paragraph: para, Atomics: anchors}, khipu.PrepareOptions{AtomicBoundaries: tc.bounds})
 				if err != nil {
 					t.Fatal(err)
 				}
-				k, err := owner.BindParagraph(t.Context(), p, advances)
+				k, err := owner.BindParagraph(p, advances)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -175,7 +175,7 @@ func TestAtomicLineBoundariesAndSignedCheckpoint(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				f, err := owner.Freeze(t.Context(), k, breaks, layout)
+				f, err := owner.Freeze(k, breaks, layout)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -202,7 +202,7 @@ func TestAtomicLineBoundariesAndSignedCheckpoint(t *testing.T) {
 					k.W[i] = 0
 					k.Kind[i] = khipu.KTGlue
 				}
-				if _, err := owner.BindParagraph(t.Context(), p, advances); err != nil {
+				if _, err := owner.BindParagraph(p, advances); err != nil {
 					t.Fatal(err)
 				}
 				for i := 0; i < f.KnotCount(); i++ {
@@ -225,11 +225,11 @@ func TestAtomicNegativeCompletedLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	p, err := owner.PrepareParagraph(t.Context(), khipu.ParagraphInput{Paragraph: para, Atomics: []contracts.AtomicAnchor{{ID: 1}}}, khipu.PrepareOptions{})
+	p, err := owner.PrepareParagraph(khipu.ParagraphInput{Paragraph: para, Atomics: []contracts.AtomicAnchor{{ID: 1}}}, khipu.PrepareOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	k, err := owner.BindParagraph(t.Context(), p, []khipu.AtomicAdvance{{ID: 1, Advance: -10}})
+	k, err := owner.BindParagraph(p, []khipu.AtomicAdvance{{ID: 1, Advance: -10}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestAtomicNegativeCompletedLine(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if f, err := owner.Freeze(t.Context(), k, breaks, layout); f != nil || !errors.Is(err, khipu.ErrUnsupportedPolicy) {
+		if f, err := owner.Freeze(k, breaks, layout); f != nil || !errors.Is(err, khipu.ErrUnsupportedPolicy) {
 			t.Fatal(f, err)
 		}
 	}

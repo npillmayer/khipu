@@ -25,7 +25,7 @@ func uniformFixture(tb testing.TB, words int, shape khipu.LineShape, mode string
 		config.Hyphenator = &loremHyphenator{}
 	}
 	owner := khipu.NewKhipukamayuq(config)
-	khp, err := owner.EncodeParagraph(tb.Context(), loremParagraph(tb, words))
+	khp, err := owner.EncodeParagraph(loremParagraph(tb, words))
 	if err != nil {
 		tb.Fatal(err)
 	}

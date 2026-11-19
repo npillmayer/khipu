@@ -50,7 +50,7 @@ func BenchmarkEncodeLorem(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for range b.N {
-			khp, err := owner.EncodeParagraph(b.Context(), para)
+			khp, err := owner.EncodeParagraph(para)
 			if err != nil || len(khp.Kind) != 2*words+1 {
 				b.Fatalf("encoding failed or knot count changed: %v", err)
 			}
@@ -62,7 +62,7 @@ func BenchmarkEncodeLorem(b *testing.B) {
 func encodedLorem(b *testing.B, words int) *khipu.Khipu {
 	b.Helper()
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	khp, err := owner.EncodeParagraph(b.Context(), loremParagraph(b, words))
+	khp, err := owner.EncodeParagraph(loremParagraph(b, words))
 	if err != nil {
 		b.Fatal(err)
 	}

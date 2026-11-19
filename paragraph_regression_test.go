@@ -28,7 +28,7 @@ func TestEncodedParagraphTextRegressions(t *testing.T) {
 	} {
 		t.Run(tc.source, func(t *testing.T) {
 			owner := khipu.NewKhipukamayuq(khipu.Config{})
-			khp, err := owner.EncodeParagraph(t.Context(), encodingParagraph(t, tc.source))
+			khp, err := owner.EncodeParagraph(encodingParagraph(t, tc.source))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -84,7 +84,7 @@ func TestEncodedParagraphStyleResolution(t *testing.T) {
 		}
 		return defaults, nil
 	})
-	khp, err := khipu.NewKhipukamayuq(khipu.Config{Streaming: cfg}).EncodeParagraph(t.Context(), para)
+	khp, err := khipu.NewKhipukamayuq(khipu.Config{Streaming: cfg}).EncodeParagraph(para)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestModernBreakersParagraphRegressions(t *testing.T) {
 		for _, algorithm := range []string{"firstfit", "Knuth-Plass"} {
 			t.Run(tc.name+"/"+algorithm, func(t *testing.T) {
 				params := &khipu.Params{SpaceStretchPercent: tc.stretch}
-				khp, err := khipu.NewKhipukamayuq(khipu.Config{Params: params}).EncodeParagraph(t.Context(), encodingParagraph(t, tc.source))
+				khp, err := khipu.NewKhipukamayuq(khipu.Config{Params: params}).EncodeParagraph(encodingParagraph(t, tc.source))
 				if err != nil {
 					t.Fatal(err)
 				}

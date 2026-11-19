@@ -178,7 +178,7 @@ func TestBoundaryEvaluationReuseMatchesUncached(t *testing.T) {
 						config.Hyphenator = &loremHyphenator{}
 					}
 					owner := khipu.NewKhipukamayuq(config)
-					khp, err := owner.EncodeParagraph(t.Context(), loremParagraph(t, 50))
+					khp, err := owner.EncodeParagraph(loremParagraph(t, 50))
 					if err != nil {
 						t.Fatal(err)
 					}

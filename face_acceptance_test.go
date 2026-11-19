@@ -167,7 +167,7 @@ func TestLazyFacePreflightRetriesWithoutPublishingOrReshaping(t *testing.T) {
 				p := intrinsicPrepare(t, o, "ab\u00adcd", PrepareOptions{Hyphenation: ExplicitHyphenation})
 				base := *baseStreams
 				before := slices.Clone(p.shaping.glyphs)
-				prior, err := o.BindParagraph(t.Context(), p, nil)
+				prior, err := o.BindParagraph(p, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -182,7 +182,7 @@ func TestLazyFacePreflightRetriesWithoutPublishingOrReshaping(t *testing.T) {
 					return s, nil
 				}
 				if measureFirst {
-					widths, err := o.MeasureIntrinsic(t.Context(), p, MeasureRequest{})
+					widths, err := o.MeasureIntrinsic(p, MeasureRequest{})
 					if widths != (IntrinsicWidths{}) || !errors.Is(err, contracts.ErrUnsupportedFontFace) {
 						t.Fatal(widths, err)
 					}
@@ -197,13 +197,13 @@ func TestLazyFacePreflightRetriesWithoutPublishingOrReshaping(t *testing.T) {
 				}
 				assertAbandoned(t, streams[side-1])
 				// The next actual factory instance accepts the face; failure is retryable.
-				widths, err := o.MeasureIntrinsic(t.Context(), p, MeasureRequest{})
+				widths, err := o.MeasureIntrinsic(p, MeasureRequest{})
 				if err != nil || widths != (IntrinsicWidths{15 * dimen.BP, 20 * dimen.BP}) {
 					t.Fatal(widths, err)
 				}
 				count := len(streams)
 				for range 2 {
-					if _, err = o.MeasureIntrinsic(t.Context(), p, MeasureRequest{}); err != nil {
+					if _, err = o.MeasureIntrinsic(p, MeasureRequest{}); err != nil {
 						t.Fatal(err)
 					}
 					if c, e := o.DiscretionaryCandidates(prior, 0); e != nil || len(c) != 1 {

@@ -25,7 +25,7 @@ func fixture(t *testing.T) *khipu.FrozenKhipu {
 		t.Fatal(err)
 	}
 	o := khipu.NewKhipukamayuq(khipu.Config{})
-	k, err := o.EncodeParagraph(t.Context(), p)
+	k, err := o.EncodeParagraph(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func fixture(t *testing.T) *khipu.FrozenKhipu {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err := o.Freeze(t.Context(), k, b, l)
+	f, err := o.Freeze(k, b, l)
 	if err != nil {
 		t.Fatal(err)
 	}

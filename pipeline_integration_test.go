@@ -139,7 +139,7 @@ func TestPublicPipelineGeometry(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				k, err := owner.EncodeParagraph(t.Context(), para)
+				k, err := owner.EncodeParagraph(para)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -150,7 +150,7 @@ func TestPublicPipelineGeometry(t *testing.T) {
 					t.Fatal(err)
 				}
 				before := slices.Clone(k.W)
-				f, err := owner.Freeze(t.Context(), k, breaks, layout)
+				f, err := owner.Freeze(k, breaks, layout)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -184,7 +184,7 @@ func TestPublicPipelineMixedBidi(t *testing.T) {
 					t.Fatal(err)
 				}
 				owner := khipu.NewKhipukamayuq(khipu.Config{})
-				k, err := owner.EncodeParagraph(t.Context(), para)
+				k, err := owner.EncodeParagraph(para)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -194,7 +194,7 @@ func TestPublicPipelineMixedBidi(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				f, err := owner.Freeze(t.Context(), k, breaks, layout)
+				f, err := owner.Freeze(k, breaks, layout)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -240,7 +240,7 @@ func TestPublicPipelineDiscretionaries(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				k, err := owner.EncodeParagraph(t.Context(), para)
+				k, err := owner.EncodeParagraph(para)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -255,7 +255,7 @@ func TestPublicPipelineDiscretionaries(t *testing.T) {
 				}
 				chosen := maps.Clone(k.SelectedDiscretionaries)
 				calls, shaped := len(policy.requests), streams
-				f, err := owner.Freeze(t.Context(), k, breaks, layout)
+				f, err := owner.Freeze(k, breaks, layout)
 				if err != nil {
 					t.Fatal(err)
 				}

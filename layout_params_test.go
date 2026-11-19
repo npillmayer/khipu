@@ -51,7 +51,7 @@ func layoutParagraph(t *testing.T, dir bidi.Direction) (*khipu.Khipukamayuq, *kh
 		t.Fatal(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	k, err := owner.EncodeParagraph(t.Context(), p)
+	k, err := owner.EncodeParagraph(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestFirstfitFillPreservesGreedyBreakpoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	k, err := owner.EncodeParagraph(t.Context(), para)
+	k, err := owner.EncodeParagraph(para)
 	if err != nil {
 		t.Fatal(err)
 	}

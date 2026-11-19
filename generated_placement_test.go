@@ -1,7 +1,6 @@
 package khipu
 
 import (
-	"context"
 	"errors"
 	"reflect"
 	"slices"
@@ -26,12 +25,12 @@ func TestGeneratedPlacementParagraphEdge(t *testing.T) {
 				// sentinels. Owner defaults are LTR even for the RTL paragraphs.
 				fill := KnotCore{W: 2 * dimen.PT, MinW: dimen.PT, MaxW: 3 * dimen.PT}
 				owner := NewKhipukamayuq(Config{ParFillSkip: &fill})
-				k, err := owner.EncodeParagraph(t.Context(), para)
+				k, err := owner.EncodeParagraph(para)
 				if err != nil {
 					t.Fatal(err)
 				}
 				p := l1Materialized(t, k)
-				orders, err := p.lineOrderings(context.Background())
+				orders, err := p.lineOrderings()
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -73,7 +72,7 @@ func TestGeneratedPlacementParagraphEdge(t *testing.T) {
 func TestGeneratedPlacementWrappedLines(t *testing.T) {
 	_, k := logicalTestParagraph(t, "  aa bb ")
 	p := l1Materialized(t, k, 2, 5)
-	orders, err := p.lineOrderings(context.Background())
+	orders, err := p.lineOrderings()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,11 +93,11 @@ func TestGeneratedPlacementWrappedLines(t *testing.T) {
 
 func TestGeneratedPlacementAfterDiscretionary(t *testing.T) {
 	owner, k, _ := logicalTestDiscretionary(t)
-	p, err := owner.materializeLogicalLines(context.Background(), k, []int{0, len(k.Kind) - 1})
+	p, err := owner.materializeLogicalLines(k, []int{0, len(k.Kind) - 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	orders, err := p.lineOrderings(context.Background())
+	orders, err := p.lineOrderings()
 	if err != nil {
 		t.Fatal(err)
 	}

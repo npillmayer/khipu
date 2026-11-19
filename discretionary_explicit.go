@@ -1,7 +1,6 @@
 package khipu
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"slices"
@@ -36,13 +35,6 @@ type preparedDiscretionary struct {
 // Variant IDs are deterministic in source order then material order; callers
 // must not merge this namespace with independently numbered automatic variants.
 func (kq *Khipukamayuq) prepareExplicitDiscretionaries(original string, source runSourceRange) ([]preparedDiscretionary, error) {
-	return kq.prepareExplicitDiscretionariesContext(context.Background(), original, source)
-}
-
-func (kq *Khipukamayuq) prepareExplicitDiscretionariesContext(ctx context.Context, original string, source runSourceRange) ([]preparedDiscretionary, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
 	if kq == nil {
 		return nil, ErrVoidKhipukamayuq
 	}
@@ -58,14 +50,11 @@ func (kq *Khipukamayuq) prepareExplicitDiscretionariesContext(ctx context.Contex
 		split       uint64
 	}
 	var opportunities []halves
-	positions, err := explicitSplitPositions(ctx, original)
+	positions, err := explicitSplitPositions(original)
 	if err != nil {
 		return nil, err
 	}
 	for _, pos := range positions {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
 		end := pos + len(softHyphenMarker)
 		left := strings.ReplaceAll(original[:pos], softHyphenMarker, "")
 		right := strings.ReplaceAll(original[end:], softHyphenMarker, "")
@@ -78,9 +67,7 @@ func (kq *Khipukamayuq) prepareExplicitDiscretionariesContext(ctx context.Contex
 	}
 	policy := *kq.env.params
 	materials, err := kq.env.hyphenator.Discretionaries(softHyphenMarker, &policy)
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return nil, ctxErr
-	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -92,9 +79,6 @@ func (kq *Khipukamayuq) prepareExplicitDiscretionariesContext(ctx context.Contex
 		return nil, fmt.Errorf("%w: too many explicit discretionary variants", contracts.ErrIllegalArguments)
 	}
 	for _, m := range materials {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
 		if !utf8.ValidString(m.PreBreak) || !utf8.ValidString(m.PostBreak) ||
 			strings.Contains(m.PreBreak, softHyphenMarker) || strings.Contains(m.PostBreak, softHyphenMarker) {
 			return nil, fmt.Errorf("%w: invalid explicit break material", contracts.ErrIllegalArguments)
@@ -103,9 +87,6 @@ func (kq *Khipukamayuq) prepareExplicitDiscretionariesContext(ctx context.Contex
 	result := make([]preparedDiscretionary, 0, len(opportunities)*len(materials))
 	for _, op := range opportunities {
 		for _, m := range materials {
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
 			fragment := HyphenationFragment{PreBreak: op.left + m.PreBreak, PostBreak: m.PostBreak + op.right, SourceSplit: SourceSplit{op.split, true}}
 			input, err := prepareDiscretionaryInput(original, source, fragment)
 			if err != nil {
@@ -119,13 +100,10 @@ func (kq *Khipukamayuq) prepareExplicitDiscretionariesContext(ctx context.Contex
 
 // Count source positions, not distinct replacement spellings. Consecutive
 // interior markers remain separate positions; edge-only markers are ignored.
-func explicitSplitPositions(ctx context.Context, original string) ([]int, error) {
+func explicitSplitPositions(original string) ([]int, error) {
 	first, last := len(original), -1
 	var markers []int
 	for pos, r := range original {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
 		if r == '\u00ad' {
 			markers = append(markers, pos)
 		} else {
@@ -134,9 +112,6 @@ func explicitSplitPositions(ctx context.Context, original string) ([]int, error)
 	}
 	positions := markers[:0]
 	for _, pos := range markers {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
 		if first < pos && pos < last {
 			positions = append(positions, pos)
 		}

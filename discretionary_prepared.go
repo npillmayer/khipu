@@ -37,10 +37,7 @@ func (b explicitBatch) measurable() error {
 
 // explicitReplacements is serialized with every other operation on this owner.
 // Measurement restrictions never limit the complete batches available to layout.
-func (p *PreparedParagraph) explicitReplacements(ctx context.Context, at int, measurement bool) (explicitBatch, error) {
-	if err := ctx.Err(); err != nil {
-		return explicitBatch{}, err
-	}
+func (p *PreparedParagraph) explicitReplacements(at int, measurement bool) (explicitBatch, error) {
 	if p == nil || p.owner == nil || p.hyphenation != ExplicitHyphenation || at < 0 || at >= len(p.knots) || p.knots[at].Kind != KTTextBox {
 		return explicitBatch{}, ErrIllegalArguments
 	}
@@ -67,7 +64,7 @@ func (p *PreparedParagraph) explicitReplacements(ctx context.Context, at int, me
 	if err != nil {
 		return explicitBatch{}, err
 	}
-	positions, err := explicitSplitPositions(ctx, string(raw))
+	positions, err := explicitSplitPositions(string(raw))
 	if err != nil {
 		return explicitBatch{}, err
 	}
@@ -75,7 +72,7 @@ func (p *PreparedParagraph) explicitReplacements(ctx context.Context, at int, me
 	if measurement && batch.positions > 1 {
 		return explicitBatch{}, batch.measurable()
 	}
-	inputs, err := p.owner.prepareExplicitDiscretionariesContext(ctx, string(raw), source)
+	inputs, err := p.owner.prepareExplicitDiscretionaries(string(raw), source)
 	if err != nil {
 		return explicitBatch{}, err
 	}
@@ -88,9 +85,6 @@ func (p *PreparedParagraph) explicitReplacements(ctx context.Context, at int, me
 		if measurement {
 			permitted := 0
 			for _, input := range inputs {
-				if err := ctx.Err(); err != nil {
-					return explicitBatch{}, err
-				}
 				if input.penalty < MaxPenalty {
 					permitted++
 				}
@@ -104,16 +98,14 @@ func (p *PreparedParagraph) explicitReplacements(ctx context.Context, at int, me
 			return explicitBatch{}, ErrStreamingDiscretionariesUnsupported
 		}
 		for _, input := range inputs {
-			pair, err := shapeDiscretionaryInput(ctx, input.input, params, params, cfg.NewShaper, cfg.BufferOptions)
+			pair, err := shapeDiscretionaryInput(context.Background(), input.input, params, params, cfg.NewShaper, cfg.BufferOptions)
 			if err != nil {
 				return explicitBatch{}, err
 			}
 			batch.replacements = append(batch.replacements, explicitReplacement{input.variant, input.penalty, pair})
 		}
 	}
-	if err := ctx.Err(); err != nil {
-		return explicitBatch{}, err
-	}
+
 	if p.explicit == nil {
 		p.explicit = make(map[int]explicitBatch)
 	}
@@ -141,7 +133,7 @@ func (kq *Khipukamayuq) importExplicitBatch(k *Khipu, at int) ([]DiscretionaryCa
 		return nil, ErrIllegalArguments
 	}
 	// The public provider has no request context; retain its established limit.
-	batch, err := p.explicitReplacements(context.Background(), at, false)
+	batch, err := p.explicitReplacements(at, false)
 	if err != nil {
 		return nil, err
 	}

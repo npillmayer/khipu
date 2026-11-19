@@ -32,7 +32,7 @@ func TestEncodedParagraphContract(t *testing.T) {
 		t.Run(source, func(t *testing.T) {
 			para := encodingParagraph(t, source)
 			para.Offset = 100
-			khp, err := owner.EncodeParagraph(t.Context(), para)
+			khp, err := owner.EncodeParagraph(para)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -96,7 +96,7 @@ func TestEncodedParagraphStyleAndForcedBoundaries(t *testing.T) {
 				t.Fatal(err)
 			}
 			owner := khipu.NewKhipukamayuq(khipu.Config{Streaming: encodingStreamingConfig()})
-			khp, err := owner.EncodeParagraph(t.Context(), para)
+			khp, err := owner.EncodeParagraph(para)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -157,7 +157,7 @@ func TestEncodedParagraphLazyDiscretionaries(t *testing.T) {
 			if _, err := para.Style(encodingStyle("bold"), 3, 11); err != nil {
 				t.Fatal(err)
 			}
-			khp, err := owner.EncodeParagraph(t.Context(), para)
+			khp, err := owner.EncodeParagraph(para)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -204,7 +204,7 @@ func TestEncodedParagraphFillConfiguration(t *testing.T) {
 	fill := khipu.KnotCore{W: 2 * dimen.PT, MinW: 1 * dimen.PT, MaxW: 7 * dimen.PT, Kind: khipu.KTTextBox, Flags: khipu.KFDiscardable, Penalty: 10, Pos: 9, Len: 9}
 	owner := khipu.NewKhipukamayuq(khipu.Config{ParFillSkip: &fill})
 	fill.W = 100 * dimen.PT
-	khp, err := owner.EncodeParagraph(t.Context(), encodingParagraph(t, "a "))
+	khp, err := owner.EncodeParagraph(encodingParagraph(t, "a "))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestEncodedParagraphFillConfiguration(t *testing.T) {
 	}
 	for _, fill := range []khipu.KnotCore{{}, {W: 2, MinW: 3, MaxW: 4}, {W: 3, MaxW: 2}} {
 		owner := khipu.NewKhipukamayuq(khipu.Config{ParFillSkip: &fill})
-		khp, err := owner.EncodeParagraph(t.Context(), encodingParagraph(t, ""))
+		khp, err := owner.EncodeParagraph(encodingParagraph(t, ""))
 		if fill == (khipu.KnotCore{}) {
 			if err != nil || khp.MaxW[0] != 0 {
 				t.Fatalf("explicit zero fill: %v %v", khp, err)
@@ -254,7 +254,7 @@ func TestEncodedParagraphClusterSpans(t *testing.T) {
 			owner := khipu.NewKhipukamayuq(khipu.Config{Streaming: cfg})
 			para := encodingParagraph(t, "ab cd")
 			for range 2 {
-				khp, err := owner.EncodeParagraph(t.Context(), para)
+				khp, err := owner.EncodeParagraph(para)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -281,7 +281,7 @@ func TestEncodedParagraphSourceSection(t *testing.T) {
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{Streaming: encodingStreamingConfig()})
 	for range 2 {
-		khp, err := owner.EncodeParagraph(t.Context(), para)
+		khp, err := owner.EncodeParagraph(para)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -303,21 +303,21 @@ func TestEncodedParagraphErrorsReturnNoPartialOutput(t *testing.T) {
 		return newEncodingScriptStream(glyphs, nil), nil
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{Streaming: cfg})
-	if khp, err := owner.EncodeParagraph(t.Context(), para); err == nil || khp != nil {
+	if khp, err := owner.EncodeParagraph(para); err == nil || khp != nil {
 		t.Fatalf("invalid shaper must return no output: %v %v", khp, err)
 	}
 	anchors = []uint32{0, 4}
-	if _, err := owner.EncodeParagraph(t.Context(), para); err != nil {
+	if _, err := owner.EncodeParagraph(para); err != nil {
 		t.Fatalf("owner cannot be reused after error: %v", err)
 	}
 	para.Offset = ^uint64(0)
-	if khp, err := owner.EncodeParagraph(t.Context(), para); err == nil || khp != nil {
+	if khp, err := owner.EncodeParagraph(para); err == nil || khp != nil {
 		t.Fatalf("source offset overflow accepted: %v %v", khp, err)
 	}
 	// One unbreakable word cannot fit in the current uint16 source-length plane.
 	para = encodingParagraph(t, strings.Repeat("a", 1<<16))
 	owner = khipu.NewKhipukamayuq(khipu.Config{})
-	if khp, err := owner.EncodeParagraph(t.Context(), para); err == nil || khp != nil {
+	if khp, err := owner.EncodeParagraph(para); err == nil || khp != nil {
 		t.Fatalf("oversized source span accepted: %v %v", khp, err)
 	}
 }
@@ -342,7 +342,7 @@ func TestEncodedParagraphAccumulatedGlyphMetrics(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := encodingStreamingConfig()
 			cfg.NewShaper = func() (contracts.StreamingShaper, error) { return newEncodingScriptStream(tc.glyphs, nil), nil }
-			k, err := khipu.NewKhipukamayuq(khipu.Config{Streaming: cfg}).EncodeParagraph(t.Context(), encodingParagraph(t, tc.source))
+			k, err := khipu.NewKhipukamayuq(khipu.Config{Streaming: cfg}).EncodeParagraph(encodingParagraph(t, tc.source))
 			if tc.wantWidths == nil {
 				if err == nil || k != nil {
 					t.Fatal("accepted invalid metrics", k, err)

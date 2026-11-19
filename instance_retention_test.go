@@ -51,7 +51,7 @@ func TestInstanceRetainedThroughMeasureBindFreeze(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := owner.PrepareParagraph(t.Context(), khipu.ParagraphInput{Paragraph: para}, khipu.PrepareOptions{})
+	prepared, err := owner.PrepareParagraph(khipu.ParagraphInput{Paragraph: para}, khipu.PrepareOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,10 +60,10 @@ func TestInstanceRetainedThroughMeasureBindFreeze(t *testing.T) {
 		t.Fatalf("uniform run bound %d times", calls)
 	}
 	for _, kp := range []bool{false, true} {
-		if _, err := owner.MeasureIntrinsic(t.Context(), prepared, khipu.MeasureRequest{}); err != nil {
+		if _, err := owner.MeasureIntrinsic(prepared, khipu.MeasureRequest{}); err != nil {
 			t.Fatal(err)
 		}
-		elastic, err := owner.BindParagraph(t.Context(), prepared, nil)
+		elastic, err := owner.BindParagraph(prepared, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -77,7 +77,7 @@ func TestInstanceRetainedThroughMeasureBindFreeze(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		frozen, err := owner.Freeze(t.Context(), elastic, breaks, params)
+		frozen, err := owner.Freeze(elastic, breaks, params)
 		if err != nil {
 			t.Fatal(err)
 		}

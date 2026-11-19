@@ -31,7 +31,7 @@ func uniformPublicFixture(tb testing.TB, name string, words int, compact bool) (
 		}
 		owner := khipu.NewKhipukamayuq(config)
 		var err error
-		khp, err = owner.EncodeParagraph(tb.Context(), loremParagraph(tb, words))
+		khp, err = owner.EncodeParagraph(loremParagraph(tb, words))
 		if err != nil {
 			tb.Fatal(err)
 		}

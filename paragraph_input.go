@@ -77,15 +77,8 @@ type PreparedParagraph struct {
 // PrepareParagraph validates mixed input and shapes text exactly once. Atomics
 // participate in boundary/bidi analysis, but never enter a shaping request or
 // require style/font resolution. No partial result is returned on failure.
-// Cancellation follows EncodeParagraph's backend limits; cancelled contexts
-// take precedence over other argument errors, as in Freeze.
-func (kq *Khipukamayuq) PrepareParagraph(ctx context.Context, input ParagraphInput, options PrepareOptions) (*PreparedParagraph, error) {
-	if ctx == nil {
-		return nil, ErrIllegalArguments
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+// Execution is synchronous; streaming failures cancel and join internal producers.
+func (kq *Khipukamayuq) PrepareParagraph(input ParagraphInput, options PrepareOptions) (*PreparedParagraph, error) {
 	if kq == nil {
 		return nil, ErrVoidKhipukamayuq
 	}
@@ -106,7 +99,7 @@ func (kq *Khipukamayuq) PrepareParagraph(ctx context.Context, input ParagraphInp
 	if nilRunService(shaper) {
 		return nil, ErrIllegalArguments
 	}
-	candidates, err := streamMixedCandidateParagraph(ctx, input.Paragraph, cfg.Resolver, cfg.Defaults,
+	candidates, err := streamMixedCandidateParagraph(context.Background(), input.Paragraph, cfg.Resolver, cfg.Defaults,
 		*kq.env.params, kq.env.parFillSkip, shaper, cfg.BufferOptions, input.Atomics, options.AtomicBoundaries)
 	if err != nil {
 		return nil, err
@@ -117,9 +110,7 @@ func (kq *Khipukamayuq) PrepareParagraph(ctx context.Context, input ParagraphInp
 	}
 	p := &PreparedParagraph{owner: kq, preparedMaterial: storage,
 		atomicCount: len(input.Atomics), hyphenation: options.Hyphenation}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+
 	return p, nil
 }
 
@@ -136,13 +127,7 @@ type AtomicAdvance struct {
 // Explicit replacements may be memoized on the preparation, but become visible
 // in a binding only at its normal provider request point. Local arenas/selections
 // remain independent. Inputs are consumed without retaining caller slices.
-func (kq *Khipukamayuq) BindParagraph(ctx context.Context, prepared *PreparedParagraph, atomics []AtomicAdvance) (*Khipu, error) {
-	if ctx == nil {
-		return nil, ErrIllegalArguments
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+func (kq *Khipukamayuq) BindParagraph(prepared *PreparedParagraph, atomics []AtomicAdvance) (*Khipu, error) {
 	if kq == nil {
 		return nil, ErrVoidKhipukamayuq
 	}
@@ -184,8 +169,6 @@ func (kq *Khipukamayuq) BindParagraph(ctx context.Context, prepared *PreparedPar
 	k.shaping.clusters = slices.Clip(k.shaping.clusters)
 	k.shaping.contexts = slices.Clip(k.shaping.contexts)
 	k.shaping.boundaries = slices.Clip(k.shaping.boundaries)
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+
 	return k, nil
 }

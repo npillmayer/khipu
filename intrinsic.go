@@ -1,7 +1,6 @@
 package khipu
 
 import (
-	"context"
 	"fmt"
 	"math"
 
@@ -49,13 +48,7 @@ type MeasureRequest struct {
 // is checked during evaluation; every failure returns zero widths and leaves the
 // preparation reusable. Ordinary evaluation is linear in knots and occurrences;
 // explicit cache misses additionally prepare and shape complete replacement pairs.
-func (kq *Khipukamayuq) MeasureIntrinsic(ctx context.Context, prepared *PreparedParagraph, request MeasureRequest) (IntrinsicWidths, error) {
-	if ctx == nil {
-		return IntrinsicWidths{}, ErrIllegalArguments
-	}
-	if err := ctx.Err(); err != nil {
-		return IntrinsicWidths{}, err
-	}
+func (kq *Khipukamayuq) MeasureIntrinsic(prepared *PreparedParagraph, request MeasureRequest) (IntrinsicWidths, error) {
 	if kq == nil {
 		return IntrinsicWidths{}, ErrVoidKhipukamayuq
 	}
@@ -77,9 +70,6 @@ func (kq *Khipukamayuq) MeasureIntrinsic(ctx context.Context, prepared *Prepared
 	}
 	atoms := make(map[contracts.AtomicID]AtomicIntrinsic, len(request.Atomics))
 	for _, atom := range request.Atomics {
-		if err := ctx.Err(); err != nil {
-			return IntrinsicWidths{}, err
-		}
 		_, duplicate := atoms[atom.ID]
 		if atom.ID == 0 || duplicate || atom.MinAdvance <= -dimen.Fil || atom.MaxAdvance >= dimen.Fil || atom.MinAdvance > atom.MaxAdvance {
 			return IntrinsicWidths{}, fmt.Errorf("%w: invalid or duplicate atomic intrinsic range", ErrIllegalArguments)
@@ -89,9 +79,6 @@ func (kq *Khipukamayuq) MeasureIntrinsic(ctx context.Context, prepared *Prepared
 	var rawMin, rawMax int64
 	// Validate all requested identities before consulting any explicit services.
 	for i := range prepared.knots {
-		if err := ctx.Err(); err != nil {
-			return IntrinsicWidths{}, err
-		}
 		if id := prepared.shaping.sources[i].atomic; id != 0 {
 			if _, ok := atoms[id]; !ok {
 				return IntrinsicWidths{}, fmt.Errorf("%w: missing atomic intrinsic range for %d", ErrIllegalArguments, id)
@@ -100,19 +87,16 @@ func (kq *Khipukamayuq) MeasureIntrinsic(ctx context.Context, prepared *Prepared
 	}
 	if prepared.hyphenation == ExplicitHyphenation {
 		var err error
-		rawMin, err = prepared.explicitMinContent(ctx, trailer, atoms)
+		rawMin, err = prepared.explicitMinContent(trailer, atoms)
 		if err != nil {
 			return IntrinsicWidths{}, err
 		}
 	}
 	minStart, maxStart := 0, 0
 	for i, knot := range prepared.knots {
-		if err := ctx.Err(); err != nil {
-			return IntrinsicWidths{}, err
-		}
 		limit := min(i+1, trailer) // Exclude only the validated generated trailer.
 		if prepared.hyphenation == NoHyphenation && knot.Penalty < MaxPenalty {
-			width, err := prepared.intrinsicSpan(ctx, minStart, limit, atoms, false)
+			width, err := prepared.intrinsicSpan(minStart, limit, atoms, false)
 			if err != nil {
 				return IntrinsicWidths{}, err
 			}
@@ -120,7 +104,7 @@ func (kq *Khipukamayuq) MeasureIntrinsic(ctx context.Context, prepared *Prepared
 			minStart = i + 1
 		}
 		if knot.Penalty <= MaxMerit {
-			width, err := prepared.intrinsicSpan(ctx, maxStart, limit, atoms, true)
+			width, err := prepared.intrinsicSpan(maxStart, limit, atoms, true)
 			if err != nil {
 				return IntrinsicWidths{}, err
 			}
@@ -133,9 +117,7 @@ func (kq *Khipukamayuq) MeasureIntrinsic(ctx context.Context, prepared *Prepared
 	if maximum >= int64(dimen.Fil) {
 		return IntrinsicWidths{}, fmt.Errorf("%w: intrinsic width outside finite domain", ErrIllegalArguments)
 	}
-	if err := ctx.Err(); err != nil {
-		return IntrinsicWidths{}, err
-	}
+
 	return IntrinsicWidths{MinContent: dimen.DU(minimum), MaxContent: dimen.DU(maximum)}, nil
 }
 
@@ -143,8 +125,8 @@ func (kq *Khipukamayuq) MeasureIntrinsic(ctx context.Context, prepared *Prepared
 // completed widths for intrinsic normalization. Two passes avoid assuming that
 // signed prefix widths grow monotonically or rearranging additions across neutral
 // retained material. Each knot is visited a bounded number of times per query.
-func (p *PreparedParagraph) intrinsicSpan(ctx context.Context, start, end int, atoms map[contracts.AtomicID]AtomicIntrinsic, maximum bool) (int64, error) {
-	return intrinsicKnotSpan(ctx, p.knots[start:end], func(i int) dimen.DU {
+func (p *PreparedParagraph) intrinsicSpan(start, end int, atoms map[contracts.AtomicID]AtomicIntrinsic, maximum bool) (int64, error) {
+	return intrinsicKnotSpan(p.knots[start:end], func(i int) dimen.DU {
 		if id := p.shaping.sources[start+i].atomic; id != 0 {
 			if maximum {
 				return atoms[id].MaxAdvance
@@ -156,21 +138,15 @@ func (p *PreparedParagraph) intrinsicSpan(ctx context.Context, start, end int, a
 }
 
 // advance optionally substitutes atomic endpoints without modifying the knots.
-func intrinsicKnotSpan(ctx context.Context, knots []KnotCore, advance func(int) dimen.DU) (int64, error) {
+func intrinsicKnotSpan(knots []KnotCore, advance func(int) dimen.DU) (int64, error) {
 	first, last := len(knots), -1
 	for i, knot := range knots {
-		if err := ctx.Err(); err != nil {
-			return 0, err
-		}
 		if knot.IsContent() {
 			first, last = min(first, i), i
 		}
 	}
 	var width int64
 	for i, knot := range knots {
-		if err := ctx.Err(); err != nil {
-			return 0, err
-		}
 		if knot.IsDiscardable() && (i < first || i > last) {
 			continue
 		}
@@ -189,11 +165,11 @@ func intrinsicKnotSpan(ctx context.Context, knots []KnotCore, advance func(int) 
 
 // Form min-content spans in logical order; post-break carry preserves the
 // original after-textbox boundary. There is no working binding or fake geometry.
-func (p *PreparedParagraph) explicitMinContent(ctx context.Context, trailer int, atoms map[contracts.AtomicID]AtomicIntrinsic) (int64, error) {
+func (p *PreparedParagraph) explicitMinContent(trailer int, atoms map[contracts.AtomicID]AtomicIntrinsic) (int64, error) {
 	var widest int64
 	var span []KnotCore
 	finish := func() error {
-		w, err := intrinsicKnotSpan(ctx, span, nil)
+		w, err := intrinsicKnotSpan(span, nil)
 		if err != nil {
 			return err
 		}
@@ -202,14 +178,11 @@ func (p *PreparedParagraph) explicitMinContent(ctx context.Context, trailer int,
 		return nil
 	}
 	for i, knot := range p.knots[:trailer] {
-		if err := ctx.Err(); err != nil {
-			return 0, err
-		}
 		if id := p.shaping.sources[i].atomic; id != 0 {
 			knot.W = atoms[id].MinAdvance
 		}
 		if knot.Kind == KTTextBox {
-			batch, err := p.explicitReplacements(ctx, i, true)
+			batch, err := p.explicitReplacements(i, true)
 			if err != nil {
 				return 0, err
 			}
