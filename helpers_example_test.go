@@ -23,7 +23,7 @@ func ExampleConfig_syntheticFontSize() {
 		Resolver:  helpers.DefaultStyleResolver{},
 		Defaults:  contracts.ResolvedRunStyle{Font: helpers.NewSyntheticFont(), EmSize: 14 * dimen.PT},
 	}})
-	paragraph, err := owner.EncodeParagraph(para)
+	paragraph, err := owner.EncodeParagraphFixture(para)
 	if err != nil {
 		panic(err)
 	}

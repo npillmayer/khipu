@@ -55,7 +55,7 @@ func TestTrailingGlueL1Policy(t *testing.T) {
 	}
 }
 
-func l1Materialized(t *testing.T, k *Khipu, ends ...uint64) *logicalParagraph {
+func l1Materialized(t *testing.T, k *FixtureKhipu, ends ...uint64) *logicalParagraph {
 	t.Helper()
 	var breaks []int
 	for _, end := range ends {
@@ -72,7 +72,7 @@ func l1Materialized(t *testing.T, k *Khipu, ends ...uint64) *logicalParagraph {
 		breaks = append(breaks, at)
 	}
 	breaks = append(breaks, len(k.Kind)-1)
-	p, err := k.owner.materializeLogicalLines(k, breaks)
+	p, err := k.owner.materializeLogicalLinesFixture(k, breaks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestLineOrderingsApplyTrailingGlueL1(t *testing.T) {
 				t.Fatal(err)
 			}
 			para.Offset = 100 // L1 coordinates must not include this offset.
-			k, err := NewKhipukamayuq(Config{}).EncodeParagraph(para)
+			k, err := NewKhipukamayuq(Config{}).EncodeParagraphFixture(para)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -213,7 +213,7 @@ func TestLineOrderingsSplitStyleGlueAndClipMarker(t *testing.T) {
 
 func TestLineOrderingsDiscretionaryAndEmptyLines(t *testing.T) {
 	owner, k, _ := logicalTestDiscretionary(t)
-	p, err := owner.materializeLogicalLines(k, []int{0, len(k.Kind) - 1})
+	p, err := owner.materializeLogicalLinesFixture(k, []int{0, len(k.Kind) - 1})
 	if err != nil {
 		t.Fatal(err)
 	}

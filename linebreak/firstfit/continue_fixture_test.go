@@ -2,6 +2,7 @@ package firstfit
 
 import (
 	"context"
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"reflect"
 	"slices"
 	"sync/atomic"
@@ -48,7 +49,7 @@ func (s continuationStream) Shape(ctx context.Context, p contracts.ShapeParams, 
 	return s.SyntheticStreamingShaper.Shape(ctx, p, r, o)
 }
 
-func continuationFixture(t *testing.T, source string, dir bidi.Direction, elastic bool) (*khipu.Khipukamayuq, *khipu.PreparedParagraph, *khipu.Khipu) {
+func continuationFixture(t *testing.T, source string, dir bidi.Direction, elastic bool) (*khipu.Khipukamayuq, *testsupport.Paragraph, *testsupport.Paragraph) {
 	t.Helper()
 	services := new(continuationServices)
 	params := khipu.DefaultParams()
@@ -70,7 +71,7 @@ func continuationFixture(t *testing.T, source string, dir bidi.Direction, elasti
 		t.Fatal(err)
 	}
 	paragraph.Offset = 37
-	p, err := q.PrepareParagraph(khipu.ParagraphInput{Paragraph: paragraph}, khipu.PrepareOptions{})
+	material, discovery, err := q.PrepareParagraph(khipu.ParagraphInput{Paragraph: paragraph}, khipu.PrepareOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,14 +79,21 @@ func continuationFixture(t *testing.T, source string, dir bidi.Direction, elasti
 		t.Fatal("expected one preparation stream")
 	}
 	services.sealed.Store(true)
-	return q, p, continuationBind(t, q, p)
-}
-func continuationBind(t *testing.T, q *khipu.Khipukamayuq, p *khipu.PreparedParagraph) *khipu.Khipu {
-	t.Helper()
-	k, err := q.BindParagraph(p, nil)
+	binding, err := khipu.BindParagraph(material, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	p := testsupport.FromBinding(material, discovery, binding)
+	return q, p, continuationBind(t, q, p)
+}
+func continuationBind(t *testing.T, q *khipu.Khipukamayuq, p *testsupport.Paragraph) *testsupport.Paragraph {
+	t.Helper()
+	binding, err := khipu.BindParagraph(p.Material, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := testsupport.FromBinding(p.Material, p.Discovery, binding)
+	k.Plans = p.Plans
 	return k
 }
 
@@ -107,7 +115,7 @@ func (s *continuationShape) LineLength(n int32) dimen.DU {
 // boundaries. It then invokes ordinary first-fit on detached metric slice headers
 // for the suffix, translating line numbers and knot indexes. There is no production
 // seed path here, and no mutation of the original binding or its provenance.
-func continuationReference(t *testing.T, k *khipu.Khipu, layout khipu.Params, prefix []int) []int {
+func continuationReference(t *testing.T, k *testsupport.Paragraph, layout khipu.Params, prefix []int) []int {
 	t.Helper()
 	start, next := 0, 0
 	for i := 0; next < len(prefix); i++ {
@@ -121,10 +129,10 @@ func continuationReference(t *testing.T, k *khipu.Khipu, layout khipu.Params, pr
 	if start == len(k.Kind) {
 		return out
 	}
-	suffix := &khipu.Khipu{W: k.W[start:], MinW: k.MinW[start:], MaxW: k.MaxW[start:],
+	suffix := &testsupport.Paragraph{W: k.W[start:], MinW: k.MinW[start:], MaxW: k.MaxW[start:],
 		Penalty: k.Penalty[start:], Pos: k.Pos[start:], Len: k.Len[start:], Kind: k.Kind[start:], Flags: k.Flags[start:]}
 	layout.LineShape = continuationOffsetShape{layout.LineShape, len(prefix)}
-	breaks, err := BreakParagraph(suffix, layout, nil)
+	breaks, err := breakFixture(suffix, layout, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,9 +151,9 @@ func (s continuationOffsetShape) LineLength(n int32) dimen.DU {
 	return s.LineShape.LineLength(n + int32(s.offset))
 }
 
-func checkContinuationFrozen(t *testing.T, q *khipu.Khipukamayuq, k *khipu.Khipu, path []int, layout khipu.Params) *khipu.FrozenKhipu {
+func checkContinuationFrozen(t *testing.T, q *khipu.Khipukamayuq, k *testsupport.Paragraph, path []int, layout khipu.Params) *khipu.FrozenKhipu {
 	t.Helper()
-	f, err := q.Freeze(k, path, layout)
+	f, err := testsupport.Freeze(q, k, path, layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,4 +198,35 @@ func checkContinuationPrefix(t *testing.T, before, after *khipu.FrozenKhipu, lin
 			}
 		}
 	}
+}
+
+func breakContinuationFixture(k *testsupport.Paragraph, l khipu.Params) ([]int, error) {
+	p, e := BreakParagraph(testsupport.Request(k, l), nil)
+	if e != nil {
+		return nil, e
+	}
+	return k.Save(p), nil
+}
+func continueTrialFixture(k *testsupport.Paragraph, l khipu.Params, c *khipu.BreakCheckpoint) ([]int, error) {
+	r := testsupport.Request(k, l)
+	r.Prefix = c
+	p, e := ContinueParagraph(r, nil)
+	if e != nil {
+		return nil, e
+	}
+	return k.Save(p), nil
+}
+func checkpointTrialFixture(p *testsupport.Paragraph, path []int, n int) (*khipu.BreakCheckpoint, error) {
+	return khipu.Checkpoint(p.PlanFor(path), n)
+}
+func prefixTrialFixture(c *khipu.BreakCheckpoint, k *testsupport.Paragraph) ([]int, error) {
+	s, e := c.SeedFor(k.Binding)
+	if e != nil {
+		return nil, e
+	}
+	r := make([]int, len(s.Prefix))
+	for i, l := range s.Prefix {
+		r[i] = l.End.Knot
+	}
+	return r, nil
 }

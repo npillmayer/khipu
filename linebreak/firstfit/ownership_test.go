@@ -2,6 +2,8 @@ package firstfit
 
 import (
 	"errors"
+	"github.com/npillmayer/khipu/internal/search"
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"maps"
 	"reflect"
 	"slices"
@@ -12,13 +14,13 @@ import (
 	"github.com/npillmayer/khipu/linebreak"
 )
 
-type selectionProviderFunc func(*khipu.Khipu, int) ([]khipu.DiscretionaryCandidate, error)
+type selectionProviderFunc func(*testsupport.Paragraph, int) ([]khipu.DiscretionaryCandidate, error)
 
-func (f selectionProviderFunc) DiscretionaryCandidates(k *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error) {
-	return f(k, at)
+func (f selectionProviderFunc) DiscretionaryCandidates(k search.Paragraph, at int) ([]khipu.DiscretionaryCandidate, error) {
+	return f(k.(*testsupport.Paragraph), at)
 }
 
-func selectionParagraph(penalty int) *khipu.Khipu {
+func selectionParagraph(penalty int) *testsupport.Paragraph {
 	k := newKhipu([]node{
 		{w: 15, minw: 15, maxw: 15, kind: khipu.KTTextBox},
 		{w: 20, minw: 20, maxw: 20, p: penalty, kind: khipu.KTTextBox},
@@ -45,7 +47,7 @@ func TestSelectionsPublishOnlyOnSuccess(t *testing.T) {
 				failing := true
 				var calls []int
 				params := NewDefaultParameters()
-				params.DiscretionaryProvider = selectionProviderFunc(func(k *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error) {
+				params.discretionaryProvider = selectionProviderFunc(func(k *testsupport.Paragraph, at int) ([]khipu.DiscretionaryCandidate, error) {
 					calls = append(calls, at)
 					if !reflect.DeepEqual(k.SelectedDiscretionaries, before) {
 						t.Fatal("partial selections visible to provider")
@@ -62,7 +64,7 @@ func TestSelectionsPublishOnlyOnSuccess(t *testing.T) {
 					return []khipu.DiscretionaryCandidate{cand}, nil
 				})
 				layout := DefaultLayout(linebreak.RectangularParShape(24 * dimen.BP))
-				got, err := BreakParagraph(k, layout, params)
+				got, err := breakFixture(k, layout, params)
 				if !errors.Is(err, failure) || got != nil || !reflect.DeepEqual(k.SelectedDiscretionaries, before) || !reflect.DeepEqual(alias, before) {
 					t.Fatalf("failed call changed decisions: %v %v %+v", got, err, k.SelectedDiscretionaries)
 				}
@@ -77,15 +79,15 @@ func TestSelectionsPublishOnlyOnSuccess(t *testing.T) {
 					t.Fatal("candidate cache unexpectedly rolled back")
 				}
 				failing, calls = false, nil
-				got, err = BreakParagraph(k, layout, params)
+				got, err = breakFixture(k, layout, params)
 				want := map[int]khipu.DiscretionarySelection{1: {Source: 1, Variant: 1}, 3: {Source: 3, Variant: 1}}
 				if err != nil || !slices.Equal(got, []int{1, 3, 4}) || !maps.Equal(k.SelectedDiscretionaries, want) || !slices.Equal(calls, []int{1, 3}) {
 					t.Fatalf("retry did not publish complete result: %v %v %+v", got, err, k.SelectedDiscretionaries)
 				}
 				// A later successful run without selections clears the committed map.
-				params.DiscretionaryProvider = nil
+				params.discretionaryProvider = nil
 				params.MinHyphenGain = 100 * dimen.BP
-				if _, err := BreakParagraph(k, layout, params); err != nil || len(k.SelectedDiscretionaries) != 0 {
+				if _, err := breakFixture(k, layout, params); err != nil || len(k.SelectedDiscretionaries) != 0 {
 					t.Fatal("stale selections survived success", err)
 				}
 			}
@@ -103,7 +105,7 @@ func TestValidationFailurePreservesSelections(t *testing.T) {
 		}
 		k.SelectedDiscretionaries = map[int]khipu.DiscretionarySelection{0: {Source: 0, Variant: 9}}
 		before := maps.Clone(k.SelectedDiscretionaries)
-		if breaks, err := BreakParagraph(k, layout, nil); err == nil || breaks != nil || !maps.Equal(k.SelectedDiscretionaries, before) {
+		if breaks, err := breakFixture(k, layout, nil); err == nil || breaks != nil || !maps.Equal(k.SelectedDiscretionaries, before) {
 			t.Fatal("validation failure changed result", breaks, err)
 		}
 	}
@@ -111,21 +113,21 @@ func TestValidationFailurePreservesSelections(t *testing.T) {
 
 func TestDefaultParametersAreIndependent(t *testing.T) {
 	p := NewDefaultParameters()
-	if p.MinHyphenGain != 0 || p.DiscretionaryProvider != nil {
+	if p.MinHyphenGain != 0 || p.discretionaryProvider != nil {
 		t.Fatal("defaults changed", p)
 	}
 	p.MinHyphenGain = 100 * dimen.BP
-	p.DiscretionaryProvider = selectionProviderFunc(func(*khipu.Khipu, int) ([]khipu.DiscretionaryCandidate, error) {
+	p.discretionaryProvider = selectionProviderFunc(func(*testsupport.Paragraph, int) ([]khipu.DiscretionaryCandidate, error) {
 		t.Fatal("mutated defaults leaked")
 		return nil, nil
 	})
 	fresh := NewDefaultParameters()
-	if fresh.MinHyphenGain != 0 || fresh.DiscretionaryProvider != nil {
+	if fresh.MinHyphenGain != 0 || fresh.discretionaryProvider != nil {
 		t.Fatal("constructor shares state")
 	}
 	layout := DefaultLayout(linebreak.RectangularParShape(24 * dimen.BP))
-	a, err := BreakParagraph(selectionParagraph(InfinityDemerits), layout, nil)
-	b, err2 := BreakParagraph(selectionParagraph(InfinityDemerits), layout, fresh)
+	a, err := breakFixture(selectionParagraph(InfinityDemerits), layout, nil)
+	b, err2 := breakFixture(selectionParagraph(InfinityDemerits), layout, fresh)
 	if err != nil || err2 != nil || !slices.Equal(a, b) {
 		t.Fatal("nil differs from explicit defaults", a, b, err, err2)
 	}

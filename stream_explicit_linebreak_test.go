@@ -48,7 +48,7 @@ func TestStreamingExplicitBreaksEndToEnd(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				k, err := owner.EncodeParagraph(para)
+				k, err := owner.EncodeParagraphFixture(para)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -60,19 +60,19 @@ func TestStreamingExplicitBreaksEndToEnd(t *testing.T) {
 					shape := linebreak.RectangularParShape(width)
 					if engine == "firstfit" {
 						p := *firstfit.NewDefaultParameters()
-						p.DiscretionaryProvider = owner
-						return firstfit.BreakParagraph(k, firstfit.DefaultLayout(shape), &p)
+
+						return firstfitFixture(k, firstfit.DefaultLayout(shape), &p)
 					}
 					p := knuthplass.NewDefaultParameters()
 					layout := knuthplass.DefaultLayout(shape)
-					p.DiscretionaryProvider = owner
+
 					// Keep a small finite stretch so intermediate short segments
 					// remain geometrically evaluable, but exceed pass-1 tolerance.
 					if width == tc.width {
 						layout.RightSkip = khipu.KnotCore{MaxW: dimen.PT}
 						p.EmergencyStretch = 0
 					}
-					return knuthplass.BreakParagraph(k, layout, p)
+					return knuthplassFixture(k, layout, p)
 				}
 				wide, err := breakAt(100 * dimen.PT)
 				if err != nil || len(wide) != 1 || policy.calls != 0 {

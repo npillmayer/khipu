@@ -26,9 +26,9 @@ func TestEmergencyDeterministicTiesAndWarmRuns(t *testing.T) {
 		if run%2 != 0 {
 			slices.Reverse(candidates)
 		}
-		provider := &testDiscretionaryProvider{want: slices.Clone(candidates)}
+		provider := &testdiscretionaryProvider{want: slices.Clone(candidates)}
 		params := NewDefaultParameters()
-		params.EmergencyStretch, params.DiscretionaryProvider = 10*dimen.BP, provider
+		params.EmergencyStretch, params.discretionaryProvider = 10*dimen.BP, provider
 		layout := khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}
 		quality := pathQuality{
 			totalCost:    2*calcDemerits(100, 0, params) + calcDemerits(0, 0, params) + params.FinalHyphenDemerits,
@@ -42,7 +42,7 @@ func TestEmergencyDeterministicTiesAndWarmRuns(t *testing.T) {
 				!slices.Equal(result.breaks, want) || result.quality != quality || !maps.Equal(before, khp.SelectedDiscretionaries) {
 				t.Fatalf("run=%d warm=%d: unstable result or premature publication: %+v %v", run, warm, result, err)
 			}
-			breaks, err := BreakParagraph(khp, layout, params)
+			breaks, err := breakFixture(khp, layout, params)
 			wantSelected := map[int]khipu.DiscretionarySelection{1: {Source: 1, Variant: 1}}
 			if err != nil || !slices.Equal(breaks, projectBreakRefs(want)) || !maps.Equal(khp.SelectedDiscretionaries, wantSelected) ||
 				!slices.Equal(original, emergencyKnotSnapshot(khp)) || !slices.Equal(candidates, khp.DiscretionariesAt(1)) || !slices.Equal(candidates, provider.want) {
@@ -60,7 +60,7 @@ func TestEmergencyRetroactiveSeedsRemainPhysical(t *testing.T) {
 			PreBreak:  khipu.KnotCore{Kind: khipu.KTTextBox, W: 90 * dimen.BP, MinW: 90 * dimen.BP, MaxW: 90 * dimen.BP},
 			PostBreak: khipu.KnotCore{Kind: khipu.KTTextBox, W: 60 * dimen.BP, MinW: 60 * dimen.BP, MaxW: 60 * dimen.BP},
 		}
-		params.DiscretionaryProvider = &testDiscretionaryProvider{want: []khipu.DiscretionaryCandidate{candidate}}
+		params.discretionaryProvider = &testdiscretionaryProvider{want: []khipu.DiscretionaryCandidate{candidate}}
 		khp := newKhipu([]node{
 			{w: 90, minw: 90, maxw: 90, p: InfinityMerits, kind: khipu.KTTextBox},
 			{w: 150, minw: 150, maxw: 150, p: InfinityDemerits, kind: khipu.KTTextBox},

@@ -22,7 +22,7 @@ func intrinsicOwner() *Khipukamayuq {
 	}})
 }
 
-func intrinsicPrepare(t *testing.T, owner *Khipukamayuq, text string, options PrepareOptions) *PreparedParagraph {
+func intrinsicPrepare(t *testing.T, owner *Khipukamayuq, text string, options PrepareOptions) *FixturePrepared {
 	t.Helper()
 	var anchors []contracts.AtomicAnchor
 	for offset, r := range text {
@@ -30,7 +30,7 @@ func intrinsicPrepare(t *testing.T, owner *Khipukamayuq, text string, options Pr
 			anchors = append(anchors, contracts.AtomicAnchor{ID: contracts.AtomicID(len(anchors) + 1), ByteOffset: uint64(offset)})
 		}
 	}
-	p, err := owner.PrepareParagraph(ParagraphInput{preparationParagraph(t, text), anchors}, options)
+	p, err := owner.PrepareParagraphFixture(ParagraphInput{preparationParagraph(t, text), anchors}, options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestIntrinsicOrdinaryWidths(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			owner := intrinsicOwner()
 			p := intrinsicPrepare(t, owner, tc.text, PrepareOptions{AtomicBoundaries: tc.boundaries})
-			got, err := owner.MeasureIntrinsic(p, MeasureRequest{Atomics: tc.atoms})
+			got, err := owner.MeasureIntrinsicFixture(p, MeasureRequest{Atomics: tc.atoms})
 			if err != nil || got != tc.want {
 				t.Fatalf("got %+v, %v; want %+v", got, err, tc.want)
 			}
@@ -92,14 +92,14 @@ func TestIntrinsicUnbreakableStyledWord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := owner.PrepareParagraph(ParagraphInput{Paragraph: para}, PrepareOptions{})
+	p, err := owner.PrepareParagraphFixture(ParagraphInput{Paragraph: para}, PrepareOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(p.knots) != 3 {
 		t.Fatal("fixture must have two text knots and fill", p.knots)
 	}
-	got, err := owner.MeasureIntrinsic(p, MeasureRequest{})
+	got, err := owner.MeasureIntrinsicFixture(p, MeasureRequest{})
 	if err != nil || got != (IntrinsicWidths{20 * dimen.BP, 20 * dimen.BP}) {
 		t.Fatal("style boundary became a wrap", got, err)
 	}
@@ -133,7 +133,7 @@ func TestIntrinsicSignedDomain(t *testing.T) {
 			}
 			owner := intrinsicOwner()
 			p := intrinsicPrepare(t, owner, text, PrepareOptions{AtomicBoundaries: bounds})
-			got, err := owner.MeasureIntrinsic(p, MeasureRequest{tc.values})
+			got, err := owner.MeasureIntrinsicFixture(p, MeasureRequest{tc.values})
 			if tc.bad {
 				if got != (IntrinsicWidths{}) || !errors.Is(err, ErrIllegalArguments) {
 					t.Fatal(got, err)
@@ -151,7 +151,7 @@ func TestIntrinsicMinOverflowDespiteNegativeMaxSuffix(t *testing.T) {
 	owner := intrinsicOwner()
 	p := intrinsicPrepare(t, owner, "\uFFFC\uFFFC\uFFFC", PrepareOptions{AtomicBoundaries: []AtomicBoundary{{3, ProhibitBoundary}, {6, AllowBoundary}}})
 	request := MeasureRequest{[]AtomicIntrinsic{{1, 1500000000, 1500000000}, {2, 1500000000, 1500000000}, {3, -1500000000, -1500000000}}}
-	if got, err := owner.MeasureIntrinsic(p, request); got != (IntrinsicWidths{}) || !errors.Is(err, ErrIllegalArguments) {
+	if got, err := owner.MeasureIntrinsicFixture(p, request); got != (IntrinsicWidths{}) || !errors.Is(err, ErrIllegalArguments) {
 		t.Fatal("out-of-domain min-content hidden by signed max-content", got, err)
 	}
 }
@@ -166,7 +166,7 @@ func TestIntrinsicIgnoresFillAndElasticity(t *testing.T) {
 			owner.env.params.LeftSkip = KnotCore{W: 9 * dimen.BP, MinW: 9 * dimen.BP, MaxW: dimen.Fil}
 			owner.env.params.RightSkip = owner.env.params.LeftSkip
 			p := intrinsicPrepare(t, owner, "aa b", PrepareOptions{})
-			got, err := owner.MeasureIntrinsic(p, MeasureRequest{})
+			got, err := owner.MeasureIntrinsicFixture(p, MeasureRequest{})
 			if err != nil || got != (IntrinsicWidths{10 * dimen.BP, 20 * dimen.BP}) {
 				t.Fatal("fill, skips or elasticity affected intrinsic width", got, err)
 			}
@@ -192,8 +192,12 @@ func TestIntrinsicNeutralAndTrimSemantics(t *testing.T) {
 			owner := intrinsicOwner()
 			p := intrinsicPrepare(t, owner, "", PrepareOptions{})
 			p.knots = append(slices.Clone(tc.knots), p.knots[0])
+			p.material.material.planes = knotPlanes{}
+			for _, v := range p.knots {
+				p.material.material.planes.append(v)
+			}
 			p.shaping.sources = make([]knotSource, len(p.knots))
-			got, err := owner.MeasureIntrinsic(p, MeasureRequest{})
+			got, err := owner.MeasureIntrinsicFixture(p, MeasureRequest{})
 			if err != nil || got != (IntrinsicWidths{tc.want, tc.want}) {
 				t.Fatal(got, err)
 			}
@@ -216,25 +220,25 @@ func TestIntrinsicValidationAndRecovery(t *testing.T) {
 		nil, {{1, 10, 20}}, {{1, 10, 20}, {2, 30, 40}, {3, 1, 2}}, {{0, 10, 20}, {2, 30, 40}}, {{1, 10, 20}, {1, 30, 40}}, {{1, 10, 20}, {9, 30, 40}},
 		{{1, 20, 10}, {2, 30, 40}}, {{1, -dimen.Fil, 0}, {2, 30, 40}}, {{1, 0, dimen.Fil}, {2, 30, 40}}, {{1, dimen.Fill, dimen.Fill}, {2, 30, 40}},
 	} {
-		got, err := owner.MeasureIntrinsic(p, MeasureRequest{atoms})
+		got, err := owner.MeasureIntrinsicFixture(p, MeasureRequest{atoms})
 		if got != (IntrinsicWidths{}) || !errors.Is(err, ErrIllegalArguments) {
 			t.Fatal(atoms, got, err)
 		}
 	}
-	for _, prep := range []*PreparedParagraph{nil, {}, intrinsicPrepare(t, intrinsicOwner(), "", PrepareOptions{})} {
-		if got, err := owner.MeasureIntrinsic(prep, valid); got != (IntrinsicWidths{}) || !errors.Is(err, ErrIllegalArguments) {
+	for _, prep := range []*FixturePrepared{nil, {}, intrinsicPrepare(t, intrinsicOwner(), "", PrepareOptions{})} {
+		if got, err := owner.MeasureIntrinsicFixture(prep, valid); got != (IntrinsicWidths{}) || !errors.Is(err, ErrIllegalArguments) {
 			t.Fatal(got, err)
 		}
 	}
-	if _, err := (*Khipukamayuq)(nil).MeasureIntrinsic(p, valid); !errors.Is(err, ErrVoidKhipukamayuq) {
+	if _, err := (*Khipukamayuq)(nil).MeasureIntrinsicFixture(p, valid); !errors.Is(err, ErrVoidKhipukamayuq) {
 		t.Fatal(err)
 	}
 	want := IntrinsicWidths{30, 60}
-	if got, err := owner.MeasureIntrinsic(p, valid); got != want || err != nil {
+	if got, err := owner.MeasureIntrinsicFixture(p, valid); got != want || err != nil {
 		t.Fatal("retry", got, err)
 	}
 	valid.Atomics[0].MinAdvance = 35
-	if got, err := owner.MeasureIntrinsic(p, valid); got != (IntrinsicWidths{35, 60}) || err != nil {
+	if got, err := owner.MeasureIntrinsicFixture(p, valid); got != (IntrinsicWidths{35, 60}) || err != nil {
 		t.Fatal("stale atomic request", got, err)
 	}
 }
@@ -255,7 +259,7 @@ func TestIntrinsicNoServicesOrMutation(t *testing.T) {
 		knots := slices.Clone(p.knots)
 		glyphs := slices.Clone(p.shaping.glyphs)
 		for range 3 {
-			got, err := owner.MeasureIntrinsic(p, MeasureRequest{[]AtomicIntrinsic{{1, 10, 30}}})
+			got, err := owner.MeasureIntrinsicFixture(p, MeasureRequest{[]AtomicIntrinsic{{1, 10, 30}}})
 			if mode == NoHyphenation {
 				if err != nil {
 					t.Fatal(err)

@@ -7,8 +7,6 @@ import (
 	"github.com/npillmayer/khipu/contracts"
 	"github.com/npillmayer/khipu/dimen"
 	"github.com/npillmayer/khipu/helpers"
-	"github.com/npillmayer/khipu/linebreak/firstfit"
-	"github.com/npillmayer/khipu/linebreak/knuthplass"
 	"github.com/npillmayer/uax/bidi"
 	"testing"
 )
@@ -51,7 +49,7 @@ func TestInstanceRetainedThroughMeasureBindFreeze(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := owner.PrepareParagraph(khipu.ParagraphInput{Paragraph: para}, khipu.PrepareOptions{})
+	prepared, err := owner.PrepareParagraphFixture(khipu.ParagraphInput{Paragraph: para}, khipu.PrepareOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,24 +58,24 @@ func TestInstanceRetainedThroughMeasureBindFreeze(t *testing.T) {
 		t.Fatalf("uniform run bound %d times", calls)
 	}
 	for _, kp := range []bool{false, true} {
-		if _, err := owner.MeasureIntrinsic(prepared, khipu.MeasureRequest{}); err != nil {
+		if _, err := owner.MeasureIntrinsicFixture(prepared, khipu.MeasureRequest{}); err != nil {
 			t.Fatal(err)
 		}
-		elastic, err := owner.BindParagraph(prepared, nil)
+		elastic, err := owner.BindParagraphFixture(prepared, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		params := khipu.Params{LineShape: atomicShape(30 * dimen.BP)}
 		var breaks []int
 		if kp {
-			breaks, err = knuthplass.BreakParagraph(elastic, params, nil)
+			breaks, err = knuthplassFixture(elastic, params, nil)
 		} else {
-			breaks, err = firstfit.BreakParagraph(elastic, params, nil)
+			breaks, err = firstfitFixture(elastic, params, nil)
 		}
 		if err != nil {
 			t.Fatal(err)
 		}
-		frozen, err := owner.Freeze(elastic, breaks, params)
+		frozen, err := owner.FreezeFixture(elastic, breaks, params)
 		if err != nil {
 			t.Fatal(err)
 		}

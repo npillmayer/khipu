@@ -21,22 +21,22 @@ package khipu
 // The streaming provider applies this before querying automatic alternatives.
 // Encoded source, metadata and contexts must remain stable while caches exist.
 func (k *Khipu) automaticHyphenationEligible(at int) bool {
-	if k == nil || k.paragraph == nil || at < 0 || at >= len(k.Kind) ||
-		k.Kind[at] != KTTextBox || k.flagsAt(at)&KFDiscardable != 0 ||
-		at >= len(k.boxRefs) || at >= len(k.shaping.sources) {
+	if k == nil || k.material == nil || k.material.paragraph == nil || at < 0 || at >= k.KnotCount() ||
+		k.material.planes.kind[at] != KTTextBox || k.material.planes.flags[at]&KFDiscardable != 0 ||
+		at >= len(k.material.boxRefs) || at >= len(k.material.shaping.sources) {
 		return false
 	}
-	id := k.boxRefs[at]
-	if id <= 0 || int(id) > len(k.shaping.boxes) {
+	id := k.material.boxRefs[at]
+	if id <= 0 || int(id) > len(k.material.shaping.boxes) {
 		return false // Includes manually constructed knots without provenance.
 	}
-	box := k.shaping.boxes[id-1]
-	if box.replacement != nil || box.context < 0 || box.context >= len(k.shaping.contexts) {
+	box := k.material.shaping.boxes[id-1]
+	if box.replacement != nil || box.context < 0 || box.context >= len(k.material.shaping.contexts) {
 		return false
 	}
 	s := box.source
-	bounds := k.shaping.boundaries
-	if s != k.shaping.sources[at].source || s.scalarStart >= s.scalarEnd ||
+	bounds := k.material.shaping.boundaries
+	if s != k.material.shaping.sources[at].source || s.scalarStart >= s.scalarEnd ||
 		s.scalarEnd > uint64(len(bounds)) || s.byteStart >= s.byteEnd {
 		return false
 	}
@@ -53,7 +53,7 @@ func (k *Khipu) automaticHyphenationEligible(at int) bool {
 		(s.scalarEnd < uint64(len(bounds)) && !bounds[s.scalarEnd-1].wordBoundary) {
 		return false
 	}
-	run := k.shaping.contexts[box.context].source
+	run := k.material.shaping.contexts[box.context].source
 	if s.byteStart < run.byteStart || s.byteEnd > run.byteEnd ||
 		s.scalarStart < run.scalarStart || s.scalarEnd > run.scalarEnd {
 		return false

@@ -78,16 +78,16 @@ func TestProhibitedDiscretionariesThroughPublicBreaker(t *testing.T) {
 						candidates = append(candidates, policyCandidate(3, 8*dimen.BP, 50))
 					}
 					params := NewDefaultParameters()
-					p := &testDiscretionaryProvider{want: candidates}
+					p := &testdiscretionaryProvider{want: candidates}
 					if provider {
-						params.DiscretionaryProvider = p
+						params.discretionaryProvider = p
 					} else {
 						for _, c := range candidates {
 							k.AddDiscretionaryCandidate(1, c)
 						}
 					}
 					k.SelectedDiscretionaries = map[int]khipu.DiscretionarySelection{1: {Source: 1, Variant: 99}}
-					got, err := BreakParagraph(k, DefaultLayout(linebreak.RectangularParShape(24*dimen.BP)), params)
+					got, err := breakFixture(k, DefaultLayout(linebreak.RectangularParShape(24*dimen.BP)), params)
 					want := []int{0, 2}
 					if allowed {
 						want = []int{1, 2}

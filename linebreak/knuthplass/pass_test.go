@@ -1,6 +1,7 @@
 package knuthplass
 
 import (
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"slices"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 
 // Projection convenience for fixtures interested in indices rather than variants.
 // Each fixture specifies finality independently of discretionary discovery.
-func breakParagraphPass(khp *khipu.Khipu, layout khipu.Params,
+func breakParagraphPass(khp *testsupport.Paragraph, layout khipu.Params,
 	params *Parameters, pass passConfig) ([]kinx, pathQuality, bool, error) {
 	result, err := breakParagraphPassRefs(khp, layout, params, pass)
 	return projectBreakRefs(result.breaks), result.quality, result.complete, err
@@ -50,9 +51,9 @@ func TestForcedBreakFallbacksKeepPositiveAccumulatedCost(t *testing.T) {
 func TestCollectOptimalBreakpointsTracksWorstBadness(t *testing.T) {
 	params := NewDefaultParameters()
 	parfillnode := node{
-		params.ParFillSkip.W,
-		params.ParFillSkip.MinW,
-		params.ParFillSkip.MaxW,
+		(khipu.KnotCore{MaxW: dimen.Fill}).W,
+		(khipu.KnotCore{MaxW: dimen.Fill}).MinW,
+		(khipu.KnotCore{MaxW: dimen.Fill}).MaxW,
 		InfinityMerits,
 		khipu.KTGlue,
 	}
@@ -85,9 +86,9 @@ func TestBreakParagraphStartsSecondPassAfterFailedPreTolerancePass(t *testing.T)
 	params := NewDefaultParameters()
 	params.LinePenalty = 0
 	khp := testKhipu()
-	khp.W = append(khp.W, 7990, 7990, params.ParFillSkip.W)
-	khp.MinW = append(khp.MinW, 7990, 7990, params.ParFillSkip.MinW)
-	khp.MaxW = append(khp.MaxW, 7999, 7990, params.ParFillSkip.MaxW)
+	khp.W = append(khp.W, 7990, 7990, (khipu.KnotCore{MaxW: dimen.Fill}).W)
+	khp.MinW = append(khp.MinW, 7990, 7990, (khipu.KnotCore{MaxW: dimen.Fill}).MinW)
+	khp.MaxW = append(khp.MaxW, 7999, 7990, (khipu.KnotCore{MaxW: dimen.Fill}).MaxW)
 	khp.Penalty = append(khp.Penalty, -100, InfinityDemerits, InfinityMerits)
 	khp.Kind = append(khp.Kind, khipu.KTTextBox, khipu.KTTextBox, khipu.KTGlue)
 	khp.Pos = append(khp.Pos, 0, 0, 0)
@@ -111,7 +112,7 @@ func TestBreakParagraphStartsSecondPassAfterFailedPreTolerancePass(t *testing.T)
 		t.Fatalf("expected second pass to find a path, got ok=%v breakpoints=%v", ok, secondPassBreaks)
 	}
 
-	breakpoints, err := BreakParagraph(khp, layout, params)
+	breakpoints, err := breakFixture(khp, layout, params)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}

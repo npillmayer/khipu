@@ -1,85 +1,92 @@
 package khipu
 
-import (
-	"fmt"
-	"slices"
-)
+import "slices"
 
-// BreakCheckpoint is an immutable, preparation-bound prefix of a complete legal
-// ordinary break path. It contains logical knot boundaries, never source-byte
-// offsets or frozen visual indexes. Its zero value is invalid.
-//
-// A checkpoint keeps its preparation and owner alive. Drop checkpoints, bindings
-// and preparation when the paragraph has fully flowed (or is abandoned); frozen
-// results do not retain them. Serialize operations on the owner and keep borrowed
-// source/styles/services stable. Checkpoints are not serialization records.
-type BreakCheckpoint struct {
-	prepared *PreparedParagraph
-	prefix   []int
+// ResumePosition identifies the next original knot and optional pending post-break
+// material. Carry identity is meaningful even for an empty/zero-width replacement.
+type ResumePosition struct {
+	NextKnot int
+	Carry    AlternativeID
 }
 
-// Checkpoint certifies the first acceptedLines of a successful complete break
-// path against prepared's immutable ordinary boundary policy. Pass the complete
-// path returned by a breaker, including the paragraph-final trailer, not merely
-// its prefix. Zero accepted lines and acceptance of the entire path are valid.
-// A later successful continuation path may certify a longer prefix in the same way.
-//
-// Certification checks every boundary and mandatory break, including the unaccepted
-// suffix. It establishes path legality, not width fit, optimality or which breaker
-// produced it; first-fit and KP paths are equally admissible. No binding, shaping,
-// font acceptance, metric query or bidi analysis is performed. Only NoHyphenation
-// preparations are supported: discretionary replacement carry is not captured.
-// The prefix is copied; no working arrays or caller slices are retained.
-// Cancellation/errors return no checkpoint and preserve earlier results.
-func (q *Khipukamayuq) Checkpoint(prepared *PreparedParagraph, path []int, acceptedLines int) (*BreakCheckpoint, error) {
-	if q == nil || prepared == nil || prepared.owner != q || prepared.preparedMaterial == nil {
+// BreakCheckpoint certifies a copied accepted prefix from a complete Tikray. It
+// retains the incarnation, not a chain of plans/checkpoints or a discovery cache.
+type BreakCheckpoint struct {
+	material      *Khipu
+	prefix        []LineDecision
+	replacements  map[AlternativeID]*alternative
+	policies      []PolicyRecord
+	linePolicy    []int
+	prefixAtomics []AtomicAdvance
+	resume        ResumePosition
+}
+
+// ContinuationSeed is detached breaker scratch, never an independent certificate.
+// Editing it cannot change the checkpoint or authorize a changed locked prefix.
+type ContinuationSeed struct {
+	Prefix    []LineDecision
+	Resume    ResumePosition
+	PostBreak KnotCore
+}
+
+// AcceptedLines reports the number of complete locked lines.
+func (s ContinuationSeed) AcceptedLines() int { return len(s.Prefix) }
+
+// Checkpoint certifies zero through all accepted lines. Initially only
+// NoHyphenation material is supported; general replacement carry stays deferred.
+func Checkpoint(p *Tikray, accepted int) (*BreakCheckpoint, error) {
+	if p == nil || p.Incarnation().token == nil || accepted < 0 || accepted > len(p.lines) {
 		return nil, ErrIllegalArguments
 	}
-	if prepared.hyphenation != NoHyphenation {
+	if p.binding.material.hyphenation != NoHyphenation {
 		return nil, ErrUnsupportedPolicy
 	}
-	n := len(prepared.knots)
-	if n == 0 || len(path) == 0 || path[len(path)-1] != n-1 || acceptedLines < 0 || acceptedLines > len(path) {
-		return nil, ErrIllegalArguments
-	}
-	previous := -1
-	for _, at := range path {
-		if at <= previous || at >= n || prepared.knots[at].Penalty >= MaxPenalty {
-			return nil, fmt.Errorf("%w: invalid checkpoint boundary", ErrIllegalArguments)
+	c := &BreakCheckpoint{material: p.binding.material, prefix: slices.Clone(p.lines[:accepted]), replacements: make(map[AlternativeID]*alternative), policies: slices.Clone(p.policies), linePolicy: slices.Clone(p.linePolicy[:accepted])}
+	if accepted > 0 {
+		end := c.prefix[accepted-1].End
+		c.resume.NextKnot = end.Knot + 1
+		if end.Kind == DiscretionaryBoundary {
+			c.resume.Carry = end.Alternative
 		}
-		for i := previous + 1; i < at; i++ {
-			if prepared.knots[i].Penalty <= MaxMerit {
-				return nil, fmt.Errorf("%w: checkpoint path skips mandatory break", ErrIllegalArguments)
-			}
-		}
-		previous = at
 	}
-	c := &BreakCheckpoint{prepared: prepared, prefix: slices.Clone(path[:acceptedLines])}
-
+	for _, line := range c.prefix {
+		if line.End.Kind == DiscretionaryBoundary {
+			id := line.End.Alternative
+			c.replacements[id] = p.replacements[id]
+		}
+	}
+	for i := 0; i < c.resume.NextKnot; i++ {
+		t, _ := c.material.Knot(i)
+		if t.Atomic != 0 {
+			c.prefixAtomics = append(c.prefixAtomics, AtomicAdvance{ID: t.Atomic, Advance: p.binding.advances[c.material.atomicSlots[t.Atomic]]})
+		}
+	}
 	return c, nil
 }
-
-// PrefixFor returns detached certified boundaries for a binding of this exact
-// preparation. It is the breaker-facing checkpoint seam: ownership, policy and
-// plane lengths are checked without scanning prefix knots. Base planes must stay
-// read-only, as for all owner-produced Khipus. Modifying the returned slice cannot
-// change the checkpoint. Nil/zero checkpoints or foreign/uninitialized bindings
-// return ErrIllegalArguments and no prefix.
-func (c *BreakCheckpoint) PrefixFor(k *Khipu) ([]int, error) {
-	if c == nil || c.prepared == nil || c.prepared.owner == nil || c.prepared.preparedMaterial == nil ||
-		k == nil || k.owner != c.prepared.owner || k.boundMaterial != c.prepared.preparedMaterial || k.paragraph != c.prepared.paragraph {
-		return nil, ErrIllegalArguments
+func (c *BreakCheckpoint) validate(b *AtomicBinding) error {
+	if c == nil || c.material == nil || c.material.ID().token == nil || b == nil || b.Incarnation() != c.material.ID() {
+		return ErrIllegalArguments
 	}
-	if c.prepared.hyphenation != NoHyphenation || !k.hyphenationPolicy || k.hyphenation != NoHyphenation {
-		return nil, ErrUnsupportedPolicy
+	if c.material.hyphenation != NoHyphenation {
+		return ErrUnsupportedPolicy
 	}
-	n := len(c.prepared.knots)
-	for _, length := range []int{len(k.Kind), len(k.W), len(k.MinW), len(k.MaxW), len(k.Penalty), len(k.Pos), len(k.Len), len(k.Flags), len(k.boxRefs), len(k.shaping.sources)} {
-		if length != n {
-			return nil, ErrIllegalArguments
+	for _, a := range c.prefixAtomics {
+		if b.advances[b.material.atomicSlots[a.ID]] != a.Advance {
+			return ErrIllegalArguments
 		}
 	}
-	prefix := slices.Clone(c.prefix)
+	return nil
+}
 
-	return prefix, nil
+// SeedFor checks identity and consumed atomic advances without prefix scanning,
+// width queries or services. Errors return a zero seed. Suffix-only advances may change.
+func (c *BreakCheckpoint) SeedFor(b *AtomicBinding) (ContinuationSeed, error) {
+	if e := c.validate(b); e != nil {
+		return ContinuationSeed{}, e
+	}
+	s := ContinuationSeed{Prefix: slices.Clone(c.prefix), Resume: c.resume}
+	if s.Resume.Carry != (AlternativeID{}) {
+		s.PostBreak = c.replacements[s.Resume.Carry].postCore
+	}
+	return s, nil
 }

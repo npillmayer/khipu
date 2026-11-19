@@ -2,6 +2,7 @@ package knuthplass
 
 import (
 	"fmt"
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"maps"
 	"reflect"
 	"slices"
@@ -18,9 +19,9 @@ import (
 // any width. Both arms call the real public multi-pass entry point.
 type opaqueUniformShape struct{ khipu.LineShape }
 
-func uniformPublicFixture(tb testing.TB, name string, words int, compact bool) (*khipu.Khipu, khipu.Params, *Parameters, passID) {
+func uniformPublicFixture(tb testing.TB, name string, words int, compact bool) (*testsupport.Paragraph, khipu.Params, *Parameters, passID) {
 	tb.Helper()
-	var khp *khipu.Khipu
+	var khp *testsupport.Paragraph
 	var layout khipu.Params
 	var params *Parameters
 	wantPass := passPreTolerance
@@ -31,7 +32,7 @@ func uniformPublicFixture(tb testing.TB, name string, words int, compact bool) (
 		}
 		owner := khipu.NewKhipukamayuq(config)
 		var err error
-		khp, err = owner.EncodeParagraph(loremParagraph(tb, words))
+		khp, err = testsupport.Encode(owner, loremParagraph(tb, words))
 		if err != nil {
 			tb.Fatal(err)
 		}
@@ -40,7 +41,7 @@ func uniformPublicFixture(tb testing.TB, name string, words int, compact bool) (
 		if name == "second-productive" {
 			params = NewDefaultParameters()
 			params.PreTolerance = 0
-			params.DiscretionaryProvider = owner
+			params.discretionaryProvider = fixtureProvider{}
 			wantPass = passTolerance
 		}
 	} else {
@@ -77,7 +78,7 @@ func TestUniformPublicPasses(t *testing.T) {
 				// Cold public call and warm retry must return the same break/variant
 				// decisions. Selection publication is part of the comparison.
 				for range 2 {
-					breaks, err := BreakParagraph(khp, layout, params)
+					breaks, err := breakFixture(khp, layout, params)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -125,7 +126,7 @@ func BenchmarkUniformPublic(b *testing.B) {
 					for range b.N {
 						khp, layout, params, _ := uniformPublicFixture(b, name, words, compact)
 						b.StartTimer()
-						got, err := BreakParagraph(khp, layout, params)
+						got, err := breakFixture(khp, layout, params)
 						b.StopTimer()
 						if err != nil || !slices.Equal(got, projectBreakRefs(want.breaks)) || !maps.Equal(khp.SelectedDiscretionaries, selected) {
 							b.Fatal("public result differs from baseline", err)

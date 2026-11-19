@@ -32,14 +32,14 @@ func TestAutomaticProviderRetainsChangedSpellingAndCache(t *testing.T) {
 		return []HyphenationFragment{{PreBreak: "EC-", PostBreak: "lair", Penalty: 27, SourceSplit: SourceSplit{3, true}}}, nil
 	}), nil)
 	owner.env.streaming.Defaults.Language = language.French
-	k, err := owner.EncodeParagraph(preparationParagraph(t, "xx éclair"))
+	k, err := owner.EncodeParagraphFixture(preparationParagraph(t, "xx éclair"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if calls != 0 {
 		t.Fatal("eager discovery")
 	}
-	cands, err := owner.DiscretionaryCandidates(k, 2)
+	cands, err := owner.DiscoverFixture(k, 2)
 	if err != nil || len(cands) != 1 {
 		t.Fatal(cands, err)
 	}
@@ -49,7 +49,7 @@ func TestAutomaticProviderRetainsChangedSpellingAndCache(t *testing.T) {
 		pre.replacement.text != "EC-" || post.replacement.text != "lair" {
 		t.Fatal("lost source/replacement distinction", c, pre, post)
 	}
-	again, err := owner.DiscretionaryCandidates(k, 2)
+	again, err := owner.DiscoverFixture(k, 2)
 	if err != nil || calls != 1 || !reflect.DeepEqual(cands, again) {
 		t.Fatal("cache miss", calls, err)
 	}
@@ -81,12 +81,12 @@ func TestAutomaticPreparationRejectsMalformedBatch(t *testing.T) {
 			}
 			streams := 0
 			owner := automaticTestOwner(&testhyphenator{want: []HyphenationFragment{valid, bad}}, func() (contracts.StreamingShaper, error) { streams++; return helpers.NewSyntheticStreamingShaper(0) })
-			k, err := owner.EncodeParagraph(preparationParagraph(t, "éclair"))
+			k, err := owner.EncodeParagraphFixture(preparationParagraph(t, "éclair"))
 			if err != nil {
 				t.Fatal(err)
 			}
 			before := k.shaping
-			got, err := owner.DiscretionaryCandidates(k, 0)
+			got, err := owner.DiscoverFixture(k, 0)
 			if got != nil || !errors.Is(err, contracts.ErrIllegalArguments) || streams != 1 || len(k.DiscretionariesAt(0)) != 0 || !reflect.DeepEqual(before, k.shaping) {
 				t.Fatal("malformed response published/shaped", got, err, streams)
 			}
@@ -100,11 +100,11 @@ func TestAutomaticVariantsAndEmptyFiltering(t *testing.T) {
 		{Variant: 1, PreBreak: "abc-", PostBreak: "d", SourceSplit: SourceSplit{3, true}},
 		{PreBreak: "", PostBreak: "bcd", SourceSplit: SourceSplit{1, true}},
 	}}, nil)
-	k, err := owner.EncodeParagraph(preparationParagraph(t, "abcd"))
+	k, err := owner.EncodeParagraphFixture(preparationParagraph(t, "abcd"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := owner.DiscretionaryCandidates(k, 0)
+	got, err := owner.DiscoverFixture(k, 0)
 	if err != nil || len(got) != 2 || got[0].Variant != 2 || got[1].Variant != 1 || got[0].PreBreak.Penalty != Penalty(owner.env.params.Hyphenpenalty) {
 		t.Fatal(got, err)
 	}
@@ -122,11 +122,11 @@ func TestAutomaticProviderUsesResolvedDirection(t *testing.T) {
 	owner.env.streaming.Defaults.Language = language.Hebrew
 	owner.env.streaming.Defaults.Script = language.MustParseScript("Hebr")
 	original := *owner.env.params
-	k, err := owner.EncodeParagraph(preparationParagraph(t, "אבגד"))
+	k, err := owner.EncodeParagraphFixture(preparationParagraph(t, "אבגד"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = owner.DiscretionaryCandidates(k, 0); err != nil || !called {
+	if _, err = owner.DiscoverFixture(k, 0); err != nil || !called {
 		t.Fatal(called, err)
 	}
 	if !reflect.DeepEqual(original, *owner.env.params) {
@@ -143,12 +143,12 @@ func TestAutomaticProviderDoesNotQueryWordFragments(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		k, err := owner.EncodeParagraph(p)
+		k, err := owner.EncodeParagraphFixture(p)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for i := range k.Kind {
-			if got, err := owner.DiscretionaryCandidates(k, i); err != nil || len(got) != 0 {
+			if got, err := owner.DiscoverFixture(k, i); err != nil || len(got) != 0 {
 				t.Fatal(got, err)
 			}
 		}
@@ -169,16 +169,16 @@ func TestAutomaticProviderBatchFailureAndRetry(t *testing.T) {
 		}
 		return helpers.NewSyntheticStreamingShaper(0)
 	})
-	k, err := owner.EncodeParagraph(preparationParagraph(t, "abcdef"))
+	k, err := owner.EncodeParagraphFixture(preparationParagraph(t, "abcdef"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	before := k.shaping
-	got, err := owner.DiscretionaryCandidates(k, 0)
+	got, err := owner.DiscoverFixture(k, 0)
 	if !errors.Is(err, failure) || got != nil || len(k.DiscretionariesAt(0)) != 0 || !reflect.DeepEqual(before, k.shaping) {
 		t.Fatal("partial batch", got, err)
 	}
-	got, err = owner.DiscretionaryCandidates(k, 0)
+	got, err = owner.DiscoverFixture(k, 0)
 	if err != nil || len(got) != 2 || policy.calls != 2 {
 		t.Fatal("retry failed", got, err)
 	}
@@ -193,12 +193,12 @@ func TestAutomaticAndExplicitRequestsShareParagraph(t *testing.T) {
 		}
 		return []HyphenationFragment{{PreBreak: "ab-", PostBreak: "cd", SourceSplit: SourceSplit{2, true}}}, nil
 	}), nil)
-	k, err := owner.EncodeParagraph(preparationParagraph(t, "abcd ab\u00adcd"))
+	k, err := owner.EncodeParagraphFixture(preparationParagraph(t, "abcd ab\u00adcd"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, at := range []int{0, 2} {
-		got, err := owner.DiscretionaryCandidates(k, at)
+		got, err := owner.DiscoverFixture(k, at)
 		if err != nil || len(got) != 1 || got[0].preBox == 0 || got[0].postBox == 0 {
 			t.Fatal(got, err)
 		}

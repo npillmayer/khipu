@@ -42,18 +42,12 @@ type MeasureRequest struct {
 // contributions are accumulated in checked int64, then normalized at the result
 // boundary. Negative completed layout lines may still be unsupported by Freeze.
 //
-// Serialize operations on the creating owner and keep source/styles/services
-// stable, as for PrepareParagraph/BindParagraph. This query neither changes the
-// base material nor reads binding-local selections or discretionary caches. Context
-// is checked during evaluation; every failure returns zero widths and leaves the
-// preparation reusable. Ordinary evaluation is linear in knots and occurrences;
-// explicit cache misses additionally prepare and shape complete replacement pairs.
-func (kq *Khipukamayuq) MeasureIntrinsic(prepared *PreparedParagraph, request MeasureRequest) (IntrinsicWidths, error) {
-	if kq == nil {
-		return IntrinsicWidths{}, ErrVoidKhipukamayuq
-	}
-	if prepared == nil || prepared.owner != kq || prepared.preparedMaterial == nil || prepared.paragraph == nil ||
-		len(prepared.knots) == 0 || len(prepared.knots) != len(prepared.shaping.sources) || len(request.Atomics) != prepared.atomicCount {
+// Discovery must match the material's incarnation even with NoHyphenation.
+// Inputs are consumed synchronously; failures return zero widths. Complete cached
+// batches survive failed trials, and intrinsic rejection never poisons layout's
+// cache. Borrowed source/styles/services must remain stable.
+func MeasureIntrinsic(prepared *Khipu, discovery *Discovery, request MeasureRequest) (IntrinsicWidths, error) {
+	if !discovery.validFor(prepared) || prepared.KnotCount() == 0 || prepared.material.paragraph == nil || prepared.KnotCount() != len(prepared.material.shaping.sources) || len(request.Atomics) != len(prepared.atomicIDs) {
 		return IntrinsicWidths{}, ErrIllegalArguments
 	}
 	if prepared.hyphenation != NoHyphenation && prepared.hyphenation != ExplicitHyphenation {
@@ -61,11 +55,11 @@ func (kq *Khipukamayuq) MeasureIntrinsic(prepared *PreparedParagraph, request Me
 	}
 	// The compiler always appends this generated trailer. Validate that identity;
 	// no other zero-source or zero-width knot is excluded from measurement.
-	trailer := len(prepared.knots) - 1
-	last, source := prepared.knots[trailer], prepared.shaping.sources[trailer]
-	end := prepared.paragraph.Raw().Len()
+	trailer := prepared.KnotCount() - 1
+	last, source := prepared.material.planes.knot(trailer), prepared.material.shaping.sources[trailer]
+	end := prepared.material.paragraph.Raw().Len()
 	if last.Kind != KTGlue || last.IsDiscardable() || last.Penalty > MaxMerit || last.Len != 0 ||
-		last.Pos != prepared.paragraph.Offset+end || source.atomic != 0 || source.source.byteStart != end || source.source.byteEnd != end {
+		last.Pos != prepared.material.paragraph.Offset+end || source.atomic != 0 || source.source.byteStart != end || source.source.byteEnd != end {
 		return IntrinsicWidths{}, fmt.Errorf("%w: missing prepared paragraph trailer", ErrIllegalArguments)
 	}
 	atoms := make(map[contracts.AtomicID]AtomicIntrinsic, len(request.Atomics))
@@ -78,8 +72,8 @@ func (kq *Khipukamayuq) MeasureIntrinsic(prepared *PreparedParagraph, request Me
 	}
 	var rawMin, rawMax int64
 	// Validate all requested identities before consulting any explicit services.
-	for i := range prepared.knots {
-		if id := prepared.shaping.sources[i].atomic; id != 0 {
+	for i := 0; i < prepared.KnotCount(); i++ {
+		if id := prepared.material.shaping.sources[i].atomic; id != 0 {
 			if _, ok := atoms[id]; !ok {
 				return IntrinsicWidths{}, fmt.Errorf("%w: missing atomic intrinsic range for %d", ErrIllegalArguments, id)
 			}
@@ -87,13 +81,14 @@ func (kq *Khipukamayuq) MeasureIntrinsic(prepared *PreparedParagraph, request Me
 	}
 	if prepared.hyphenation == ExplicitHyphenation {
 		var err error
-		rawMin, err = prepared.explicitMinContent(trailer, atoms)
+		rawMin, err = prepared.explicitMinContent(discovery, trailer, atoms)
 		if err != nil {
 			return IntrinsicWidths{}, err
 		}
 	}
 	minStart, maxStart := 0, 0
-	for i, knot := range prepared.knots {
+	for i := 0; i < prepared.KnotCount(); i++ {
+		knot := prepared.material.planes.knot(i)
 		limit := min(i+1, trailer) // Exclude only the validated generated trailer.
 		if prepared.hyphenation == NoHyphenation && knot.Penalty < MaxPenalty {
 			width, err := prepared.intrinsicSpan(minStart, limit, atoms, false)
@@ -125,15 +120,19 @@ func (kq *Khipukamayuq) MeasureIntrinsic(prepared *PreparedParagraph, request Me
 // completed widths for intrinsic normalization. Two passes avoid assuming that
 // signed prefix widths grow monotonically or rearranging additions across neutral
 // retained material. Each knot is visited a bounded number of times per query.
-func (p *PreparedParagraph) intrinsicSpan(start, end int, atoms map[contracts.AtomicID]AtomicIntrinsic, maximum bool) (int64, error) {
-	return intrinsicKnotSpan(p.knots[start:end], func(i int) dimen.DU {
-		if id := p.shaping.sources[start+i].atomic; id != 0 {
+func (p *Khipu) intrinsicSpan(start, end int, atoms map[contracts.AtomicID]AtomicIntrinsic, maximum bool) (int64, error) {
+	knots := make([]KnotCore, end-start)
+	for i := range knots {
+		knots[i] = p.material.planes.knot(start + i)
+	}
+	return intrinsicKnotSpan(knots, func(i int) dimen.DU {
+		if id := p.material.shaping.sources[start+i].atomic; id != 0 {
 			if maximum {
 				return atoms[id].MaxAdvance
 			}
 			return atoms[id].MinAdvance
 		}
-		return p.knots[start+i].W
+		return p.material.planes.w[start+i]
 	})
 }
 
@@ -165,7 +164,7 @@ func intrinsicKnotSpan(knots []KnotCore, advance func(int) dimen.DU) (int64, err
 
 // Form min-content spans in logical order; post-break carry preserves the
 // original after-textbox boundary. There is no working binding or fake geometry.
-func (p *PreparedParagraph) explicitMinContent(trailer int, atoms map[contracts.AtomicID]AtomicIntrinsic) (int64, error) {
+func (p *Khipu) explicitMinContent(discovery *Discovery, trailer int, atoms map[contracts.AtomicID]AtomicIntrinsic) (int64, error) {
 	var widest int64
 	var span []KnotCore
 	finish := func() error {
@@ -177,24 +176,25 @@ func (p *PreparedParagraph) explicitMinContent(trailer int, atoms map[contracts.
 		span = span[:0]
 		return nil
 	}
-	for i, knot := range p.knots[:trailer] {
-		if id := p.shaping.sources[i].atomic; id != 0 {
+	for i := 0; i < trailer; i++ {
+		knot := p.material.planes.knot(i)
+		if id := p.material.shaping.sources[i].atomic; id != 0 {
 			knot.W = atoms[id].MinAdvance
 		}
 		if knot.Kind == KTTextBox {
-			batch, err := p.explicitReplacements(i, true)
+			batch, err := discovery.alternatives(i, true)
 			if err != nil {
 				return 0, err
 			}
-			for _, replacement := range batch.replacements {
-				if replacement.penalty >= MaxPenalty {
+			for _, replacement := range batch.alternatives {
+				if replacement.preCore.Penalty >= MaxPenalty {
 					continue
 				}
-				span = append(span, KnotCore{Kind: KTTextBox, W: replacement.pair.pre.widths.W})
+				span = append(span, KnotCore{Kind: KTTextBox, W: replacement.preCore.W})
 				if err := finish(); err != nil {
 					return 0, err
 				}
-				knot = KnotCore{Kind: KTTextBox, W: replacement.pair.post.widths.W, Penalty: knot.Penalty}
+				knot = KnotCore{Kind: KTTextBox, W: replacement.postCore.W, Penalty: knot.Penalty}
 			}
 		}
 		span = append(span, knot)

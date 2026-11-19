@@ -11,7 +11,7 @@ import (
 	"github.com/npillmayer/khipu/helpers"
 )
 
-func discretionaryStorageFixture(t *testing.T) (*Khipu, *shapedDiscretionaryInput) {
+func discretionaryStorageFixture(t *testing.T) (*FixtureKhipu, *shapedDiscretionaryInput) {
 	t.Helper()
 	k, err := NewKhipukamayuq(Config{}).publishCandidateParagraph(storageCandidates(t, "aéz"))
 	if err != nil {

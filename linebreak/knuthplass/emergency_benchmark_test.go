@@ -2,6 +2,7 @@ package knuthplass
 
 import (
 	"fmt"
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"maps"
 	"slices"
 	"strings"
@@ -28,7 +29,7 @@ var emergencyWorkloads = []emergencyWorkload{
 }
 
 type emergencyWorkloadFixture struct {
-	khp        *khipu.Khipu
+	khp        *testsupport.Paragraph
 	layout     khipu.Params
 	params     *Parameters
 	provider   *countingLoremProvider
@@ -58,7 +59,7 @@ func newEmergencyWorkload(tb testing.TB, tc emergencyWorkload, words int) emerge
 	if err != nil {
 		tb.Fatal(err)
 	}
-	f.khp, err = owner.EncodeParagraph(para)
+	f.khp, err = testsupport.Encode(owner, para)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -66,7 +67,7 @@ func newEmergencyWorkload(tb testing.TB, tc emergencyWorkload, words int) emerge
 	f.params = NewDefaultParameters()
 	f.params.EmergencyStretch = 6 * dimen.PT
 	if tc.provider != "" {
-		f.params.DiscretionaryProvider = f.provider
+		f.params.discretionaryProvider = f.provider
 	}
 	f.layout = khipu.Params{LineShape: linebreak.RectangularParShape(17 * dimen.PT)}
 	if len(f.khp.Kind) != words*2+1 || f.policyCalls() != 0 || len(f.khp.DiscretionaryCandidates) != 0 {
@@ -235,7 +236,7 @@ func BenchmarkEmergencyWorkloads(b *testing.B) {
 						if isolated {
 							result, err = breakParagraphPassRefs(f.khp, f.layout, f.params, pass)
 						} else {
-							breaks, err = BreakParagraph(f.khp, f.layout, f.params)
+							breaks, err = breakFixture(f.khp, f.layout, f.params)
 						}
 						b.StopTimer()
 						if err != nil {

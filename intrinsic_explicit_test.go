@@ -50,7 +50,7 @@ func TestExplicitIntrinsicMaterialPolicies(t *testing.T) {
 			p := intrinsicPrepare(t, o, tc.text, PrepareOptions{Hyphenation: ExplicitHyphenation})
 			before := *shapes
 			for n := 0; n < 2; n++ {
-				got, err := o.MeasureIntrinsic(p, MeasureRequest{})
+				got, err := o.MeasureIntrinsicFixture(p, MeasureRequest{})
 				if tc.unsupported {
 					if got != (IntrinsicWidths{}) || !errors.Is(err, ErrUnsupportedPolicy) {
 						t.Fatal(got, err)
@@ -74,7 +74,7 @@ func TestExplicitIntrinsicDefaultPenaltyAndInvalidMaterial(t *testing.T) {
 	o, h, _ := explicitOwner([]HyphenationFragment{{PreBreak: "-"}})
 	o.env.params.Hyphenpenalty = int(MaxPenalty)
 	p := intrinsicPrepare(t, o, "ab\u00adcd", PrepareOptions{Hyphenation: ExplicitHyphenation})
-	if got, err := o.MeasureIntrinsic(p, MeasureRequest{}); err != nil || got != (IntrinsicWidths{20 * dimen.BP, 20 * dimen.BP}) {
+	if got, err := o.MeasureIntrinsicFixture(p, MeasureRequest{}); err != nil || got != (IntrinsicWidths{20 * dimen.BP, 20 * dimen.BP}) {
 		t.Fatal(got, err)
 	}
 	if h.calls != 1 {
@@ -84,7 +84,7 @@ func TestExplicitIntrinsicDefaultPenaltyAndInvalidMaterial(t *testing.T) {
 		o, _, shapes := explicitOwner([]HyphenationFragment{{PreBreak: "-"}, {PreBreak: bad, Penalty: MaxPenalty}})
 		p := intrinsicPrepare(t, o, "ab\u00adcd", PrepareOptions{Hyphenation: ExplicitHyphenation})
 		before := *shapes
-		got, err := o.MeasureIntrinsic(p, MeasureRequest{})
+		got, err := o.MeasureIntrinsicFixture(p, MeasureRequest{})
 		if got != (IntrinsicWidths{}) || !errors.Is(err, contracts.ErrIllegalArguments) || *shapes != before || len(p.explicit) != 0 {
 			t.Fatal(got, err)
 		}
@@ -100,7 +100,7 @@ func TestExplicitIntrinsicNeighborsAndSignedAtoms(t *testing.T) {
 	for _, tc := range []struct{ prefix, suffix, min, max dimen.DU }{
 		{3, 6, 18, 29}, {-10, 6, 16, 16}, {3, -20, 18, 18},
 	} {
-		got, err := o.MeasureIntrinsic(p, MeasureRequest{[]AtomicIntrinsic{{1, tc.prefix * dimen.BP, tc.prefix * dimen.BP}, {2, tc.suffix * dimen.BP, tc.suffix * dimen.BP}}})
+		got, err := o.MeasureIntrinsicFixture(p, MeasureRequest{[]AtomicIntrinsic{{1, tc.prefix * dimen.BP, tc.prefix * dimen.BP}, {2, tc.suffix * dimen.BP, tc.suffix * dimen.BP}}})
 		if err != nil || got != (IntrinsicWidths{tc.min * dimen.BP, tc.max * dimen.BP}) {
 			t.Fatal(tc, got, err)
 		}
@@ -109,7 +109,7 @@ func TestExplicitIntrinsicNeighborsAndSignedAtoms(t *testing.T) {
 		t.Fatal("base mutated or cache not reused")
 	}
 	// Max-content can be finite while the pre-break prefix overflows the domain.
-	got, err := o.MeasureIntrinsic(p, MeasureRequest{[]AtomicIntrinsic{{1, dimen.Fil - 1, dimen.Fil - 1}, {2, -100 * dimen.BP, -100 * dimen.BP}}})
+	got, err := o.MeasureIntrinsicFixture(p, MeasureRequest{[]AtomicIntrinsic{{1, dimen.Fil - 1, dimen.Fil - 1}, {2, -100 * dimen.BP, -100 * dimen.BP}}})
 	if got != (IntrinsicWidths{}) || !errors.Is(err, ErrIllegalArguments) {
 		t.Fatal(got, err)
 	}
@@ -131,7 +131,7 @@ func TestExplicitIntrinsicAdjacentStyledTextboxes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := o.PrepareParagraph(ParagraphInput{Paragraph: para}, PrepareOptions{Hyphenation: ExplicitHyphenation})
+	p, err := o.PrepareParagraphFixture(ParagraphInput{Paragraph: para}, PrepareOptions{Hyphenation: ExplicitHyphenation})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestExplicitIntrinsicAdjacentStyledTextboxes(t *testing.T) {
 	}
 	// xab- | cdef- | ghy = 20,25,15; no-break xabcdefghy = 50.
 	// A spurious break after the first post fragment would incorrectly give 20.
-	got, err := o.MeasureIntrinsic(p, MeasureRequest{})
+	got, err := o.MeasureIntrinsicFixture(p, MeasureRequest{})
 	if err != nil || got != (IntrinsicWidths{25 * dimen.BP, 50 * dimen.BP}) {
 		t.Fatal(got, err)
 	}
@@ -154,7 +154,7 @@ func TestExplicitIntrinsicFailureAndRetry(t *testing.T) {
 			p := intrinsicPrepare(t, o, "ab\u00adcd ef\u00adgh", PrepareOptions{Hyphenation: ExplicitHyphenation})
 			calls, shapes := 0, 0
 			fail := true
-			o.env.hyphenator = explicitMaterialFunc(func(word string, _ *Params) ([]HyphenationFragment, error) {
+			p.discovery.recipe.env.hyphenator = explicitMaterialFunc(func(word string, _ *Params) ([]HyphenationFragment, error) {
 				if word != softHyphenMarker {
 					t.Error("whole word request", word)
 				}
@@ -166,21 +166,21 @@ func TestExplicitIntrinsicFailureAndRetry(t *testing.T) {
 				}
 				return []HyphenationFragment{{PreBreak: "-"}}, nil
 			})
-			o.env.streaming.NewShaper = func() (contracts.StreamingShaper, error) {
+			p.discovery.recipe.env.streaming.NewShaper = func() (contracts.StreamingShaper, error) {
 				shapes++
 				if fail && ((shapes == 3 && stage == "pre") || (shapes == 4 && stage == "post")) {
 					return nil, sentinel
 				}
 				return helpers.NewSyntheticStreamingShaper(8)
 			}
-			got, err := o.MeasureIntrinsic(p, MeasureRequest{})
+			got, err := o.MeasureIntrinsicFixture(p, MeasureRequest{})
 			wantErr := sentinel
 			if got != (IntrinsicWidths{}) || !errors.Is(err, wantErr) || len(p.explicit) != 1 {
 				t.Fatal(got, err, len(p.explicit))
 			}
 			saved := p.explicit[0].replacements[0].pair
 			fail = false
-			got, err = o.MeasureIntrinsic(p, MeasureRequest{})
+			got, err = o.MeasureIntrinsicFixture(p, MeasureRequest{})
 			if err != nil || got != (IntrinsicWidths{15 * dimen.BP, 45 * dimen.BP}) || calls != 3 || p.explicit[0].replacements[0].pair != saved {
 				t.Fatal("retry", got, err, calls)
 			}
@@ -192,7 +192,7 @@ func TestExplicitIntrinsicValidatesAtomicsBeforeServices(t *testing.T) {
 	o, h, shapes := explicitOwner([]HyphenationFragment{{PreBreak: "-"}})
 	p := intrinsicPrepare(t, o, "ab\u00adcd\uFFFC", PrepareOptions{Hyphenation: ExplicitHyphenation})
 	before := *shapes
-	got, err := o.MeasureIntrinsic(p, MeasureRequest{[]AtomicIntrinsic{{ID: 2}}})
+	got, err := o.MeasureIntrinsicFixture(p, MeasureRequest{[]AtomicIntrinsic{{ID: 2}}})
 	if got != (IntrinsicWidths{}) || !errors.Is(err, ErrIllegalArguments) || h.calls != 0 || *shapes != before || len(p.explicit) != 0 {
 		t.Fatal(got, err)
 	}
@@ -203,7 +203,7 @@ func TestExplicitIntrinsicFeatureErrorPrecedesVariantPolicy(t *testing.T) {
 	p := intrinsicPrepare(t, o, "ab\u00adcd", PrepareOptions{Hyphenation: ExplicitHyphenation})
 	before := *shapes
 	p.shaping.contexts[0].params.shaping.Features = []contracts.ShapeFeature{{Start: 1, End: 2}}
-	got, err := o.MeasureIntrinsic(p, MeasureRequest{})
+	got, err := o.MeasureIntrinsicFixture(p, MeasureRequest{})
 	if got != (IntrinsicWidths{}) || !errors.Is(err, contracts.ErrIllegalArguments) || errors.Is(err, ErrUnsupportedPolicy) || *shapes != before || len(p.explicit) != 0 {
 		t.Fatal(got, err)
 	}

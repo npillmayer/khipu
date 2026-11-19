@@ -1,9 +1,9 @@
 package knuthplass
 
 import (
+	"github.com/npillmayer/khipu/internal/search"
 	"slices"
 
-	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/schuko/tracing"
 )
 
@@ -13,14 +13,14 @@ import (
 // Forced boundaries retire earlier origins; discretionary variants seed the
 // following line with their post-break fragment. Collection follows the
 // predecessor table to recover the single cheapest complete path.
-func (kp *linebreaker) buildBreakpointPaths(khp *khipu.Khipu) error {
-	if khp == nil || len(khp.W) == 0 {
+func (kp *linebreaker) buildBreakpointPaths(khp search.Paragraph) error {
+	if khp == nil || khp.KnotCount() == 0 {
 		return ErrNoBreakpoints
 	}
-	kp.end = PlainBreak(len(khp.W) - 1)
+	kp.end = PlainBreak(khp.KnotCount() - 1)
 	kp.prepareRetirement(khp)
 	trace := tracer()
-	for last := range len(khp.W) {
+	for last := range khp.KnotCount() {
 		live, err := kp.processKnot(khp, last)
 		if kp.arithmeticErr != nil {
 			return kp.arithmeticErr

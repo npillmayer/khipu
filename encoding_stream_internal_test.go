@@ -16,7 +16,7 @@ func TestDefaultStreamingOwnerIsolation(t *testing.T) {
 	first.env.streaming.Defaults.EmSize = 20 * dimen.PT
 	for i, owner := range []*Khipukamayuq{first, second} {
 		for range 2 {
-			k, err := owner.EncodeParagraph(preparationParagraph(t, "a"))
+			k, err := owner.EncodeParagraphFixture(preparationParagraph(t, "a"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -29,7 +29,7 @@ func TestDefaultStreamingOwnerIsolation(t *testing.T) {
 			}
 		}
 	}
-	if k, err := second.EncodeParagraph(preparationParagraph(t, "")); err != nil || len(k.Kind) != 1 || k.Flags[0] != 0 || k.Penalty[0] != MaxMerit {
+	if k, err := second.EncodeParagraphFixture(preparationParagraph(t, "")); err != nil || len(k.Kind) != 1 || k.Flags[0] != 0 || k.Penalty[0] != MaxMerit {
 		t.Fatal("empty paragraph", k, err)
 	}
 }
@@ -47,7 +47,7 @@ func TestStreamingOwnerRetainsArenaAndFeatureSnapshot(t *testing.T) {
 	cfg.Defaults.Features = nil
 	owner = NewKhipukamayuq(Config{Streaming: &cfg})
 	p := preparationParagraph(t, "a b")
-	k, err := owner.EncodeParagraph(p)
+	k, err := owner.EncodeParagraphFixture(p)
 	if err != nil {
 		t.Fatal(err)
 	}

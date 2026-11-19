@@ -2,40 +2,14 @@ package firstfit
 
 import (
 	"errors"
+	"github.com/npillmayer/khipu/internal/search"
 
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/linebreak"
 	"github.com/npillmayer/schuko/tracing"
 )
 
-// BreakParagraph finds first-fit breakpoints for a paragraph represented as the
-// SOA Khipu. It walks the paragraph once from left to right and keeps
-// the most recent feasible breakpoint as a checkpoint. When a later feasible
-// breakpoint overflows the line, the algorithm commits the remembered
-// checkpoint and carries the already scanned post-break material over to the
-// next line.
-//
-// Fit means effective MinW <= target, after edge trimming and including skips.
-// Natural-width overflow alone does not force a break when shrink is available.
-// Clients wanting fixed-width content must supply MinW = W = MaxW for that
-// content; a fil side skip can still absorb positive slack without compressing it.
-// Breaking chooses endpoints only; freezing performs the actual adjustment.
-//
-// Results are zero-based indices of line-ending knots, including the final
-// trailer. SelectedDiscretionaries is replaced only on success. Errors preserve
-// earlier selections, though providers may populate candidate caches during a
-// failed call. Nil params selects NewDefaultParameters for algorithm controls only.
-// Layout must be resolved
-// explicitly (for example with DefaultLayout) and reused unchanged for freezing.
-// Configure DiscretionaryProvider for lazy discovery.
-//
-// This synchronous call has no context argument. The standard owner provider
-// shapes lazy replacements with internal streaming cancellation and joining.
-func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) ([]kinx, error) {
-	return breakParagraph(khp, layout, params, nil)
-}
-
-func breakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters, seed *breakSeed) ([]kinx, error) {
+func breakParagraph(khp search.Paragraph, layout khipu.Params, params *Parameters, seed *breakSeed) ([]kinx, error) {
 	if err := layout.ValidateGeometry(); err != nil {
 		return nil, err
 	}
@@ -43,7 +17,7 @@ func breakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters, s
 	if khp == nil {
 		return nil, errors.New("cannot break a paragraph without khipu or parshape")
 	}
-	if len(khp.Kind) == 0 {
+	if khp.KnotCount() == 0 {
 		return nil, errors.New("cannot break an empty paragraph")
 	}
 	if params == nil {
@@ -64,7 +38,7 @@ func breakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters, s
 	}
 	trace := tracer()
 	debug := trace.GetTraceLevel() >= tracing.LevelDebug
-	for i := start; i < len(khp.Kind); i++ {
+	for i := start; i < khp.KnotCount(); i++ {
 		k := khp.KnotByIndex(i)
 		prevSeg := seg.segmentState()
 		if debug {
@@ -80,6 +54,9 @@ func breakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters, s
 			firstInLine = false
 		}
 		linelen := parshape.LineLength(int32(len(breakpoints) + 1))
+		if err := search.WidthError(parshape); err != nil {
+			return nil, err
+		}
 
 		segw := seg.width(layout)
 		if err := segw.Err(); err != nil {
@@ -164,6 +141,9 @@ func breakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters, s
 					return nil, err
 				}
 				nextLength := parshape.LineLength(int32(len(breakpoints) + 1))
+				if err := search.WidthError(parshape); err != nil {
+					return nil, err
+				}
 
 				if nextWidth.Min <= nextLength {
 					seg.trackcarry()
@@ -182,13 +162,13 @@ func breakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters, s
 	}
 	// The final node is expected to be a paragraph-final forced break. If no
 	// explicit breakpoint has been committed yet, fall back to the last knot.
-	if len(breakpoints) == 0 || breakpoints[len(breakpoints)-1] != len(khp.Kind)-1 {
-		breakpoints = append(breakpoints, len(khp.Kind)-1)
+	if len(breakpoints) == 0 || breakpoints[len(breakpoints)-1] != khp.KnotCount()-1 {
+		breakpoints = append(breakpoints, khp.KnotCount()-1)
 	}
 
 	// No remaining operation can fail. Replace the previous decisions, including
 	// clearing stale selections when this successful run chose no discretionaries.
-	clear(khp.SelectedDiscretionaries)
+	clear(khp.Selections())
 	for _, choice := range selections {
 		khp.SelectDiscretionary(choice.Source, choice)
 	}

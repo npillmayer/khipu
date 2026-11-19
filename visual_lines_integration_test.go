@@ -34,7 +34,7 @@ func TestVisualLinesFromBothBreakers(t *testing.T) {
 				}
 				para.Offset = 100
 				owner := khipu.NewKhipukamayuq(khipu.Config{})
-				k, err := owner.EncodeParagraph(para)
+				k, err := owner.EncodeParagraphFixture(para)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -42,9 +42,9 @@ func TestVisualLinesFromBothBreakers(t *testing.T) {
 				var breaks []int
 				if engine == "firstfit" {
 					params := *firstfit.NewDefaultParameters()
-					breaks, err = firstfit.BreakParagraph(k, firstfit.DefaultLayout(shape), &params)
+					breaks, err = firstfitFixture(k, firstfit.DefaultLayout(shape), &params)
 				} else {
-					breaks, err = knuthplass.BreakParagraph(k, knuthplass.DefaultLayout(shape), knuthplass.NewDefaultParameters())
+					breaks, err = knuthplassFixture(k, knuthplass.DefaultLayout(shape), knuthplass.NewDefaultParameters())
 				}
 				if err != nil {
 					t.Fatal(err)

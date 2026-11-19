@@ -43,7 +43,7 @@ func TestDefaultLayoutProfiles(t *testing.T) {
 	}
 }
 
-func layoutParagraph(t *testing.T, dir bidi.Direction) (*khipu.Khipukamayuq, *khipu.Khipu) {
+func layoutParagraph(t *testing.T, dir bidi.Direction) (*khipu.Khipukamayuq, *khipu.FixtureKhipu) {
 	t.Helper()
 	text := styled.TextFromString("aa bb\ncc")
 	p, err := styled.ParagraphFromText(&text, 0, text.Raw().Len(), dir, nil)
@@ -51,7 +51,7 @@ func layoutParagraph(t *testing.T, dir bidi.Direction) (*khipu.Khipukamayuq, *kh
 		t.Fatal(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	k, err := owner.EncodeParagraph(p)
+	k, err := owner.EncodeParagraphFixture(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestFirstfitRaggedRightFreezing(t *testing.T) {
 			owner, k := layoutParagraph(t, dir)
 			layout := firstfit.DefaultLayout(linebreak.RectangularParShape(target))
 			before := slices.Clone(k.W)
-			breaks, err := firstfit.BreakParagraph(k, layout, nil)
+			breaks, err := firstfitFixture(k, layout, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -123,10 +123,10 @@ func TestSharedLayoutExplicitZeroSkips(t *testing.T) {
 			owner, k := layoutParagraph(t, bidi.LeftToRight)
 			shape := linebreak.RectangularParShape(30 * dimen.PT)
 			layout := firstfit.DefaultLayout(shape)
-			breakLine := func(p khipu.Params) ([]int, error) { return firstfit.BreakParagraph(k, p, nil) }
+			breakLine := func(p khipu.Params) ([]int, error) { return firstfitFixture(k, p, nil) }
 			if engine == "knuthplass" {
 				layout = knuthplass.DefaultLayout(shape)
-				breakLine = func(p khipu.Params) ([]int, error) { return knuthplass.BreakParagraph(k, p, nil) }
+				breakLine = func(p khipu.Params) ([]int, error) { return knuthplassFixture(k, p, nil) }
 			}
 			layout.LeftSkip, layout.RightSkip = khipu.KnotCore{}, khipu.KnotCore{}
 			breaks, err := breakLine(layout)
@@ -158,12 +158,12 @@ func TestFirstfitFillPreservesGreedyBreakpoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	k, err := owner.EncodeParagraph(para)
+	k, err := owner.EncodeParagraphFixture(para)
 	if err != nil {
 		t.Fatal(err)
 	}
 	layout := firstfit.DefaultLayout(linebreak.RectangularParShape(30 * dimen.PT))
-	breaks, err := firstfit.BreakParagraph(k, layout, nil)
+	breaks, err := firstfitFixture(k, layout, nil)
 	if err != nil || len(breaks) != 2 {
 		t.Fatal(breaks, err)
 	}
@@ -172,7 +172,7 @@ func TestFirstfitFillPreservesGreedyBreakpoints(t *testing.T) {
 		t.Fatal(got, err)
 	}
 	layout.RightSkip = khipu.KnotCore{}
-	zeroBreaks, err := firstfit.BreakParagraph(k, layout, nil)
+	zeroBreaks, err := firstfitFixture(k, layout, nil)
 	if err != nil || !slices.Equal(breaks, zeroBreaks) {
 		t.Fatal("fill changed greedy choices", breaks, zeroBreaks, err)
 	}
@@ -195,10 +195,10 @@ func TestLayoutValidationBeforeBreaking(t *testing.T) {
 		owner, k := layoutParagraph(t, bidi.LeftToRight)
 		k.SelectedDiscretionaries = map[int]khipu.DiscretionarySelection{0: {Source: 0, Variant: 17}}
 		want := map[int]khipu.DiscretionarySelection{0: {Source: 0, Variant: 17}}
-		if got, err := firstfit.BreakParagraph(k, layout, nil); got != nil || err == nil {
+		if got, err := firstfitFixture(k, layout, nil); got != nil || err == nil {
 			t.Fatal(got, err)
 		}
-		if got, err := knuthplass.BreakParagraph(k, layout, nil); got != nil || err == nil {
+		if got, err := knuthplassFixture(k, layout, nil); got != nil || err == nil {
 			t.Fatal(got, err)
 		}
 		if !reflect.DeepEqual(k.SelectedDiscretionaries, want) {

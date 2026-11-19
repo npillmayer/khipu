@@ -23,7 +23,7 @@ type Config struct {
 	Streaming *StreamingConfig
 
 	// Hyphenator supplies lazy discretionary alternatives. Nil disables discovery;
-	// candidates already cached on a Khipu remain available.
+	// complete alternatives are memoized separately in Discovery.
 	// The supplied instance is retained, not copied.
 	// Keep its policy stable while encoded paragraphs are in use: both positive
 	// and successful empty discovery results are cached for each paragraph.
@@ -34,7 +34,7 @@ type Config struct {
 	// not affect the Khipukamayuq. Nil selects the existing default parameters.
 	// A non-nil value is used in full: zero fields are not filled with defaults.
 	// LineShape is a shared service, not deep-copied. Encoding does not use
-	// paragraph geometry; pass the resolved Params to breaking/freezing explicitly.
+	// paragraph geometry; supply geometry in BreakRequest when breaking.
 	Params *Params
 
 	// ParFillSkip supplies the final knot's W, MinW, and MaxW. Nil selects
@@ -75,14 +75,11 @@ func defaultStreamingConfig() *StreamingConfig {
 	}
 }
 
-// Khipukamayuq owns paragraph preparation, encoding, binding, and lazy shaping.
-// Construct it with [NewKhipukamayuq]; its zero value is not configured for use.
-// Use [Khipukamayuq.EncodeParagraph] for text alone, or prepare once with
-// [Khipukamayuq.PrepareParagraph], measure with [Khipukamayuq.MeasureIntrinsic],
-// and bind atomic advances with [Khipukamayuq.BindParagraph]. After linebreaking,
-// [Khipukamayuq.Freeze] creates an immutable result from the chosen decisions.
-// Serialize operations on an owner and keep source, styles, and retained font
-// services stable for the lifetime of derived paragraphs and results.
+// Khipukamayuq is a configured preparation executor, not material identity.
+// Construct it with NewKhipukamayuq. PrepareParagraph and EncodeParagraph return
+// immutable material and its independent Discovery; the executor need not survive
+// those calls. Serialize construction calls sharing mutable collaborators. Keep
+// borrowed source, styles and font services stable for all derived results.
 type Khipukamayuq struct {
 	env typEnv
 }

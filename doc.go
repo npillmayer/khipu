@@ -1,52 +1,32 @@
-// Package khipu encodes styled text into struct-of-arrays paragraphs for
-// linebreaking. Khipu stores widths, UTF-8 source spans, flags, and penalties in
-// aligned planes; KnotByIndex returns a KnotCore value snapshot.
+// Package khipu prepares styled text as immutable struct-of-arrays material,
+// binds atomic advances, and freezes independent linebreaking trials.
 //
-// Construct a Khipukamayuq with Config and call EncodeParagraph.
-// Config{} selects synthetic streaming shaping for unstyled text. Applications
-// supply Config.Streaming for font-backed shaping and style resolution, and an
-// optional Hyphenator for lazy alternatives. EncodeParagraph takes a context
-// and a styled paragraph; shaping always uses the streaming contract.
-// Encoding preserves original source bytes and appends the final fill/forced
-// break, including for empty paragraphs. Normalize text before establishing
-// styled source ranges if needed.
+// Khipukamayuq.PrepareParagraph returns a Khipu and its synchronized Discovery.
+// EncodeParagraph is the text-only convenience. Config{} selects deterministic
+// synthetic streaming shaping; applications supply Config.Streaming for real
+// fonts/styles and an optional Hyphenator. Original UTF-8 coordinates, whole-
+// paragraph bidi context and scalar feature domains survive preparation.
 //
-// The linebreak/firstfit and linebreak/knuthplass packages consume these
-// paragraphs and return line-ending knot indices. To discover hyphenation
-// alternatives lazily, set the breaker's DiscretionaryProvider to the owner.
-// Chosen variants are retained in Khipu.SelectedDiscretionaries. Each successful
-// breaker run replaces the previous selections; failures preserve them.
+// BindParagraph overlays copied signed atomic advances without copying base
+// knots or shaping. The firstfit and knuthplass packages accept a BreakRequest
+// and return an immutable Tikray: complete endpoints, selected replacements,
+// captured geometry, effective policies and diagnostics. Later trials never
+// replace earlier decisions. Freeze consumes only the chosen Tikray and performs
+// no shape callback, discovery or shaping. FrozenKhipu retains stable glyph/source
+// data independently of preparation, bindings, discovery and trial workspaces.
 //
-// For mixed text and atomic inline occurrences, use [ParagraphInput] with
-// [Khipukamayuq.PrepareParagraph]. Reuse the [PreparedParagraph] for intrinsic
-// measurement through [Khipukamayuq.MeasureIntrinsic] and for independent working
-// bindings through [Khipukamayuq.BindParagraph]. Atomics participate in source
-// and bidi analysis but bypass shaping; callers supply their signed advances.
-// [Khipukamayuq.Checkpoint] certifies a copied ordinary-break prefix from a
-// complete legal NoHyphenation path. linebreak/firstfit.ContinueParagraph searches
-// only the suffix of a fresh binding of that preparation.
-// Callers preserve accepted line widths for freezing and release checkpoints and
-// preparation when that paragraph has fully flowed; frozen results are independent.
+// MeasureIntrinsic supports ordinary and bounded explicit hyphenation without
+// target geometry. Checkpoint certifies an accepted prefix of a complete Tikray;
+// firstfit.ContinueParagraph searches only its NoHyphenation suffix. Prefix
+// widths/decisions are retained, while changed suffix atomic advances are allowed.
+// Drop material, discovery, plans and checkpoints when each paragraph has fully
+// flowed; frozen fragments remain usable. Vertical assembly/rendering are outside
+// this module. No public typesetting operation takes a context. Internal streaming
+// failures still cancel, drain and join producers before cleanup.
 //
-// Owners and their mutable collaborators must not be used concurrently.
-// Linebreaking does not produce final glyph placement or rendering. Internal
-// line materialization and glue-only freezing are exposed through Freeze,
-// returning an opaque FrozenKhipu. Streaming paragraphs retain glyph/source provenance.
-// Package contracts owns the service
-// interfaces and their value types. Package helpers provides deterministic
-// defaults: SyntheticFont, DefaultStyleResolver, and SyntheticStreamingShaper.
-// The default resolver rejects application-defined styles; synthetic glyphs
-// are not real font shaping. Import contracts and helpers directly; the root
-// package does not re-export their service types or constructors.
-// Paragraph-specific interfaces stay here.
-//
-/*
-License
-
-Governed by a 3-Clause BSD license. License file may be found in the root
-folder of this module.
-
-Copyright © 2017–2021 Norbert Pillmayer <norbert@pillmayer.com>
-
-*/
+// Source/styles/font services remain stable under their borrowing contracts.
+// Discovery serializes cache misses; shared collaborators across incarnations
+// still need their own serialization. Independent trials own their search state.
+// Package contracts defines backend interfaces without concrete font types;
+// helpers supplies synthetic defaults, not production font shaping.
 package khipu

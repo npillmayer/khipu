@@ -1,5 +1,12 @@
 # Documentation Guide
 
+Current reflow usage: [immutable material, discovery and Tikray](PREPARED_PARAGRAPHS.md)
+and [executable examples](../example_test.go). Reflow PR 1 replaces the mutable
+PreparedParagraph/Khipu lifecycle. Detailed derivations retain explicitly marked
+pre-migration API sketches and measurements as evidence; those are not current
+consumer instructions. Typography/tytui adoption remains PR 2/3.
+
+
 Start with a client workflow, then follow its contract reference when you need
 details. This index describes the supported module as of November 15, 2026;
 implementation records and proposals are listed separately below.

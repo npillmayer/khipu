@@ -25,7 +25,7 @@ func TestGeneratedPlacementParagraphEdge(t *testing.T) {
 				// sentinels. Owner defaults are LTR even for the RTL paragraphs.
 				fill := KnotCore{W: 2 * dimen.PT, MinW: dimen.PT, MaxW: 3 * dimen.PT}
 				owner := NewKhipukamayuq(Config{ParFillSkip: &fill})
-				k, err := owner.EncodeParagraph(para)
+				k, err := owner.EncodeParagraphFixture(para)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -93,7 +93,7 @@ func TestGeneratedPlacementWrappedLines(t *testing.T) {
 
 func TestGeneratedPlacementAfterDiscretionary(t *testing.T) {
 	owner, k, _ := logicalTestDiscretionary(t)
-	p, err := owner.materializeLogicalLines(k, []int{0, len(k.Kind) - 1})
+	p, err := owner.materializeLogicalLinesFixture(k, []int{0, len(k.Kind) - 1})
 	if err != nil {
 		t.Fatal(err)
 	}

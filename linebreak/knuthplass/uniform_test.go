@@ -2,6 +2,7 @@ package knuthplass
 
 import (
 	"fmt"
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"reflect"
 	"testing"
 
@@ -15,7 +16,7 @@ type unadvertisedUniformShape struct{}
 
 func (unadvertisedUniformShape) LineLength(int32) dimen.DU { return 150 * dimen.PT }
 
-func uniformFixture(tb testing.TB, words int, shape khipu.LineShape, mode string, pass passConfig, forced bool, reward bool) (*linebreaker, *khipu.Khipu) {
+func uniformFixture(tb testing.TB, words int, shape khipu.LineShape, mode string, pass passConfig, forced bool, reward bool) (*linebreaker, *testsupport.Paragraph) {
 	tb.Helper()
 	config := khipu.Config{}
 	switch mode {
@@ -25,7 +26,7 @@ func uniformFixture(tb testing.TB, words int, shape khipu.LineShape, mode string
 		config.Hyphenator = &loremHyphenator{}
 	}
 	owner := khipu.NewKhipukamayuq(config)
-	khp, err := owner.EncodeParagraph(loremParagraph(tb, words))
+	khp, err := testsupport.Encode(owner, loremParagraph(tb, words))
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -44,7 +45,7 @@ func uniformFixture(tb testing.TB, words int, shape khipu.LineShape, mode string
 	params := NewDefaultParameters()
 	params.FirstHyphenDemerits, params.FinalHyphenDemerits = 75, 125
 	if mode != "ordinary" {
-		params.DiscretionaryProvider = owner
+		params.discretionaryProvider = fixtureProvider{}
 	}
 	kp, err := prepareLineBreaker(DefaultLayout(shape), params)
 	if err != nil {

@@ -2,6 +2,7 @@ package knuthplass
 
 import (
 	"fmt"
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"reflect"
 	"testing"
 
@@ -39,13 +40,13 @@ func TestEmptyDiscoveryCachePreservesPassWork(t *testing.T) {
 				config.Hyphenator = productive
 			}
 			owner := khipu.NewKhipukamayuq(config)
-			khp, err := owner.EncodeParagraph(loremParagraph(t, 50))
+			khp, err := testsupport.Encode(owner, loremParagraph(t, 50))
 			if err != nil {
 				t.Fatal(err)
 			}
 			provider := &countingLoremProvider{owner: owner}
 			params := NewDefaultParameters()
-			params.DiscretionaryProvider = provider
+			params.discretionaryProvider = provider
 			var first []BreakRef
 			var preds map[pathState]predecessor
 			calls := 0
@@ -118,7 +119,7 @@ func BenchmarkRetirementWorkloads(b *testing.B) {
 							config.Hyphenator = empty
 						}
 						owner := khipu.NewKhipukamayuq(config)
-						khp, err := owner.EncodeParagraph(loremParagraph(b, words))
+						khp, err := testsupport.Encode(owner, loremParagraph(b, words))
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -130,7 +131,7 @@ func BenchmarkRetirementWorkloads(b *testing.B) {
 						provider := &countingLoremProvider{owner: owner}
 						params := NewDefaultParameters()
 						if mode != "ordinary" {
-							params.DiscretionaryProvider = provider
+							params.discretionaryProvider = provider
 						} else {
 							params.PreTolerance = params.Tolerance
 						}

@@ -32,7 +32,7 @@ func TestFreezeFromBothBreakers(t *testing.T) {
 					t.Fatal(err)
 				}
 				owner := khipu.NewKhipukamayuq(khipu.Config{})
-				k, err := owner.EncodeParagraph(para)
+				k, err := owner.EncodeParagraphFixture(para)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -43,17 +43,17 @@ func TestFreezeFromBothBreakers(t *testing.T) {
 				var breaks []int
 				if engine == "firstfit" {
 					params := *firstfit.NewDefaultParameters()
-					breaks, err = firstfit.BreakParagraph(k, layout, &params)
+					breaks, err = firstfitFixture(k, layout, &params)
 				} else {
 					params := knuthplass.NewDefaultParameters()
-					breaks, err = knuthplass.BreakParagraph(k, layout, params)
+					breaks, err = knuthplassFixture(k, layout, params)
 				}
 				if err != nil {
 					t.Fatal(err)
 				}
 				before := slices.Clone(k.W)
 				shape.calls = nil
-				got, err := owner.Freeze(k, breaks, layout)
+				got, err := owner.FreezeFixture(k, breaks, layout)
 				if err != nil {
 					t.Fatal(err)
 				}

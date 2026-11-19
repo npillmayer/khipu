@@ -2,6 +2,8 @@ package firstfit
 
 import (
 	"fmt"
+	"github.com/npillmayer/khipu/internal/search"
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"maps"
 	"slices"
 	"strings"
@@ -36,12 +38,12 @@ type benchmarkProvider struct {
 	requests int
 }
 
-func (p *benchmarkProvider) DiscretionaryCandidates(k *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error) {
+func (p *benchmarkProvider) DiscretionaryCandidates(k search.Paragraph, at int) ([]khipu.DiscretionaryCandidate, error) {
 	p.requests++
-	return p.owner.DiscretionaryCandidates(k, at)
+	return testsupport.Discover(p.owner, k, at)
 }
 
-func firstfitWorkload(tb testing.TB, words int, mode string) (*khipu.Khipu, *Parameters, *benchmarkProvider, *benchmarkHyphenator) {
+func firstfitWorkload(tb testing.TB, words int, mode string) (*testsupport.Paragraph, *Parameters, *benchmarkProvider, *benchmarkHyphenator) {
 	tb.Helper()
 	h := &benchmarkHyphenator{productive: mode == "productive"}
 	owner := khipu.NewKhipukamayuq(khipu.Config{Hyphenator: h})
@@ -50,7 +52,7 @@ func firstfitWorkload(tb testing.TB, words int, mode string) (*khipu.Khipu, *Par
 	if err != nil {
 		tb.Fatal(err)
 	}
-	k, err := owner.EncodeParagraph(para)
+	k, err := testsupport.Encode(owner, para)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -60,12 +62,12 @@ func firstfitWorkload(tb testing.TB, words int, mode string) (*khipu.Khipu, *Par
 	p := &benchmarkProvider{owner: owner}
 	params := NewDefaultParameters()
 	if mode != "ordinary" {
-		params.DiscretionaryProvider = p
+		params.discretionaryProvider = p
 	}
 	return k, params, p, h
 }
 
-func checkFirstfitWorkload(tb testing.TB, k *khipu.Khipu, breaks []int, p *benchmarkProvider, h *benchmarkHyphenator, mode string) {
+func checkFirstfitWorkload(tb testing.TB, k *testsupport.Paragraph, breaks []int, p *benchmarkProvider, h *benchmarkHyphenator, mode string) {
 	tb.Helper()
 	if len(breaks) == 0 || breaks[len(breaks)-1] != len(k.Kind)-1 {
 		tb.Fatal("incomplete result")
@@ -103,13 +105,13 @@ func TestFirstfitBenchmarkWorkloads(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/%d", mode, words), func(t *testing.T) {
 				k, params, p, h := firstfitWorkload(t, words, mode)
 				layout := DefaultLayout(linebreak.RectangularParShape(40 * dimen.PT))
-				breaks, err := BreakParagraph(k, layout, params)
+				breaks, err := breakFixture(k, layout, params)
 				if err != nil {
 					t.Fatal(err)
 				}
 				checkFirstfitWorkload(t, k, breaks, p, h, mode)
 				selected, calls := maps.Clone(k.SelectedDiscretionaries), h.calls
-				again, err := BreakParagraph(k, layout, params)
+				again, err := breakFixture(k, layout, params)
 				if err != nil || !slices.Equal(breaks, again) || !maps.Equal(selected, k.SelectedDiscretionaries) || h.calls != calls {
 					t.Fatal("warm reuse changed result or repeated policy work", err)
 				}
@@ -134,7 +136,7 @@ func BenchmarkFirstfit(b *testing.B) {
 				for range b.N {
 					k, params, p, h := firstfitWorkload(b, words, mode)
 					b.StartTimer()
-					breaks, err := BreakParagraph(k, layout, params)
+					breaks, err := breakFixture(k, layout, params)
 					b.StopTimer()
 					if err != nil {
 						b.Fatal(err)

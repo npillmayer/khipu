@@ -2,6 +2,7 @@ package knuthplass
 
 import (
 	"fmt"
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"strings"
 	"testing"
 
@@ -50,7 +51,7 @@ func BenchmarkEncodeLorem(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for range b.N {
-			khp, err := owner.EncodeParagraph(para)
+			khp, err := testsupport.Encode(owner, para)
 			if err != nil || len(khp.Kind) != 2*words+1 {
 				b.Fatalf("encoding failed or knot count changed: %v", err)
 			}
@@ -59,10 +60,10 @@ func BenchmarkEncodeLorem(b *testing.B) {
 	})
 }
 
-func encodedLorem(b *testing.B, words int) *khipu.Khipu {
+func encodedLorem(b *testing.B, words int) *testsupport.Paragraph {
 	b.Helper()
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	khp, err := owner.EncodeParagraph(loremParagraph(b, words))
+	khp, err := testsupport.Encode(owner, loremParagraph(b, words))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -81,7 +82,7 @@ func BenchmarkBreakLorem(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for range b.N {
-			breaks, err := BreakParagraph(khp, layout, nil)
+			breaks, err := breakFixture(khp, layout, nil)
 			if err != nil || len(breaks) == 0 || breaks[len(breaks)-1] != len(khp.Kind)-1 {
 				b.Fatalf("incomplete break result: %v, %v", breaks, err)
 			}

@@ -67,7 +67,7 @@ func TestIntegrationAcrossServicePackages(t *testing.T) {
 		NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(0) },
 		Resolver:  resolver, Defaults: contracts.ResolvedRunStyle{Font: face, EmSize: 14 * dimen.PT},
 	}})
-	paragraph, err := owner.EncodeParagraph(encodingParagraph(t, "abc"))
+	paragraph, err := owner.EncodeParagraphFixture(encodingParagraph(t, "abc"))
 	if err != nil || paragraph.KnotByIndex(0).W != 21*dimen.PT {
 		t.Fatalf("streaming helper integration failed: %v, %v", paragraph, err)
 	}

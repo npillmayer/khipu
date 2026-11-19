@@ -1,86 +1,10 @@
-// Package knuthplass selects paragraph line breaks by minimum accumulated
-// demerits among the candidates explored by a Knuth-Plass-style search.
-// It consumes indexed elastic khipu.Khipu knots; it neither shapes text nor
-// assigns final knot widths.
-//
-// # Input and result ownership
-//
-// BreakParagraph takes resolved paragraph geometry in khipu.Params and separate
-// algorithm Parameters. Use DefaultLayout to obtain the package's layout profile,
-// then reuse the resolved geometry for freezing. The input must end with a
-// non-discardable paragraph-fill knot carrying InfinityMerits. Discardability
-// comes from knot flags, not from an inferred glue or kern rule.
-// NewDefaultParameters supplies the profile used for nil algorithm parameters;
-// NewTolerantParameters explicitly opts into higher tolerance and emergency
-// stretch. Both return independent values; there is no shared mutable profile.
-// Score fields use Merits, an int64-based type: convert typed application values
-// with Merits(value). Physical dimensions use dimen.DU instead.
-//
-// The result contains zero-based line-ending knot indices, including the final
-// trailer. Legacy BreakRef helpers are deprecated compatibility names for search
-// records, not the public result format. Only a successful call replaces
-// Khipu.SelectedDiscretionaries with the winning variants; a failed call leaves
-// previous selections intact.
-// Discovery may still populate paragraph-owned candidate caches. Providers own
-// shaping and candidate penalties; the breaker reads PreBreak.Penalty and seeds
-// the following line with PostBreak.
-//
-// # Passes and scoring
-//
-// Pass 1 uses PreTolerance without discretionary discovery. If it cannot complete
-// a path, pass 2 uses Tolerance and permits lazy discovery. Positive finite
-// EmergencyStretch enables pass 3, which uses the same tolerance with additional
-// virtual stretch for scoring and discovery only. The first complete pass wins;
-// costs from different passes are not compared. Only the final configured pass
-// may use fallback transitions. Provider errors abort rather than start a retry.
-// Emergency stretch does not change physical widths or guarantee that freezing
-// can achieve the requested line length.
-//
-// # Search-state lifecycle
-//
-// Each pass owns fresh working states keyed by (BreakRef, completed line count).
-// The horizon groups active origins by breakpoint. At each knot, processKnot
-// first advances existing states, then discovers discretionary successors, then
-// commits the boundary using a fresh horizon snapshot. This prevents newly
-// inserted states from accumulating the same knot twice and lets them reach a
-// forced boundary immediately.
-//
-// Working bookkeeping holds costs and leading/trailing width trims. Separate
-// immutable seeds support discretionary rescans. Overfull states are retired
-// after rescue when minimum-width bounds make pruning safe; forced boundaries
-// retire earlier origins so no path can bypass them. Retirement removes working
-// data, not predecessor history. Tombstones prevent retroactive resurrection.
-// The predecessor table keeps the best transition for each destination state.
-// Collection walks that table backward from the cheapest terminal state and
-// reverses the result. Equal-cost choices use deterministic tie breakers.
-//
-// Built-in linebreak.RectangularParShape values enable ordinary-boundary
-// compaction automatically in every pass. Once a boundary is fully processed,
-// only its cheapest completed-line-count state remains active; equal costs
-// prefer fewer lines. Actual line numbers and predecessor history are retained.
-// Root and discretionary states are not merged. Custom shapes, including
-// constant-width wrappers, keep all line-count alternatives: equal observed
-// widths are not a guarantee of identical future geometry.
-//
-// Ordinary and discretionary evaluations use distinct pass-local scratch
-// buffers. Boundary-local cached evaluations are invalidated when their working
-// bucket changes; they do not cache accumulated predecessor costs. These storage
-// lifetimes matter when adding nested discovery or new state transitions.
-//
-// # Implementation map and limits
-//
-// knuthplass.go provides the entry point and pass-state setup; passes.go
-// orchestrates retries. search.go drives the knot scan and predecessor updates;
-// boundary.go advances, commits and retires states; bookkeeping.go tracks widths
-// and edge trimming. evaluation.go evaluates ordinary candidates; geometry.go
-// classifies line geometry; scoring.go computes demerits. path.go stores
-// predecessor history; results.go collects and publishes the winning path.
-// discretionary.go discovers and evaluates replacements; evaluation_cache.go
-// owns boundary-local reuse. hyphenationCandidateForLine and
-// requestDiscretionariesForLine serve both hyphenating passes (2 and 3).
-//
-// This is not a complete TeX implementation: fitness classes and consecutive
-// discretionary demerits are not modeled, and lazy discovery does not enumerate
-// every possible hyphenation. Exact symbolic fill-order arithmetic is also not
-// modeled by the breaker's numerical width summaries.
+// Package knuthplass breaks immutable paragraph bindings into independent Tikrays.
+// BreakParagraph accepts khipu.BreakRequest and typed Parameters; nil parameters
+// select resolved algorithm defaults. Geometry is explicit and captured once per
+// queried line. Discovery supplies immutable replacement opportunities. Search
+// state and selections stay private to each invocation; errors return nil plans.
+// Freeze the result with khipu.Freeze, without another geometry callback.
+// The first successful KP pass wins. Emergency stretch affects scoring only;
+// physical allocation uses actual capacities. Seeded KP is not supported.
+// Public typesetting calls are synchronous and have no context argument.
 package knuthplass

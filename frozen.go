@@ -78,28 +78,6 @@ type frozenShaping struct {
 	contexts []preparedRun
 }
 
-// Freeze connects complete break decisions to final-width output.
-// Use the same shape and side skips as the breaker, before its selections are
-// replaced. Materialization validates ownership/provenance, trims, substitutes
-// selected fragments and orders knots; geometry snapshots inclusive targets.
-// No shaper or hyphenator is consulted. Failure publishes no partial paragraph
-// and leaves the elastic input and its decisions unchanged.
-// Pass the same resolved Params used for breaking. Execution is synchronous.
-// Capacity shortfalls are reported in the result, not as errors.
-func (kq *Khipukamayuq) Freeze(k *Khipu, breaks []int, params Params) (*FrozenKhipu, error) {
-	if kq == nil {
-		return nil, ErrVoidKhipukamayuq
-	}
-	if err := params.ValidateGeometry(); err != nil {
-		return nil, err
-	}
-	p, err := kq.materializeLineGeometry(k, breaks, params)
-	if err != nil {
-		return nil, err
-	}
-	return p.freeze()
-}
-
 // freeze realizes the currently supported subset: only glue can change width.
 // Every non-glue content knot must declare MinW == W == MaxW, even if this
 // target needs no adjustment or a higher-order fill would absorb it all.

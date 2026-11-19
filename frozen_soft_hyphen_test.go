@@ -23,7 +23,7 @@ func TestFreezeUnbrokenSoftHyphenRTL(t *testing.T) {
 				t.Fatal(err)
 			}
 			owner := khipu.NewKhipukamayuq(khipu.Config{})
-			k, err := owner.EncodeParagraph(p)
+			k, err := owner.EncodeParagraphFixture(p)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -31,15 +31,15 @@ func TestFreezeUnbrokenSoftHyphenRTL(t *testing.T) {
 			layout := firstfit.DefaultLayout(shape)
 			var breaks []int
 			if engine == "firstfit" {
-				breaks, err = firstfit.BreakParagraph(k, layout, nil)
+				breaks, err = firstfitFixture(k, layout, nil)
 			} else {
 				layout = knuthplass.DefaultLayout(shape)
-				breaks, err = knuthplass.BreakParagraph(k, layout, nil)
+				breaks, err = knuthplassFixture(k, layout, nil)
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
-			f, err := owner.Freeze(k, breaks, layout)
+			f, err := owner.FreezeFixture(k, breaks, layout)
 			if err != nil {
 				t.Fatal(err)
 			}

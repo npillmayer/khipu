@@ -20,22 +20,26 @@ func ExampleKhipukamayuq_EncodeParagraph() {
 		panic(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	khp, err := owner.EncodeParagraph(para)
+	material, discovery, err := owner.EncodeParagraph(para)
+	if err != nil {
+		panic(err)
+	}
+	khp, err := khipu.BindParagraph(material, nil)
 	if err != nil {
 		panic(err)
 	}
 	shape := linebreak.RectangularParShape(100 * dimen.PT)
-	greedy, err := firstfit.BreakParagraph(khp, firstfit.DefaultLayout(shape), nil)
+	greedy, err := firstfit.BreakParagraph(exampleRequest(khp, discovery, firstfit.DefaultLayout(shape)), nil)
 	if err != nil {
 		panic(err)
 	}
-	optimal, err := knuthplass.BreakParagraph(khp, knuthplass.DefaultLayout(shape), nil)
+	optimal, err := knuthplass.BreakParagraph(exampleRequest(khp, discovery, knuthplass.DefaultLayout(shape)), nil)
 	if err != nil {
 		panic(err)
 	}
-	last := khp.KnotByIndex(optimal[len(optimal)-1])
-	fmt.Println("firstfit lines:", len(greedy))
-	fmt.Println("Knuth-Plass lines:", len(optimal))
+	last, _ := khp.Knot(optimal.Lines()[len(optimal.Lines())-1].End.Knot)
+	fmt.Println("firstfit lines:", len(greedy.Lines()))
+	fmt.Println("Knuth-Plass lines:", len(optimal.Lines()))
 	fmt.Println("source end:", last.Pos, "trailer bytes:", last.Len)
 	// Output:
 	// firstfit lines: 1
@@ -46,25 +50,28 @@ func ExampleKhipukamayuq_EncodeParagraph() {
 // A small example provider; applications can supply a dictionary-backed one.
 type exampleHyphenator struct{}
 
-func ExampleKhipukamayuq_Freeze() {
+func ExampleFreeze() {
 	text := styled.TextFromString("Hello world")
 	para, err := styled.ParagraphFromText(&text, 0, text.Raw().Len(), bidi.LeftToRight, nil)
 	if err != nil {
 		panic(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	input, err := owner.EncodeParagraph(para)
+	material, discovery, err := owner.EncodeParagraph(para)
 	if err != nil {
 		panic(err)
 	}
-	// Resolve geometry once; freeze the chosen decisions before another breaker
-	// run replaces the paragraph's selected discretionaries.
+	// Each plan captures its geometry and survives independent later trials.
+	input, err := khipu.BindParagraph(material, nil)
+	if err != nil {
+		panic(err)
+	}
 	layout := firstfit.DefaultLayout(linebreak.RectangularParShape(100 * dimen.PT))
-	breaks, err := firstfit.BreakParagraph(input, layout, nil)
+	breaks, err := firstfit.BreakParagraph(exampleRequest(input, discovery, layout), nil)
 	if err != nil {
 		panic(err)
 	}
-	frozen, err := owner.Freeze(input, breaks, layout)
+	frozen, err := khipu.Freeze(breaks)
 	if err != nil {
 		panic(err)
 	}
@@ -92,19 +99,24 @@ func ExampleConfig_hyphenator() {
 		panic(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{Hyphenator: exampleHyphenator{}})
-	khp, err := owner.EncodeParagraph(para)
+	material, discovery, err := owner.EncodeParagraph(para)
 	if err != nil {
 		panic(err)
 	}
-	// Wire the same owner into the breaker to permit lazy discovery.
-	params := &firstfit.Parameters{DiscretionaryProvider: owner}
-	breaks, err := firstfit.BreakParagraph(khp, firstfit.DefaultLayout(linebreak.RectangularParShape(45*dimen.PT)), params)
+	// Discovery retains the fixed policy; each trial owns its decisions.
+	khp, err := khipu.BindParagraph(material, nil)
 	if err != nil {
 		panic(err)
 	}
-	chosen, ok := khp.SelectedDiscretionaryAt(breaks[0])
-	fmt.Println("lines:", len(breaks))
-	fmt.Println("selected:", ok, "variant:", chosen.Variant)
+	params := &firstfit.Parameters{}
+	breaks, err := firstfit.BreakParagraph(exampleRequest(khp, discovery, firstfit.DefaultLayout(linebreak.RectangularParShape(45*dimen.PT))), params)
+	if err != nil {
+		panic(err)
+	}
+	chosen := breaks.Lines()[0].End
+	ok := chosen.Kind == khipu.DiscretionaryBoundary
+	fmt.Println("lines:", len(breaks.Lines()))
+	fmt.Println("selected:", ok, "variant:", chosen.Alternative.Variant)
 	// Output:
 	// lines: 2
 	// selected: true variant: 1
@@ -117,7 +129,7 @@ func ExampleKhipukamayuq_PrepareParagraph() {
 		panic(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	prepared, err := owner.PrepareParagraph(khipu.ParagraphInput{
+	prepared, discovery, err := owner.PrepareParagraph(khipu.ParagraphInput{
 		Paragraph: para,
 		Atomics:   []contracts.AtomicAnchor{{ID: 1, ByteOffset: 2}},
 	}, khipu.PrepareOptions{})
@@ -127,15 +139,15 @@ func ExampleKhipukamayuq_PrepareParagraph() {
 	layout := firstfit.DefaultLayout(linebreak.RectangularParShape(100 * dimen.PT))
 	for _, advance := range []dimen.DU{20 * dimen.PT, 30 * dimen.PT} {
 		// Reuse shaped text, but give each binding independent working decisions.
-		input, err := owner.BindParagraph(prepared, []khipu.AtomicAdvance{{ID: 1, Advance: advance}})
+		input, err := khipu.BindParagraph(prepared, []khipu.AtomicAdvance{{ID: 1, Advance: advance}})
 		if err != nil {
 			panic(err)
 		}
-		breaks, err := firstfit.BreakParagraph(input, layout, nil)
+		breaks, err := firstfit.BreakParagraph(exampleRequest(input, discovery, layout), nil)
 		if err != nil {
 			panic(err)
 		}
-		frozen, err := owner.Freeze(input, breaks, layout)
+		frozen, err := khipu.Freeze(breaks)
 		if err != nil {
 			panic(err)
 		}
@@ -151,19 +163,19 @@ func ExampleKhipukamayuq_PrepareParagraph() {
 	// atomic 1 advance: 30 pt
 }
 
-func ExampleKhipukamayuq_MeasureIntrinsic() {
+func ExampleMeasureIntrinsic() {
 	text := styled.TextFromString("Hello world")
 	para, err := styled.ParagraphFromText(&text, 0, text.Raw().Len(), bidi.LeftToRight, nil)
 	if err != nil {
 		panic(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	prepared, err := owner.PrepareParagraph(khipu.ParagraphInput{Paragraph: para}, khipu.PrepareOptions{})
+	prepared, discovery, err := owner.PrepareParagraph(khipu.ParagraphInput{Paragraph: para}, khipu.PrepareOptions{})
 	if err != nil {
 		panic(err)
 	}
 	// No target geometry or binding is needed. This input has no atomic ranges.
-	widths, err := owner.MeasureIntrinsic(prepared, khipu.MeasureRequest{})
+	widths, err := khipu.MeasureIntrinsic(prepared, discovery, khipu.MeasureRequest{})
 	if err != nil {
 		panic(err)
 	}
@@ -172,4 +184,8 @@ func ExampleKhipukamayuq_MeasureIntrinsic() {
 	// Output:
 	// min-content: 25 pt
 	// max-content: 55 pt
+}
+
+func exampleRequest(b *khipu.AtomicBinding, d *khipu.Discovery, l khipu.Params) khipu.BreakRequest {
+	return khipu.BreakRequest{Binding: b, Discovery: d, Geometry: khipu.GeometryRequest{Shape: l.LineShape, LeftSkip: l.LeftSkip, RightSkip: l.RightSkip}}
 }

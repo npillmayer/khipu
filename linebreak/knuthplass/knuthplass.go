@@ -3,34 +3,40 @@ package knuthplass
 import (
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/dimen"
+	"github.com/npillmayer/khipu/internal/search"
 )
 
-// BreakParagraph returns the minimum-cost complete path among the candidates
-// explored in the first successful pass. Equal-cost terminal states prefer
-// fewer lines; costs from different passes are not compared.
-//
-// Results are zero-based indices of line-ending knots, including the final
-// trailer. SelectedDiscretionaries is replaced only on success. Errors preserve
-// earlier selections, although discovery may have populated candidate caches.
-// Nil params selects
-// NewDefaultParameters. Only the single best path is returned; alternative
-// line-count solutions are not enumerated. Layout must be resolved explicitly
-// (for example with DefaultLayout) and reused unchanged for freezing.
-// Positive finite EmergencyStretch enables a third pass after two unsuccessful
-// non-final passes. Its virtual capacity affects scoring, not physical widths:
-// an emergency result can still exceed the real capacity available for freezing.
-//
-// This synchronous call has no context argument. Cancellation passed to encoding
-// or freezing does not cancel this search or its provider calls. The standard
-// owner provider shapes lazy replacements with context.Background().
-func BreakParagraph(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (
-	[]int, error) {
-	result, err := selectParagraphBreaks(khp, layout, params)
-	if err != nil {
-		return nil, err
+// BreakParagraph publishes the minimum-cost complete path from the first
+// successful KP pass. The immutable result captures widths, skips, selected
+// replacements, effective policy and diagnostics. Seeded KP remains unsupported.
+func BreakParagraph(r khipu.BreakRequest, params *Parameters) (*khipu.Tikray, error) {
+	if e := r.Validate(); e != nil {
+		return nil, e
 	}
-	recordSelectedDiscretionaries(khp, result.breaks)
-	return projectBreakRefs(result.breaks), nil
+	if r.Prefix != nil {
+		return nil, khipu.ErrUnsupportedPolicy
+	}
+	if params == nil {
+		params = NewDefaultParameters()
+	}
+	local := *params
+	local.discretionaryProvider = search.Provider{Discovery: r.Discovery}
+	widths := search.NewWidths(r.Geometry.Shape, nil)
+	m := search.New(r.Binding, r.Discovery)
+	result, e := selectParagraphBreaks(m, widths.Layout(r.Geometry), &local)
+	if widths.Err != nil {
+		return nil, widths.Err
+	}
+	if e != nil {
+		return nil, e
+	}
+	recordSelectedDiscretionaries(m, result.breaks)
+	decisions, e := widths.Decisions(r, projectBreakRefs(result.breaks), m.SelectedDiscretionaries, nil)
+	if e != nil {
+		return nil, e
+	}
+	policy := khipu.PolicyRecord{Algorithm: khipu.KnuthPlassAlgorithm, KnuthPlass: khipu.KnuthPlassSettings{PreTolerance: int64(local.PreTolerance), Tolerance: int64(local.Tolerance), LinePenalty: int64(local.LinePenalty), FirstHyphenDemerits: int64(local.FirstHyphenDemerits), FinalHyphenDemerits: int64(local.FinalHyphenDemerits), EmergencyStretch: max(0, local.EmergencyStretch)}}
+	return khipu.NewTikray(r, decisions, policy, khipu.BreakDiagnostics{HasScore: true, Score: int64(result.quality.totalCost), HasPass: true, Pass: int(result.pass.id)})
 }
 
 // linebreaker is an internal entity for K&P-linebreaking.

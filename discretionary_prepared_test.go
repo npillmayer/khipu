@@ -18,9 +18,9 @@ func TestPreparedExplicitLazyImportAndIsolation(t *testing.T) {
 			o, h, shapes := explicitOwner(material)
 			p := intrinsicPrepare(t, o, "éa\u00adcd", PrepareOptions{Hyphenation: ExplicitHyphenation})
 			before := *shapes
-			bind := func() *Khipu {
+			bind := func() *FixtureKhipu {
 				t.Helper()
-				k, err := o.BindParagraph(p, nil)
+				k, err := o.BindParagraphFixture(p, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -32,14 +32,14 @@ func TestPreparedExplicitLazyImportAndIsolation(t *testing.T) {
 			early := bind()
 			measure := func() {
 				t.Helper()
-				got, err := o.MeasureIntrinsic(p, MeasureRequest{})
+				got, err := o.MeasureIntrinsicFixture(p, MeasureRequest{})
 				if err != nil || got != (IntrinsicWidths{15 * dimen.BP, 20 * dimen.BP}) {
 					t.Fatal(got, err)
 				}
 			}
-			candidates := func(k *Khipu) []DiscretionaryCandidate {
+			candidates := func(k *FixtureKhipu) []DiscretionaryCandidate {
 				t.Helper()
-				c, err := o.DiscretionaryCandidates(k, 0)
+				c, err := o.DiscoverFixture(k, 0)
 				if err != nil || len(c) != 1 {
 					t.Fatal(c, err)
 				}
@@ -75,7 +75,7 @@ func TestPreparedExplicitLazyImportAndIsolation(t *testing.T) {
 			local := bind()
 			manual := DiscretionaryCandidate{Variant: 99, PreBreak: KnotCore{W: 123}}
 			local.AddDiscretionaryCandidate(0, manual)
-			if got, err := o.DiscretionaryCandidates(local, 0); err != nil || !reflect.DeepEqual(got, []DiscretionaryCandidate{manual}) {
+			if got, err := o.DiscoverFixture(local, 0); err != nil || !reflect.DeepEqual(got, []DiscretionaryCandidate{manual}) {
 				t.Fatal("manual precedence", got, err)
 			}
 			unwireKhipu(early)
@@ -96,14 +96,14 @@ func TestPreparedExplicitEmptyCache(t *testing.T) {
 	p := intrinsicPrepare(t, o, "ab\u00adcd", PrepareOptions{Hyphenation: ExplicitHyphenation})
 	before := *shapes
 	for range 3 {
-		k, err := o.BindParagraph(p, nil)
+		k, err := o.BindParagraphFixture(p, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if c, err := o.DiscretionaryCandidates(k, 0); err != nil || len(c) != 0 {
+		if c, err := o.DiscoverFixture(k, 0); err != nil || len(c) != 0 {
 			t.Fatal(c, err)
 		}
-		if _, err := o.MeasureIntrinsic(p, MeasureRequest{}); err != nil {
+		if _, err := o.MeasureIntrinsicFixture(p, MeasureRequest{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -125,27 +125,27 @@ func TestPreparedExplicitUnsupportedMeasurementPreservesLayoutBatch(t *testing.T
 	} {
 		o, h, shapes := explicitOwner(tc.material)
 		p := intrinsicPrepare(t, o, tc.text, PrepareOptions{Hyphenation: ExplicitHyphenation})
-		if got, err := o.MeasureIntrinsic(p, MeasureRequest{}); got != (IntrinsicWidths{}) || !errors.Is(err, ErrUnsupportedPolicy) {
+		if got, err := o.MeasureIntrinsicFixture(p, MeasureRequest{}); got != (IntrinsicWidths{}) || !errors.Is(err, ErrUnsupportedPolicy) {
 			t.Fatal(got, err)
 		}
-		a, err := o.BindParagraph(p, nil)
+		a, err := o.BindParagraphFixture(p, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		ca, err := o.DiscretionaryCandidates(a, 0)
+		ca, err := o.DiscoverFixture(a, 0)
 		if err != nil || len(ca) != tc.count {
 			t.Fatal(ca, err)
 		}
 		shapesBefore, callsBefore := *shapes, h.calls
 		for range 2 {
-			if got, err := o.MeasureIntrinsic(p, MeasureRequest{}); got != (IntrinsicWidths{}) || !errors.Is(err, ErrUnsupportedPolicy) {
+			if got, err := o.MeasureIntrinsicFixture(p, MeasureRequest{}); got != (IntrinsicWidths{}) || !errors.Is(err, ErrUnsupportedPolicy) {
 				t.Fatal(got, err)
 			}
-			b, err := o.BindParagraph(p, nil)
+			b, err := o.BindParagraphFixture(p, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			cb, err := o.DiscretionaryCandidates(b, 0)
+			cb, err := o.DiscoverFixture(b, 0)
 			if err != nil || !reflect.DeepEqual(ca, cb) {
 				t.Fatal(cb, err)
 			}
@@ -157,33 +157,26 @@ func TestPreparedExplicitUnsupportedMeasurementPreservesLayoutBatch(t *testing.T
 }
 
 func TestPreparedExplicitImportValidation(t *testing.T) {
-	for _, change := range []func(*Khipu){
-		func(k *Khipu) { k.W[0]++ }, func(k *Khipu) { k.Pos[0]++ }, func(k *Khipu) { k.boxRefs[0] = 0 }, func(k *Khipu) { k.owner = intrinsicOwner() },
-	} {
-		o, _, _ := explicitOwner([]HyphenationFragment{{PreBreak: "-"}})
-		p := intrinsicPrepare(t, o, "ab\u00adcd", PrepareOptions{Hyphenation: ExplicitHyphenation})
-		if _, err := o.MeasureIntrinsic(p, MeasureRequest{}); err != nil {
-			t.Fatal(err)
-		}
-		k, err := o.BindParagraph(p, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		before := k.shaping
-		change(k)
-		if c, err := o.DiscretionaryCandidates(k, 0); len(c) != 0 || !errors.Is(err, ErrIllegalArguments) {
-			t.Fatal(c, err)
-		}
-		if !reflect.DeepEqual(before, k.shaping) || len(k.DiscretionaryCandidates) != 0 {
-			t.Fatal("failed import changed arena")
-		}
-		fresh, err := o.BindParagraph(p, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if c, err := o.DiscretionaryCandidates(fresh, 0); len(c) != 1 || err != nil {
-			t.Fatal(c, err)
-		}
+	o, _, _ := explicitOwner([]HyphenationFragment{{PreBreak: "-"}})
+	a := intrinsicPrepare(t, o, "ab\u00adcd", PrepareOptions{Hyphenation: ExplicitHyphenation})
+	b := intrinsicPrepare(t, o, "ab\u00adcd", PrepareOptions{Hyphenation: ExplicitHyphenation})
+	if _, e := MeasureIntrinsic(a.material, a.discovery, MeasureRequest{}); e != nil {
+		t.Fatal(e)
+	}
+	binding, e := BindParagraph(a.material, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	request := BreakRequest{Binding: binding, Discovery: b.discovery, Geometry: GeometryRequest{Shape: fixtureShape{}}}
+	if e = request.Validate(); !errors.Is(e, ErrIllegalArguments) {
+		t.Fatal("foreign discovery", e)
+	}
+	request.Discovery = a.discovery
+	if e = request.Validate(); e != nil {
+		t.Fatal(e)
+	}
+	if got, e := a.discovery.Alternatives(0); e != nil || len(got.Candidates()) != 1 {
+		t.Fatal(got, e)
 	}
 }
 
@@ -200,12 +193,12 @@ func TestPreparedExplicitFeaturesAndZeroWidthContent(t *testing.T) {
 		// a recording backend for replacements, as in the existing provider tests.
 		p.shaping.contexts[0].params.shaping.Features = []contracts.ShapeFeature{feature}
 		var streams []*fragmentRecordingShaper
-		o.env.streaming.NewShaper = func() (contracts.StreamingShaper, error) {
+		p.discovery.recipe.env.streaming.NewShaper = func() (contracts.StreamingShaper, error) {
 			s := &fragmentRecordingShaper{pipelineShaper: newPipelineShaper()}
 			streams = append(streams, s)
 			return s, nil
 		}
-		got, err := o.MeasureIntrinsic(p, MeasureRequest{})
+		got, err := o.MeasureIntrinsicFixture(p, MeasureRequest{})
 		if limited {
 			if got != (IntrinsicWidths{}) || !errors.Is(err, contracts.ErrIllegalArguments) || len(p.explicit) != 0 || len(streams) != 0 {
 				t.Fatal(got, err)
@@ -220,11 +213,11 @@ func TestPreparedExplicitFeaturesAndZeroWidthContent(t *testing.T) {
 				t.Fatal(s.params.Features)
 			}
 		}
-		k, err := o.BindParagraph(p, nil)
+		k, err := o.BindParagraphFixture(p, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		c, err := o.DiscretionaryCandidates(k, 0)
+		c, err := o.DiscoverFixture(k, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -246,13 +239,13 @@ func TestPreparedExplicitFeaturesAndZeroWidthContent(t *testing.T) {
 func TestPreparedExplicitWholeBatchFailure(t *testing.T) {
 	o, h, _ := explicitOwner([]HyphenationFragment{{PreBreak: "-"}, {PreBreak: "="}})
 	p := intrinsicPrepare(t, o, "ab\u00adcd", PrepareOptions{Hyphenation: ExplicitHyphenation})
-	k, err := o.BindParagraph(p, nil)
+	k, err := o.BindParagraphFixture(p, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	sentinel := errors.New("last fragment failed")
 	shapes := 0
-	o.env.streaming.NewShaper = func() (contracts.StreamingShaper, error) {
+	p.discovery.recipe.env.streaming.NewShaper = func() (contracts.StreamingShaper, error) {
 		shapes++
 		if shapes == 4 {
 			return nil, sentinel
@@ -260,16 +253,16 @@ func TestPreparedExplicitWholeBatchFailure(t *testing.T) {
 		return helpers.NewSyntheticStreamingShaper(8)
 	}
 	before := k.shaping
-	if c, err := o.DiscretionaryCandidates(k, 0); len(c) != 0 || !errors.Is(err, sentinel) {
+	if c, err := o.DiscoverFixture(k, 0); len(c) != 0 || !errors.Is(err, sentinel) {
 		t.Fatal(c, err)
 	}
 	if len(p.explicit) != 0 || len(k.DiscretionaryCandidates) != 0 || !reflect.DeepEqual(before, k.shaping) {
 		t.Fatal("partial batch published")
 	}
-	if c, err := o.DiscretionaryCandidates(k, 0); len(c) != 2 || err != nil || h.calls != 2 {
+	if c, err := o.DiscoverFixture(k, 0); len(c) != 2 || err != nil || h.calls != 2 {
 		t.Fatal("retry", c, err, h.calls)
 	}
-	if _, err := o.MeasureIntrinsic(p, MeasureRequest{}); !errors.Is(err, ErrUnsupportedPolicy) {
+	if _, err := o.MeasureIntrinsicFixture(p, MeasureRequest{}); !errors.Is(err, ErrUnsupportedPolicy) {
 		t.Fatal(err)
 	}
 	if h.calls != 2 || shapes != 8 {

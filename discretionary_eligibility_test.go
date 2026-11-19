@@ -9,14 +9,14 @@ import (
 	"github.com/npillmayer/khipu/helpers"
 )
 
-func eligibilityParagraph(t *testing.T, p *styled.Paragraph) *Khipu {
+func eligibilityParagraph(t *testing.T, p *styled.Paragraph) *FixtureKhipu {
 	t.Helper()
 	owner := NewKhipukamayuq(Config{Streaming: &StreamingConfig{
 		Resolver:  preparationResolver(func(_ styled.Style, d contracts.ResolvedRunStyle) (contracts.ResolvedRunStyle, error) { return d, nil }),
 		Defaults:  preparationDefaults(),
 		NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(0) },
 	}})
-	k, err := owner.EncodeParagraph(p)
+	k, err := owner.EncodeParagraphFixture(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,15 +26,15 @@ func eligibilityParagraph(t *testing.T, p *styled.Paragraph) *Khipu {
 func TestDiscretionaryLookupWithoutShapingProvenance(t *testing.T) {
 	policy := &testhyphenator{}
 	owner := NewKhipukamayuq(Config{Hyphenator: policy})
-	k := &Khipu{paragraph: preparationParagraph(t, "alpha")}
+	k := &FixtureKhipu{paragraph: preparationParagraph(t, "alpha")}
 	k.appendKnot(KnotCore{Kind: KTTextBox, Len: 5})
-	if got, err := owner.DiscretionaryCandidates(k, 0); err != nil || len(got) != 0 || policy.calls != 0 {
+	if got, err := owner.DiscoverFixture(k, 0); err != nil || len(got) != 0 || policy.calls != 0 {
 		t.Fatalf("manual knot triggered discovery: %v, %v, calls=%d", got, err, policy.calls)
 	}
 	// Manual candidates remain valid input to linebreaker algorithm fixtures.
 	candidate := DiscretionaryCandidate{Variant: 7, PreBreak: KnotCore{W: 2}, PostBreak: KnotCore{W: 3}}
 	k.AddDiscretionaryCandidate(0, candidate)
-	if got, err := owner.DiscretionaryCandidates(k, 0); err != nil || !reflect.DeepEqual(got, []DiscretionaryCandidate{candidate}) || policy.calls != 0 {
+	if got, err := owner.DiscoverFixture(k, 0); err != nil || !reflect.DeepEqual(got, []DiscretionaryCandidate{candidate}) || policy.calls != 0 {
 		t.Fatalf("cached manual candidate lost: %v, %v, calls=%d", got, err, policy.calls)
 	}
 }
@@ -111,9 +111,9 @@ func TestAutomaticEligibilityRejectsExplicitAndMissingMetadata(t *testing.T) {
 			}
 		}
 	}
-	manual := &Khipu{}
+	manual := &FixtureKhipu{}
 	manual.appendKnot(KnotCore{Kind: KTTextBox, Len: 8})
-	if manual.automaticHyphenationEligible(0) || (*Khipu)(nil).automaticHyphenationEligible(0) {
+	if manual.automaticHyphenationEligible(0) || (*FixtureKhipu)(nil).automaticHyphenationEligible(0) {
 		t.Fatal("accepted missing streaming metadata")
 	}
 }

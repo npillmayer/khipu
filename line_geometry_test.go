@@ -69,13 +69,13 @@ func TestLineGeometryPhysicalEdgesAndFill(t *testing.T) {
 				}
 				fill := KnotCore{W: 7, MinW: 7, MaxW: dimen.Fill}
 				owner := NewKhipukamayuq(Config{ParFillSkip: &fill})
-				k, err := owner.EncodeParagraph(para)
+				k, err := owner.EncodeParagraphFixture(para)
 				if err != nil {
 					t.Fatal(err)
 				}
 				left := KnotCore{W: 2, MinW: 2, MaxW: 2}
 				right := KnotCore{W: 3, MinW: 3, MaxW: 3}
-				got, err := owner.materializeLineGeometry(k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 100 * dimen.PT }), LeftSkip: left, RightSkip: right})
+				got, err := owner.materializeLineGeometryFixture(k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 100 * dimen.PT }), LeftSkip: left, RightSkip: right})
 				if err != nil {
 					t.Fatal(err)
 				}

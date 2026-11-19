@@ -1,6 +1,7 @@
 package knuthplass
 
 import (
+	"github.com/npillmayer/khipu/internal/search"
 	"reflect"
 
 	"github.com/npillmayer/khipu"
@@ -12,6 +13,9 @@ import (
 // around rectangles) deliberately retain separate line-count states. Recognition
 // happens once per pass, not in the knot-processing hot path.
 func knownUniformShape(shape khipu.LineShape) bool {
+	if w, ok := shape.(*search.Widths); ok {
+		shape = w.Original
+	}
 	return reflect.TypeOf(shape) == reflect.TypeOf(linebreak.RectangularParShape(0))
 }
 

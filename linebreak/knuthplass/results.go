@@ -1,6 +1,7 @@
 package knuthplass
 
 import (
+	"github.com/npillmayer/khipu/internal/search"
 	"slices"
 
 	"github.com/npillmayer/khipu"
@@ -63,14 +64,14 @@ func projectBreakRefs(breakrefs []BreakRef) []kinx {
 // the winning path back into the Khipu. Ordinary breakpoints continue to be
 // represented by the returned []kinx; SelectedDiscretionaries stores the extra
 // variant information needed for later paragraph processing stages.
-func recordSelectedDiscretionaries(khp *khipu.Khipu, breakrefs []BreakRef) {
+func recordSelectedDiscretionaries(khp search.Paragraph, breakrefs []BreakRef) {
 	if khp == nil {
 		return
 	}
-	if khp.SelectedDiscretionaries != nil {
+	if khp.Selections() != nil {
 		// The final Khipu should reflect only the winning path of the current
 		// linebreaking run; stale selections from earlier runs must not survive.
-		clear(khp.SelectedDiscretionaries)
+		clear(khp.Selections())
 	}
 	for _, br := range breakrefs {
 		if !br.IsDiscretionary() {

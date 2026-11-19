@@ -2,6 +2,8 @@ package knuthplass
 
 import (
 	"errors"
+	"github.com/npillmayer/khipu/internal/search"
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"maps"
 	"slices"
 	"testing"
@@ -13,7 +15,7 @@ import (
 )
 
 // A forced first line isolates pass screening from the retained terminal fill.
-func emergencyForcedLine(width, maximum dimen.DU) *khipu.Khipu {
+func emergencyForcedLine(width, maximum dimen.DU) *testsupport.Paragraph {
 	return newKhipu([]node{
 		{w: width, minw: width, maxw: maximum, p: InfinityMerits, kind: khipu.KTTextBox},
 		{maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
@@ -42,8 +44,8 @@ func TestEmergencyStretchValidatedBeforeFirstPass(t *testing.T) {
 	for _, extra := range []dimen.DU{dimen.Fil, dimen.Fill, dimen.Filll, dimen.Infinity} {
 		params := NewDefaultParameters()
 		params.EmergencyStretch = extra
-		provider := &testDiscretionaryProvider{}
-		params.DiscretionaryProvider = provider
+		provider := &testdiscretionaryProvider{}
+		params.discretionaryProvider = provider
 		khp := emergencyForcedLine(100, 100) // would otherwise succeed in pass 1
 		khp.SelectedDiscretionaries = map[int]khipu.DiscretionarySelection{0: {Source: 0, Variant: 9}}
 		before := maps.Clone(khp.SelectedDiscretionaries)
@@ -52,7 +54,7 @@ func TestEmergencyStretchValidatedBeforeFirstPass(t *testing.T) {
 			shapeCalls++
 			return 100 * dimen.BP
 		})}
-		breaks, err := BreakParagraph(khp, layout, params)
+		breaks, err := breakFixture(khp, layout, params)
 		if !errors.Is(err, khipu.ErrIllegalArguments) || len(breaks) != 0 || provider.calls != 0 || shapeCalls != 0 || !maps.Equal(before, khp.SelectedDiscretionaries) {
 			t.Fatalf("E=%d: validation must precede search and publication: %v %v", extra, breaks, err)
 		}
@@ -103,7 +105,7 @@ func TestEmergencyPassRecoveryAndLimits(t *testing.T) {
 			if result.quality.totalCost != wantCost || result.pass.emergencyStretch != max(0, params.EmergencyStretch) {
 				t.Fatalf("wrong scoring context or fallback cost: %+v want cost=%d", result, wantCost)
 			}
-			breaks, err := BreakParagraph(khp, layout, params)
+			breaks, err := breakFixture(khp, layout, params)
 			if err != nil || !slices.Equal(breaks, []int{0, 1}) || !slices.Equal(khp.W, widths) || !slices.Equal(khp.MinW, minima) || !slices.Equal(khp.MaxW, maxima) {
 				t.Fatalf("public result changed real widths: breaks=%v err=%v", breaks, err)
 			}
@@ -137,15 +139,15 @@ func TestEarlierSuccessfulPassWins(t *testing.T) {
 	}
 }
 
-type emergencyProviderFunc func(*khipu.Khipu, int) ([]khipu.DiscretionaryCandidate, error)
+type emergencyProviderFunc func(*testsupport.Paragraph, int) ([]khipu.DiscretionaryCandidate, error)
 
-func (f emergencyProviderFunc) DiscretionaryCandidates(khp *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error) {
-	return f(khp, at)
+func (f emergencyProviderFunc) DiscretionaryCandidates(khp search.Paragraph, at int) ([]khipu.DiscretionaryCandidate, error) {
+	return f(khp.(*testsupport.Paragraph), at)
 }
 
 // An early forced loose line ends both non-final searches. Emergency stretch
 // makes it acceptable, exposing a later overlong textbox for fresh discovery.
-func emergencyLaterDiscovery() *khipu.Khipu {
+func emergencyLaterDiscovery() *testsupport.Paragraph {
 	return newKhipu([]node{
 		{w: 90, minw: 90, maxw: 90, p: InfinityMerits, kind: khipu.KTTextBox},
 		{w: 150, minw: 150, maxw: 150, p: InfinityDemerits, kind: khipu.KTTextBox},
@@ -170,7 +172,7 @@ func TestProviderErrorsStopPassSequence(t *testing.T) {
 		calls := 0
 		params := NewDefaultParameters()
 		params.EmergencyStretch = 10 * dimen.BP
-		params.DiscretionaryProvider = emergencyProviderFunc(func(_ *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error) {
+		params.discretionaryProvider = emergencyProviderFunc(func(_ *testsupport.Paragraph, at int) ([]khipu.DiscretionaryCandidate, error) {
 			calls++
 			if at != 1 {
 				t.Fatalf("unexpected provider knot %d", at)
@@ -183,7 +185,7 @@ func TestProviderErrorsStopPassSequence(t *testing.T) {
 			t.Fatalf("error retried or became fallback: %+v calls=%d err=%v", result, calls, err)
 		}
 		calls = 0
-		breaks, err := BreakParagraph(khp, layout, params)
+		breaks, err := breakFixture(khp, layout, params)
 		if !errors.Is(err, want) || len(breaks) != 0 || calls != 1 || !maps.Equal(before, khp.SelectedDiscretionaries) {
 			t.Fatal("public failure published partial selections or retried the error", breaks, err)
 		}
@@ -197,13 +199,13 @@ func TestEmergencyPublishesOnlyWinningSelections(t *testing.T) {
 	khp := emergencyLaterDiscovery()
 	khp.SelectedDiscretionaries = map[int]khipu.DiscretionarySelection{0: {Source: 0, Variant: 9}}
 	before := maps.Clone(khp.SelectedDiscretionaries)
-	provider := &testDiscretionaryProvider{want: []khipu.DiscretionaryCandidate{{
+	provider := &testdiscretionaryProvider{want: []khipu.DiscretionaryCandidate{{
 		Variant:   1,
 		PreBreak:  khipu.KnotCore{Kind: khipu.KTTextBox, W: 90 * dimen.BP, MinW: 90 * dimen.BP, MaxW: 90 * dimen.BP},
 		PostBreak: khipu.KnotCore{Kind: khipu.KTTextBox, W: 60 * dimen.BP, MinW: 60 * dimen.BP, MaxW: 60 * dimen.BP},
 	}}}
 	params := NewDefaultParameters()
-	params.EmergencyStretch, params.DiscretionaryProvider = 10*dimen.BP, provider
+	params.EmergencyStretch, params.discretionaryProvider = 10*dimen.BP, provider
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}
 	result, err := selectParagraphBreaks(khp, layout, params)
 	want := []BreakRef{PlainBreak(0), {At: 1, Variant: 1}, PlainBreak(2)}
@@ -213,7 +215,7 @@ func TestEmergencyPublishesOnlyWinningSelections(t *testing.T) {
 	if provider.calls == 0 || provider.requestedAt[0] != 1 {
 		t.Fatal("emergency pass did not discover newly reached textbox")
 	}
-	breaks, err := BreakParagraph(khp, layout, params)
+	breaks, err := breakFixture(khp, layout, params)
 	selected, ok := khp.SelectedDiscretionaryAt(1)
 	if err != nil || !slices.Equal(breaks, []int{0, 1, 2}) || !ok || selected.Variant != 1 || len(khp.SelectedDiscretionaries) != 1 {
 		t.Fatalf("winning selections not published: %v %+v %v", breaks, khp.SelectedDiscretionaries, err)

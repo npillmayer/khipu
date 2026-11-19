@@ -87,28 +87,32 @@ func runView(input, output, breaker, direction string, width int, stdin io.Reade
 		return err
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	k, err := owner.EncodeParagraph(para)
+	k, discovery, err := owner.EncodeParagraph(para)
 	if err != nil {
 		return err
 	}
 	shape := linebreak.RectangularParShape(dimen.DU(width) * dimen.BP)
 	var layout khipu.Params
-	var breaks []int
+	binding, err := khipu.BindParagraph(k, nil)
+	if err != nil {
+		return err
+	}
+	var plan *khipu.Tikray
 	if breaker == "firstfit" {
 		layout = firstfit.DefaultLayout(shape)
 		p := firstfit.NewDefaultParameters()
-		p.DiscretionaryProvider = owner
-		breaks, err = firstfit.BreakParagraph(k, layout, p)
+
+		plan, err = firstfit.BreakParagraph(khipu.BreakRequest{Binding: binding, Discovery: discovery, Geometry: khipu.GeometryRequest{Shape: layout.LineShape, LeftSkip: layout.LeftSkip, RightSkip: layout.RightSkip}}, p)
 	} else {
 		layout = knuthplass.DefaultLayout(shape)
 		p := knuthplass.NewDefaultParameters()
-		p.DiscretionaryProvider = owner
-		breaks, err = knuthplass.BreakParagraph(k, layout, p)
+
+		plan, err = knuthplass.BreakParagraph(khipu.BreakRequest{Binding: binding, Discovery: discovery, Geometry: khipu.GeometryRequest{Shape: layout.LineShape, LeftSkip: layout.LeftSkip, RightSkip: layout.RightSkip}}, p)
 	}
 	if err != nil {
 		return err
 	}
-	frozen, err := owner.Freeze(k, breaks, layout)
+	frozen, err := khipu.Freeze(plan)
 	if err != nil {
 		return err
 	}

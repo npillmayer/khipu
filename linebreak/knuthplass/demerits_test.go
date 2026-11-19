@@ -107,9 +107,9 @@ func TestFirstPassAcceptsBadnessAtPreToleranceBoundary(t *testing.T) {
 	params.LinePenalty = 0
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(8000)}
 	khp := testKhipu()
-	khp.W = append(khp.W, 7990, 7990, params.ParFillSkip.W)
-	khp.MinW = append(khp.MinW, 7990, 7990, params.ParFillSkip.MinW)
-	khp.MaxW = append(khp.MaxW, 8000, 7990, params.ParFillSkip.MaxW)
+	khp.W = append(khp.W, 7990, 7990, (khipu.KnotCore{MaxW: dimen.Fill}).W)
+	khp.MinW = append(khp.MinW, 7990, 7990, (khipu.KnotCore{MaxW: dimen.Fill}).MinW)
+	khp.MaxW = append(khp.MaxW, 8000, 7990, (khipu.KnotCore{MaxW: dimen.Fill}).MaxW)
 	khp.Penalty = append(khp.Penalty, -100, InfinityDemerits, InfinityMerits)
 	khp.Kind = append(khp.Kind, khipu.KTTextBox, khipu.KTTextBox, khipu.KTGlue)
 	khp.Pos = append(khp.Pos, 0, 0, 0)

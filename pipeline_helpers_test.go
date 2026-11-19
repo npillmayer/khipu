@@ -20,7 +20,7 @@ func producePreparedRuns(ctx context.Context, para *styled.Paragraph, runs []pre
 
 // publishDiscretionary validates and commits a single candidate for fixtures.
 // Production discovery validates complete batches before committing any member.
-func (k *Khipu) publishDiscretionary(at int, variant uint16, penalty Penalty, pair *shapedDiscretionaryInput) (DiscretionaryCandidate, error) {
+func (k *FixtureKhipu) publishDiscretionary(at int, variant uint16, penalty Penalty, pair *shapedDiscretionaryInput) (DiscretionaryCandidate, error) {
 	staged, err := k.prepareDiscretionaryPublication(at, variant, penalty, pair)
 	if err != nil {
 		return DiscretionaryCandidate{}, err

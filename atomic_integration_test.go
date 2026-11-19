@@ -9,8 +9,6 @@ import (
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/contracts"
 	"github.com/npillmayer/khipu/dimen"
-	"github.com/npillmayer/khipu/linebreak/firstfit"
-	"github.com/npillmayer/khipu/linebreak/knuthplass"
 	"github.com/npillmayer/uax/bidi"
 )
 
@@ -61,26 +59,26 @@ func TestAtomicBothBreakersThroughFreeze(t *testing.T) {
 					}
 				}
 				owner := khipu.NewKhipukamayuq(khipu.Config{})
-				prepared, err := owner.PrepareParagraph(khipu.ParagraphInput{Paragraph: para, Atomics: anchors}, khipu.PrepareOptions{AtomicBoundaries: overrides})
+				prepared, err := owner.PrepareParagraphFixture(khipu.ParagraphInput{Paragraph: para, Atomics: anchors}, khipu.PrepareOptions{AtomicBoundaries: overrides})
 				if err != nil {
 					t.Fatal(err)
 				}
 				slices.Reverse(advances) // Dimension order is independent of source order.
-				k, err := owner.BindParagraph(prepared, advances)
+				k, err := owner.BindParagraphFixture(prepared, advances)
 				if err != nil {
 					t.Fatal(err)
 				}
 				layout := khipu.Params{LineShape: atomicShape(tc.width)}
 				var breaks []int
 				if engine == "firstfit" {
-					breaks, err = firstfit.BreakParagraph(k, layout, nil)
+					breaks, err = firstfitFixture(k, layout, nil)
 				} else {
-					breaks, err = knuthplass.BreakParagraph(k, layout, nil)
+					breaks, err = knuthplassFixture(k, layout, nil)
 				}
 				if err != nil {
 					t.Fatal(err)
 				}
-				f, err := owner.Freeze(k, breaks, layout)
+				f, err := owner.FreezeFixture(k, breaks, layout)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -157,25 +155,25 @@ func TestAtomicLineBoundariesAndSignedCheckpoint(t *testing.T) {
 					}
 				}
 				owner := khipu.NewKhipukamayuq(khipu.Config{})
-				p, err := owner.PrepareParagraph(khipu.ParagraphInput{Paragraph: para, Atomics: anchors}, khipu.PrepareOptions{AtomicBoundaries: tc.bounds})
+				p, err := owner.PrepareParagraphFixture(khipu.ParagraphInput{Paragraph: para, Atomics: anchors}, khipu.PrepareOptions{AtomicBoundaries: tc.bounds})
 				if err != nil {
 					t.Fatal(err)
 				}
-				k, err := owner.BindParagraph(p, advances)
+				k, err := owner.BindParagraphFixture(p, advances)
 				if err != nil {
 					t.Fatal(err)
 				}
 				layout := khipu.Params{LineShape: atomicShape(tc.width)}
 				var breaks []int
 				if engine == "firstfit" {
-					breaks, err = firstfit.BreakParagraph(k, layout, nil)
+					breaks, err = firstfitFixture(k, layout, nil)
 				} else {
-					breaks, err = knuthplass.BreakParagraph(k, layout, nil)
+					breaks, err = knuthplassFixture(k, layout, nil)
 				}
 				if err != nil {
 					t.Fatal(err)
 				}
-				f, err := owner.Freeze(k, breaks, layout)
+				f, err := owner.FreezeFixture(k, breaks, layout)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -202,7 +200,7 @@ func TestAtomicLineBoundariesAndSignedCheckpoint(t *testing.T) {
 					k.W[i] = 0
 					k.Kind[i] = khipu.KTGlue
 				}
-				if _, err := owner.BindParagraph(p, advances); err != nil {
+				if _, err := owner.BindParagraphFixture(p, advances); err != nil {
 					t.Fatal(err)
 				}
 				for i := 0; i < f.KnotCount(); i++ {
@@ -225,11 +223,11 @@ func TestAtomicNegativeCompletedLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
-	p, err := owner.PrepareParagraph(khipu.ParagraphInput{Paragraph: para, Atomics: []contracts.AtomicAnchor{{ID: 1}}}, khipu.PrepareOptions{})
+	p, err := owner.PrepareParagraphFixture(khipu.ParagraphInput{Paragraph: para, Atomics: []contracts.AtomicAnchor{{ID: 1}}}, khipu.PrepareOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	k, err := owner.BindParagraph(p, []khipu.AtomicAdvance{{ID: 1, Advance: -10}})
+	k, err := owner.BindParagraphFixture(p, []khipu.AtomicAdvance{{ID: 1, Advance: -10}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,14 +235,14 @@ func TestAtomicNegativeCompletedLine(t *testing.T) {
 		layout := khipu.Params{LineShape: atomicShape(0)}
 		var breaks []int
 		if engine == "firstfit" {
-			breaks, err = firstfit.BreakParagraph(k, layout, nil)
+			breaks, err = firstfitFixture(k, layout, nil)
 		} else {
-			breaks, err = knuthplass.BreakParagraph(k, layout, nil)
+			breaks, err = knuthplassFixture(k, layout, nil)
 		}
 		if err != nil {
 			t.Fatal(err)
 		}
-		if f, err := owner.Freeze(k, breaks, layout); f != nil || !errors.Is(err, khipu.ErrUnsupportedPolicy) {
+		if f, err := owner.FreezeFixture(k, breaks, layout); f != nil || !errors.Is(err, khipu.ErrUnsupportedPolicy) {
 			t.Fatal(f, err)
 		}
 	}

@@ -2,6 +2,8 @@ package knuthplass
 
 import (
 	"errors"
+	"github.com/npillmayer/khipu/internal/search"
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"math"
 	"slices"
 	"testing"
@@ -19,7 +21,7 @@ func TestZeroStretchShortOriginsStayActive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	khp, err := khipu.NewKhipukamayuq(khipu.Config{}).EncodeParagraph(para)
+	khp, err := testsupport.Encode(khipu.NewKhipukamayuq(khipu.Config{}), para)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,13 +34,13 @@ func TestZeroStretchShortOriginsStayActive(t *testing.T) {
 
 func TestForcedBoundaryRescuesZeroShrinkWord(t *testing.T) {
 	for _, internal := range []bool{false, true} {
-		provider := &testDiscretionaryProvider{want: []khipu.DiscretionaryCandidate{{
+		provider := &testdiscretionaryProvider{want: []khipu.DiscretionaryCandidate{{
 			Variant:   1,
 			PreBreak:  khipu.KnotCore{Kind: khipu.KTTextBox, W: 100 * dimen.BP, MinW: 100 * dimen.BP, MaxW: 100 * dimen.BP},
 			PostBreak: khipu.KnotCore{Kind: khipu.KTTextBox, W: 50 * dimen.BP, MinW: 50 * dimen.BP, MaxW: 50 * dimen.BP},
 		}}}
 		params := NewDefaultParameters()
-		params.DiscretionaryProvider = provider
+		params.discretionaryProvider = provider
 		nodes := []node{
 			{w: 150, minw: 150, maxw: 150, p: InfinityDemerits, kind: khipu.KTTextBox},
 			{maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
@@ -54,7 +56,7 @@ func TestForcedBoundaryRescuesZeroShrinkWord(t *testing.T) {
 		if breaks, _, ok, err := breakParagraphPass(khp, layout, params, passConfig{id: passPreTolerance}); err != nil || ok || len(breaks) != 0 || provider.calls != 0 {
 			t.Fatalf("first pass must fail normally without discovery: %v %v %v", breaks, ok, err)
 		}
-		breaks, err := BreakParagraph(khp, layout, params)
+		breaks, err := breakFixture(khp, layout, params)
 		if err != nil || !slices.Equal(breaks, want) || len(khp.SelectedDiscretionaries) != 1 || khp.SelectedDiscretionaries[0].Variant != 1 {
 			t.Fatalf("internal=%v breaks=%v selected=%v err=%v", internal, breaks, khp.SelectedDiscretionaries, err)
 		}
@@ -101,13 +103,13 @@ func TestDrainingOrdinaryBoundaryFallsBackBeforeDeletingSource(t *testing.T) {
 }
 
 func TestRetroactiveDiscretionaryKeepsOnlyFragmentInRescanSeed(t *testing.T) {
-	provider := &testDiscretionaryProvider{want: []khipu.DiscretionaryCandidate{{
+	provider := &testdiscretionaryProvider{want: []khipu.DiscretionaryCandidate{{
 		Variant:   1,
 		PreBreak:  khipu.KnotCore{Kind: khipu.KTTextBox, W: 29 * dimen.BP, MinW: 29 * dimen.BP, MaxW: 29 * dimen.BP},
 		PostBreak: khipu.KnotCore{Kind: khipu.KTTextBox, W: 20 * dimen.BP, MinW: 20 * dimen.BP, MaxW: 20 * dimen.BP},
 	}}}
 	params := NewDefaultParameters()
-	params.DiscretionaryProvider = provider
+	params.discretionaryProvider = provider
 	khp := newKhipu([]node{
 		{w: 20, minw: 20, maxw: 20, p: InfinityDemerits, kind: khipu.KTTextBox},
 		{w: 1, minw: 1, maxw: 1, p: InfinityDemerits, kind: khipu.KTGlue},
@@ -214,7 +216,8 @@ func TestNegativeWidthsDisablePruningIncludingTrailer(t *testing.T) {
 	}
 	// Avoid claiming monotonicity after saturating raw minimum accumulation.
 	kp, _ := prepareLineBreaker(DefaultLayout(linebreak.RectangularParShape(100)), nil)
-	khp := &khipu.Khipu{MinW: []dimen.DU{math.MaxInt32, 1}}
+	khp := newKhipu([]node{{}, {}})
+	khp.W, khp.MinW, khp.MaxW = []dimen.DU{math.MaxInt32, 1}, []dimen.DU{math.MaxInt32, 1}, []dimen.DU{math.MaxInt32, 1}
 	kp.prepareRetirement(khp)
 	if kp.prune {
 		t.Fatal("minimum-sum overflow must disable pruning")
@@ -234,33 +237,33 @@ func TestCachedNegativeFragmentsOptOutAndLazyNegativeFragmentsFail(t *testing.T)
 	}
 	clear(khp.DiscretionaryCandidates)
 	params := NewDefaultParameters()
-	params.DiscretionaryProvider = &testDiscretionaryProvider{want: []khipu.DiscretionaryCandidate{negative}}
-	if _, err := BreakParagraph(khp, layout, params); !errors.Is(err, khipu.ErrIllegalArguments) {
+	params.discretionaryProvider = &testdiscretionaryProvider{want: []khipu.DiscretionaryCandidate{negative}}
+	if _, err := breakFixture(khp, layout, params); !errors.Is(err, khipu.ErrIllegalArguments) {
 		t.Fatalf("lazy negative fragment must fail rather than invalidate retirement: %v", err)
 	}
-	params.DiscretionaryProvider = &testDiscretionaryProvider{want: []khipu.DiscretionaryCandidate{{
+	params.discretionaryProvider = &testdiscretionaryProvider{want: []khipu.DiscretionaryCandidate{{
 		Variant: 1, PreBreak: khipu.KnotCore{W: math.MaxInt32, MinW: math.MaxInt32, MaxW: math.MaxInt32},
 	}}}
-	if _, err := BreakParagraph(khp, layout, params); !errors.Is(err, khipu.ErrIllegalArguments) {
+	if _, err := breakFixture(khp, layout, params); !errors.Is(err, khipu.ErrIllegalArguments) {
 		t.Fatalf("lazy fragments must obey the accumulation safety bound: %v", err)
 	}
 }
 
 type failedRetirementProvider struct{ err error }
 
-func (p failedRetirementProvider) DiscretionaryCandidates(*khipu.Khipu, int) ([]khipu.DiscretionaryCandidate, error) {
+func (p failedRetirementProvider) DiscretionaryCandidates(search.Paragraph, int) ([]khipu.DiscretionaryCandidate, error) {
 	return nil, p.err
 }
 
 func TestProviderErrorIsNotNormalPassFailure(t *testing.T) {
 	want := errors.New("hyphenator unavailable")
 	params := NewDefaultParameters()
-	params.DiscretionaryProvider = failedRetirementProvider{want}
+	params.discretionaryProvider = failedRetirementProvider{want}
 	khp := newKhipu([]node{
 		{w: 150, minw: 150, maxw: 150, p: InfinityDemerits, kind: khipu.KTTextBox},
 		{maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
-	if _, err := BreakParagraph(khp, khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}, params); !errors.Is(err, want) {
+	if _, err := breakFixture(khp, khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}, params); !errors.Is(err, want) {
 		t.Fatalf("provider error must propagate instead of becoming fallback: %v", err)
 	}
 }

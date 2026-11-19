@@ -19,22 +19,22 @@ import (
 	"github.com/npillmayer/uax/bidi"
 )
 
-func pipelineBreak(t *testing.T, engine string, owner *khipu.Khipukamayuq, k *khipu.Khipu, layout khipu.Params, discover bool) []int {
+func pipelineBreak(t *testing.T, engine string, owner *khipu.Khipukamayuq, k *khipu.FixtureKhipu, layout khipu.Params, discover bool) []int {
 	t.Helper()
 	var ends []int
 	var err error
 	if engine == "firstfit" {
 		p := firstfit.NewDefaultParameters()
 		if discover {
-			p.DiscretionaryProvider = owner
+
 		}
-		ends, err = firstfit.BreakParagraph(k, layout, p)
+		ends, err = firstfitFixture(k, layout, p)
 	} else {
 		p := knuthplass.NewDefaultParameters()
 		if discover {
-			p.DiscretionaryProvider = owner
+
 		}
-		ends, err = knuthplass.BreakParagraph(k, layout, p)
+		ends, err = knuthplassFixture(k, layout, p)
 	}
 	if err != nil {
 		t.Fatal(err)
@@ -139,7 +139,7 @@ func TestPublicPipelineGeometry(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				k, err := owner.EncodeParagraph(para)
+				k, err := owner.EncodeParagraphFixture(para)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -150,7 +150,7 @@ func TestPublicPipelineGeometry(t *testing.T) {
 					t.Fatal(err)
 				}
 				before := slices.Clone(k.W)
-				f, err := owner.Freeze(k, breaks, layout)
+				f, err := owner.FreezeFixture(k, breaks, layout)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -184,7 +184,7 @@ func TestPublicPipelineMixedBidi(t *testing.T) {
 					t.Fatal(err)
 				}
 				owner := khipu.NewKhipukamayuq(khipu.Config{})
-				k, err := owner.EncodeParagraph(para)
+				k, err := owner.EncodeParagraphFixture(para)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -194,7 +194,7 @@ func TestPublicPipelineMixedBidi(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				f, err := owner.Freeze(k, breaks, layout)
+				f, err := owner.FreezeFixture(k, breaks, layout)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -240,7 +240,7 @@ func TestPublicPipelineDiscretionaries(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				k, err := owner.EncodeParagraph(para)
+				k, err := owner.EncodeParagraphFixture(para)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -255,7 +255,7 @@ func TestPublicPipelineDiscretionaries(t *testing.T) {
 				}
 				chosen := maps.Clone(k.SelectedDiscretionaries)
 				calls, shaped := len(policy.requests), streams
-				f, err := owner.Freeze(k, breaks, layout)
+				f, err := owner.FreezeFixture(k, breaks, layout)
 				if err != nil {
 					t.Fatal(err)
 				}

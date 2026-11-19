@@ -98,7 +98,7 @@ func TestKnotOrderingSilentFragments(t *testing.T) {
 		t.Fatal(err)
 	}
 	k.SelectDiscretionary(0, DiscretionarySelection{0, 1})
-	p, err := k.owner.materializeLogicalLines(k, []int{0, len(k.Kind) - 1})
+	p, err := k.owner.materializeLogicalLinesFixture(k, []int{0, len(k.Kind) - 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestKnotOrderingConsecutiveFragments(t *testing.T) {
 			owner := NewKhipukamayuq(Config{})
 			para := preparationParagraph(t, text)
 			para.Offset = 100
-			k, err := owner.EncodeParagraph(para)
+			k, err := owner.EncodeParagraphFixture(para)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -170,7 +170,7 @@ func TestKnotOrderingConsecutiveFragments(t *testing.T) {
 				t.Fatal("ordering must not reshape replacements")
 				return nil, nil
 			}
-			p, err := owner.materializeLogicalLines(k, breaks)
+			p, err := owner.materializeLogicalLinesFixture(k, breaks)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -250,7 +250,7 @@ func TestKnotOrderingEndpointRejectedBeforeMapping(t *testing.T) {
 			t.Fatal(err)
 		}
 		k.SelectDiscretionary(0, DiscretionarySelection{0, 1})
-		p, err := k.owner.materializeLogicalLines(k, []int{0, len(k.Kind) - 1})
+		p, err := k.owner.materializeLogicalLinesFixture(k, []int{0, len(k.Kind) - 1})
 		if p != nil || !errors.Is(err, ErrIllegalArguments) {
 			t.Fatal("endpoint split must fail before mapping", p, err)
 		}

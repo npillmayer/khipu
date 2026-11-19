@@ -21,9 +21,8 @@ type Merits = merits
 type merits int64 // keep the original defined type for source/type compatibility
 
 // Parameters is a collection of configuration parameters for line-breaking.
-// Paragraph geometry lives in khipu.Params, not in this algorithm configuration.
-// ParFillSkip remains an encoding convenience; the breaker reads the actual
-// trailer from its input and does not substitute this value during breaking.
+// Paragraph geometry lives in BreakRequest, not this algorithm configuration.
+// Paragraph fill belongs to Config.ParFillSkip and the immutable input trailer.
 //
 // The important distinction for the current implementation is:
 //   - PreTolerance screens the rough first pass
@@ -43,22 +42,20 @@ type Parameters struct {
 	// demerits and lazy discovery, never knot widths or shrink capacity. Freezing
 	// uses real capacities and may report an underfull result with fit diagnostics.
 	EmergencyStretch      dimen.DU
-	ParFillSkip           khipu.KnotCore // upstream trailer dimensions; pass to khipu.Config.ParFillSkip when encoding
-	DiscretionaryProvider DiscretionaryProvider
+	discretionaryProvider discretionaryProvider
 }
 
 // NewDefaultParameters returns an independent standard algorithm profile:
 // PreTolerance 100, Tolerance 200, LinePenalty 10, FirstHyphenDemerits 0,
 // FinalHyphenDemerits 10000, and EmergencyStretch 0. This is the profile used
 // when BreakParagraph receives nil parameters; final fallback occurs in pass 2.
-// ParFillSkip is fill glue for upstream encoding; layout remains separate.
+// Paragraph fill is configured separately at preparation.
 func NewDefaultParameters() *Parameters {
 	return &Parameters{
 		Tolerance:           200,
 		PreTolerance:        100,
 		LinePenalty:         10,
 		FinalHyphenDemerits: 10000,
-		ParFillSkip:         glue(0, 0, dimen.Fill),
 	}
 }
 
@@ -99,8 +96,8 @@ const InfinityDemerits = 10000
 const AwfulDemerits = 1000000000
 
 // DefaultLayout preserves the finite-stretch right skip of the K&P profile.
-// Resolve it before breaking, apply caller overrides, and pass the same Params
-// to freezing. Nil algorithm parameters never substitute geometry defaults.
+// Resolve it before breaking and copy its shape/skips into BreakRequest.Geometry.
+// Nil algorithm parameters never substitute geometry defaults.
 func DefaultLayout(shape khipu.LineShape) khipu.Params {
 	layout := khipu.DefaultParams()
 	layout.LineShape = shape

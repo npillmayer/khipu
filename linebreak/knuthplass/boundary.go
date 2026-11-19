@@ -1,6 +1,7 @@
 package knuthplass
 
 import (
+	"github.com/npillmayer/khipu/internal/search"
 	"math"
 
 	"github.com/npillmayer/khipu"
@@ -11,7 +12,7 @@ import (
 // discovery and boundary commit are separate phases so insertions cannot cause
 // the same knot to be accumulated twice. The boolean is ordinary pass liveness;
 // errors are reserved for invalid input or failed discretionary providers.
-func (kp *linebreaker) processKnot(khp *khipu.Khipu, last kinx) (bool, error) {
+func (kp *linebreaker) processKnot(khp search.Paragraph, last kinx) (bool, error) {
 	trace := tracer()
 	if len(kp.horizon) == 0 {
 		return false, nil // a normal exhausted pass, not an input/provider error
@@ -63,7 +64,7 @@ func (kp *linebreaker) processKnot(khp *khipu.Khipu, last kinx) (bool, error) {
 				continue
 			}
 			candidate, ok := hyphenationCandidateForLine(khp, last, ev)
-			if !ok || candidate <= from.At || khp.Penalty[candidate] <= InfinityMerits {
+			if !ok || candidate <= from.At || khp.KnotByIndex(candidate).Penalty <= InfinityMerits {
 				continue
 			}
 			if err := kp.requestDiscretionariesForLine(khp, last, ev); err != nil {
@@ -88,10 +89,11 @@ func (kp *linebreaker) processKnot(khp *khipu.Khipu, last kinx) (bool, error) {
 // later; saturated minimum sums can also invalidate the monotonicity argument.
 // Such manually constructed inputs retain their working states until a forced
 // boundary. This opt-out changes pruning only, not geometry or pass tolerance.
-func (kp *linebreaker) prepareRetirement(khp *khipu.Khipu) {
+func (kp *linebreaker) prepareRetirement(khp search.Paragraph) {
 	kp.prune = true
 	kp.minimumSum = 0
-	for _, m := range khp.MinW {
+	for i := 0; i < khp.KnotCount(); i++ {
+		m := khp.KnotByIndex(i).MinW
 		if m < 0 {
 			kp.prune = false
 		}
@@ -106,7 +108,7 @@ func (kp *linebreaker) prepareRetirement(khp *khipu.Khipu) {
 	}
 	// Reserve enough headroom for both a post-break seed and a pre-break
 	// prefix on the same line. Lazy providers obey the same conservative bound.
-	for _, cands := range khp.DiscretionaryCandidates {
+	for _, cands := range khp.Candidates() {
 		for _, cand := range cands {
 			if !kp.safeFragment(cand.PreBreak) || !kp.safeFragment(cand.PostBreak) {
 				kp.prune = false

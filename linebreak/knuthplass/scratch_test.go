@@ -1,6 +1,7 @@
 package knuthplass
 
 import (
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"slices"
 	"testing"
 
@@ -9,7 +10,7 @@ import (
 	"github.com/npillmayer/khipu/linebreak"
 )
 
-func scratchFixture() (*linebreaker, *khipu.Khipu, BreakRef) {
+func scratchFixture() (*linebreaker, *testsupport.Paragraph, BreakRef) {
 	kp := newLinebreaker(khipu.Params{LineShape: linebreak.RectangularParShape(30 * dimen.BP), RightSkip: glue(0, 0, 20*dimen.BP)}, nil)
 	kp.root = PlainBreak(-1)
 	kp.hyphenating = true

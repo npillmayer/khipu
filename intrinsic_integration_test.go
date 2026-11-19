@@ -31,7 +31,7 @@ func TestIntrinsicAcrossBothBreakersAndFreeze(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			p, err := owner.PrepareParagraph(khipu.ParagraphInput{
+			p, err := owner.PrepareParagraphFixture(khipu.ParagraphInput{
 				Paragraph: para, Atomics: []contracts.AtomicAnchor{{ID: 1, ByteOffset: 4}},
 			}, khipu.PrepareOptions{})
 			if err != nil {
@@ -42,7 +42,7 @@ func TestIntrinsicAcrossBothBreakersAndFreeze(t *testing.T) {
 			want := khipu.IntrinsicWidths{MinContent: 10 * dimen.BP, MaxContent: 50 * dimen.BP}
 			measure := func() {
 				t.Helper()
-				if got, err := owner.MeasureIntrinsic(p, request); err != nil || got != want {
+				if got, err := owner.MeasureIntrinsicFixture(p, request); err != nil || got != want {
 					t.Fatalf("measure = %v, %v; want %v", got, err, want)
 				}
 				if shapes != preparedShapes {
@@ -55,21 +55,21 @@ func TestIntrinsicAcrossBothBreakersAndFreeze(t *testing.T) {
 			var knots []khipu.FrozenKnot
 			var texts []khipu.FrozenText
 			for _, width := range []dimen.DU{50 * dimen.BP, 20 * dimen.BP} {
-				k, err := owner.BindParagraph(p, []khipu.AtomicAdvance{{ID: 1, Advance: 20 * dimen.BP}})
+				k, err := owner.BindParagraphFixture(p, []khipu.AtomicAdvance{{ID: 1, Advance: 20 * dimen.BP}})
 				if err != nil {
 					t.Fatal(err)
 				}
 				params := khipu.Params{LineShape: atomicShape(width)}
 				var breaks []int
 				if engine == "firstfit" {
-					breaks, err = firstfit.BreakParagraph(k, params, nil)
+					breaks, err = firstfitFixture(k, params, nil)
 				} else {
-					breaks, err = knuthplass.BreakParagraph(k, params, nil)
+					breaks, err = knuthplassFixture(k, params, nil)
 				}
 				if err != nil {
 					t.Fatal(err)
 				}
-				f, err := owner.Freeze(k, breaks, params)
+				f, err := owner.FreezeFixture(k, breaks, params)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -151,7 +151,7 @@ func TestExplicitIntrinsicDoesNotChangeBreakerDiscovery(t *testing.T) {
 				Resolver: helpers.DefaultStyleResolver{}, Defaults: contracts.ResolvedRunStyle{Font: helpers.NewSyntheticFont(), EmSize: 10 * dimen.BP, Spacing: contracts.SpacingElastic},
 				NewShaper: func() (contracts.StreamingShaper, error) { shapes++; return helpers.NewSyntheticStreamingShaper(8) },
 			}})
-			snapshot := func(k *khipu.Khipu, breaks []int, f *khipu.FrozenKhipu) explicitFrozenSnapshot {
+			snapshot := func(k *khipu.FixtureKhipu, breaks []int, f *khipu.FrozenKhipu) explicitFrozenSnapshot {
 				s := explicitFrozenSnapshot{breaks: breaks, selected: k.SelectedDiscretionaries}
 				for i := 0; i < f.LineCount(); i++ {
 					x, _ := f.Line(i)
@@ -172,14 +172,14 @@ func TestExplicitIntrinsicDoesNotChangeBreakerDiscovery(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				p, err := owner.PrepareParagraph(khipu.ParagraphInput{Paragraph: para}, khipu.PrepareOptions{Hyphenation: khipu.ExplicitHyphenation})
+				p, err := owner.PrepareParagraphFixture(khipu.ParagraphInput{Paragraph: para}, khipu.PrepareOptions{Hyphenation: khipu.ExplicitHyphenation})
 				if err != nil {
 					t.Fatal(err)
 				}
 				baseShapes, baseCalls := shapes, policy.calls
 				measure := func() {
 					t.Helper()
-					got, err := owner.MeasureIntrinsic(p, khipu.MeasureRequest{})
+					got, err := owner.MeasureIntrinsicFixture(p, khipu.MeasureRequest{})
 					if err != nil || got != (khipu.IntrinsicWidths{MinContent: 15 * dimen.BP, MaxContent: 20 * dimen.BP}) {
 						t.Fatal(got, err)
 					}
@@ -188,7 +188,7 @@ func TestExplicitIntrinsicDoesNotChangeBreakerDiscovery(t *testing.T) {
 					measure()
 				}
 				for range 2 {
-					k, err := owner.BindParagraph(p, nil)
+					k, err := owner.BindParagraphFixture(p, nil)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -199,18 +199,18 @@ func TestExplicitIntrinsicDoesNotChangeBreakerDiscovery(t *testing.T) {
 					var breaks []int
 					if engine == "firstfit" {
 						bp := firstfit.NewDefaultParameters()
-						bp.DiscretionaryProvider = owner
-						breaks, err = firstfit.BreakParagraph(k, geometry, bp)
+
+						breaks, err = firstfitFixture(k, geometry, bp)
 					} else {
 						geometry = knuthplass.DefaultLayout(atomicShape(15 * dimen.BP))
 						bp := knuthplass.NewDefaultParameters()
-						bp.DiscretionaryProvider = owner
-						breaks, err = knuthplass.BreakParagraph(k, geometry, bp)
+
+						breaks, err = knuthplassFixture(k, geometry, bp)
 					}
 					if err != nil {
 						t.Fatal(err)
 					}
-					f, err := owner.Freeze(k, breaks, geometry)
+					f, err := owner.FreezeFixture(k, breaks, geometry)
 					if err != nil {
 						t.Fatal(err)
 					}

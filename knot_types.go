@@ -76,49 +76,8 @@ func defaultFlagsForKind(kind KnotType) KnotFlags {
 	}
 }
 
-func (khipu *Khipu) flagsAt(index int) KnotFlags {
-	if khipu == nil || index < 0 || index >= len(khipu.Flags) {
-		return 0
-	}
-	return khipu.Flags[index]
-}
-
 // IsDiscardable reports whether KFDiscardable is set, regardless of knot kind
 // or penalty. [KnotCore.IsContent] determines which retained items shelter spaces.
 func (k KnotCore) IsDiscardable() bool {
 	return k.Flags&KFDiscardable != 0
-}
-
-// SetKnotFlags replaces the flags at index, padding missing flag entries with
-// zero. It returns false for a nil receiver or an index outside the Kind plane.
-// It changes trimming metadata, not break penalties or retained provenance.
-func (khipu *Khipu) SetKnotFlags(index int, flags KnotFlags) bool {
-	if khipu == nil || index < 0 || index >= len(khipu.Kind) {
-		return false
-	}
-	if len(khipu.Flags) < len(khipu.Kind) {
-		missing := len(khipu.Kind) - len(khipu.Flags)
-		khipu.Flags = append(khipu.Flags, make([]KnotFlags, missing)...)
-	}
-	khipu.Flags[index] = flags
-	return true
-}
-
-// Discardable scans backward from index, inclusively, past flagged discardables.
-// It returns the first non-discardable index and whether anything was skipped.
-// If every knot through index is discardable it returns (0, true); an invalid
-// index returns (0, false). The boolean is not a found indicator. The receiver
-// must be nonnil. Missing flag entries are treated as non-discardable.
-func (khipu *Khipu) Discardable(index int) (int, bool) {
-	if index < 0 || index >= len(khipu.Kind) {
-		return 0, false
-	}
-	discarded := false
-	for i := index; i >= 0; i-- {
-		if khipu.flagsAt(i)&KFDiscardable == 0 {
-			return i, discarded
-		}
-		discarded = true
-	}
-	return 0, discarded
 }

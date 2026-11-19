@@ -1,203 +1,217 @@
 package khipu
 
 import (
-	"strings"
-
-	"github.com/npillmayer/cords/styled"
+	"fmt"
+	"github.com/npillmayer/khipu/contracts"
 	"github.com/npillmayer/khipu/dimen"
+	"slices"
+	"strings"
 )
 
-// DefaultInitialKhipuCapa is the initial knot capacity when allocation has no
-// size estimate. Paragraph storage grows as needed; this is not a size limit.
-//
-// Deprecated: allocation capacity is an implementation detail. Use owner
-// encoding or preparation operations without depending on a specific capacity.
-const DefaultInitialKhipuCapa = defaultInitialKhipuCapa
+// IncarnationID is a comparable process-local material identity. Its zero value
+// identifies no paragraph. The token retains no paragraph storage.
+type IncarnationID struct{ token *incarnationToken }
+type incarnationToken struct{ marker byte }
 
-const defaultInitialKhipuCapa = 20
-
-// Khipu stores an elastic paragraph in aligned SOA planes. Source knots carry
-// original UTF-8 byte spans; a generated zero-length trailer terminates the
-// paragraph. KnotByIndex returns a value snapshot, not a mutable reference.
-//
-// Encoded paragraphs belong to the Khipukamayuq that created them. Keep source
-// spans, base knots, and shaping context stable while discretionary caches are
-// in use. A successful breaker run replaces SelectedDiscretionaries; copy those
-// decisions before rerunning if needed. Concurrent mutation is unsupported.
-//
-// All exported planes describe the same knot indices and must remain aligned.
-// A shallow copy shares their storage and the candidate/selection maps. Treat
-// encoded base planes as read-only: direct edits can invalidate private shaping
-// provenance. Manually constructed metric paragraphs can be used by breakers,
-// but lack the ownership/provenance required by [Khipukamayuq.Freeze] and
-// [Khipu.BreakpointPositions]. Prefer owner operations for normal client use.
+// Khipu is immutable paragraph material in private aligned SoA planes. Atomic
+// slots have no advance until bound. Source, fonts and style services borrowed
+// during preparation must stay stable for this incarnation's lifetime.
+// A zero Khipu is uninitialized; copy handles, not their implementation storage.
 type Khipu struct {
-	owner         *Khipukamayuq
-	paragraph     *styled.Paragraph
-	prepared      *PreparedParagraph // Explicit-only lazy cache association; never frozen.
-	boundMaterial *preparedMaterial  // Preparation identity for checkpoints; never frozen.
-	// W, MinW and MaxW contain natural, minimum and maximum widths in DU.
-	W    []dimen.DU
-	MinW []dimen.DU
-	MaxW []dimen.DU
-	// Penalty contains the break penalty after each knot.
-	Penalty []Penalty
-	// Pos and Len contain absolute UTF-8 byte starts and original byte lengths.
-	Pos []uint64
-	Len []uint16
-	// Kind identifies material; Flags controls trimming independently.
-	Kind  []KnotType
-	Flags []KnotFlags
-	// boxRefs is aligned with knots created through appendKnot. Zero means no
-	// retained shaping output (including manually constructed knots).
-	boxRefs []shapedBoxID
-	shaping shapingArena
-	// Legacy EncodeParagraph leaves this gate unset for compatibility.
-	hyphenationPolicy bool
-	hyphenation       HyphenationMode
-
-	// DiscretionaryCandidates caches alternatives by source textbox index.
-	// Variants must remain unique and stable within each textbox. Missing entries
-	// do not distinguish unqueried textboxes from successful empty discoveries.
-	DiscretionaryCandidates map[int][]DiscretionaryCandidate
-	// SelectedDiscretionaries records choices by line-ending knot index. Successful
-	// breaker calls replace this map's contents; failed calls preserve them.
-	// Keep these choices with their matching breakpoint list until freezing.
-	SelectedDiscretionaries map[int]DiscretionarySelection
-	// discretionaryEmpty records successful empty discovery by this paragraph's
-	// owner. It is separate from the public candidate map: absence there still
-	// means no alternatives, not necessarily that discovery has been attempted.
-	// Source, shaping context and collaborator policy must stay stable; re-encode
-	// with a new owner to use a changed policy. Errors never populate this set.
-	discretionaryEmpty map[int]struct{}
+	id          IncarnationID
+	material    *preparedMaterial
+	hyphenation HyphenationMode
+	atomicIDs   []contracts.AtomicID
+	atomicSlots map[contracts.AtomicID]int
 }
 
-// allocKhipu assigns ownership at construction and reserves the known knot
-// count. Zero selects the small default; larger paragraphs are not capped back
-// to that default. Slice append handles subsequent growth without an isFull test.
-func (kq *Khipukamayuq) allocKhipu(capacity int) *Khipu {
-	assert(kq != nil, "nil-Khipukamayuq cannot allocate a khipu")
-	if capacity == 0 {
-		capacity = defaultInitialKhipuCapa
-	}
-	khipu := Khipu{
-		owner:   kq,
-		W:       make([]dimen.DU, 0, capacity),
-		MinW:    make([]dimen.DU, 0, capacity),
-		MaxW:    make([]dimen.DU, 0, capacity),
-		Penalty: make([]Penalty, 0, capacity),
-		Pos:     make([]uint64, 0, capacity),
-		Len:     make([]uint16, 0, capacity),
-		Kind:    make([]KnotType, 0, capacity),
-		Flags:   make([]KnotFlags, 0, capacity),
-
-		DiscretionaryCandidates: make(map[int][]DiscretionaryCandidate),
-		SelectedDiscretionaries: make(map[int]DiscretionarySelection),
-	}
-	return &khipu
+// KnotTemplate describes one base knot. Atomic slots have zero placeholder
+// widths and MetricsKnown false, even when a later binding supplies zero.
+type KnotTemplate struct {
+	Core         KnotCore
+	Atomic       contracts.AtomicID
+	MetricsKnown bool
 }
 
-func unwireKhipu(khipu *Khipu) *Khipu {
-	khipu.owner = nil
-	khipu.paragraph = nil
-	khipu.prepared = nil
-	khipu.boundMaterial = nil
-	khipu.W = nil
-	khipu.MinW = nil
-	khipu.MaxW = nil
-	khipu.Penalty = nil
-	khipu.Pos = nil
-	khipu.Len = nil
-	khipu.Kind = nil
-	khipu.Flags = nil
-	khipu.boxRefs = nil
-	khipu.shaping = shapingArena{}
-	khipu.DiscretionaryCandidates = nil
-	khipu.SelectedDiscretionaries = nil
-	khipu.discretionaryEmpty = nil
-	return nil
+// ID returns the incarnation, or zero for nil/uninitialized material.
+func (k *Khipu) ID() IncarnationID {
+	if k == nil {
+		return IncarnationID{}
+	}
+	return k.id
 }
 
-// KnotByIndex returns a detached snapshot at the zero-based index, or a zero
-// KnotCore if index is outside the Kind plane. It does not validate alignment:
-// short metric/source planes may panic. Missing flag entries are read as zero.
-func (khipu Khipu) KnotByIndex(index int) KnotCore {
-	if index < 0 || index >= len(khipu.Kind) {
-		return KnotCore{}
+// KnotCount returns the number of base knots, including the final trailer.
+func (k *Khipu) KnotCount() int {
+	if k == nil || k.material == nil {
+		return 0
 	}
-	return KnotCore{
-		W:       khipu.W[index],
-		MinW:    khipu.MinW[index],
-		MaxW:    khipu.MaxW[index],
-		Kind:    khipu.Kind[index],
-		Penalty: khipu.Penalty[index],
-		Pos:     khipu.Pos[index],
-		Len:     khipu.Len[index],
-		Flags:   khipu.flagsAt(index),
-	}
+	return len(k.material.planes.kind)
 }
 
-func (khipu *Khipu) appendKnot(k KnotCore) *Khipu {
-	// Pad references for manually constructed metric-only SOA values.
-	for len(khipu.boxRefs) < len(khipu.Kind) {
-		khipu.boxRefs = append(khipu.boxRefs, 0)
+// Knot returns a detached template; invalid indexes return zero and false.
+func (k *Khipu) Knot(i int) (KnotTemplate, bool) {
+	if i < 0 || i >= k.KnotCount() {
+		return KnotTemplate{}, false
 	}
-	khipu.boxRefs = append(khipu.boxRefs, 0)
-	if khipu.shaping.sources != nil {
-		khipu.shaping.sources = append(khipu.shaping.sources, knotSource{})
+	core := k.material.planes.knot(i)
+	var id contracts.AtomicID
+	if i < len(k.material.shaping.sources) {
+		id = k.material.shaping.sources[i].atomic
 	}
-	khipu.W = append(khipu.W, k.W)
-	khipu.MinW = append(khipu.MinW, k.MinW)
-	khipu.MaxW = append(khipu.MaxW, k.MaxW)
-	khipu.Penalty = append(khipu.Penalty, k.Penalty)
-	khipu.Pos = append(khipu.Pos, k.Pos)
-	khipu.Len = append(khipu.Len, k.Len)
-	khipu.Kind = append(khipu.Kind, k.Kind)
-	khipu.Flags = append(khipu.Flags, k.Flags)
-	return khipu
+	return KnotTemplate{core, id, id == 0}, true
 }
 
-// Unskip removes the last knot if it is discardable glue or kern.
-// A non-discardable paragraph trailer is retained.
-func (khipu *Khipu) Unskip() {
-	if len(khipu.W) == 0 {
-		return
+// AtomicIDs returns occurrence IDs in canonical source order in detached storage.
+func (k *Khipu) AtomicIDs() []contracts.AtomicID {
+	if k == nil {
+		return nil
 	}
-	top := len(khipu.W) - 1
-	if (khipu.Kind[top] == KTGlue || khipu.Kind[top] == KTKern) && khipu.flagsAt(top)&KFDiscardable != 0 {
-		khipu.W = khipu.W[:top]
-		khipu.MinW = khipu.MinW[:top]
-		khipu.MaxW = khipu.MaxW[:top]
-		khipu.Penalty = khipu.Penalty[:top]
-		khipu.Pos = khipu.Pos[:top]
-		khipu.Len = khipu.Len[:top]
-		khipu.Kind = khipu.Kind[:top]
-		if len(khipu.Flags) > top {
-			khipu.Flags = khipu.Flags[:top]
-		}
-		if len(khipu.boxRefs) > top {
-			khipu.boxRefs = khipu.boxRefs[:top]
-		}
-		if len(khipu.shaping.sources) > top {
-			khipu.shaping.sources = khipu.shaping.sources[:top]
+	return slices.Clone(k.atomicIDs)
+}
+
+// HasExplicitDiscretionary inspects retained soft-hyphen metadata, without
+// discovery or shaping. False includes invalid indexes and NoHyphenation.
+func (k *Khipu) HasExplicitDiscretionary(i int) bool {
+	t, ok := k.Knot(i)
+	if !ok || t.Core.Kind != KTTextBox || k.hyphenation == NoHyphenation {
+		return false
+	}
+	a := k.material.shaping
+	if i >= len(a.sources) {
+		return false
+	}
+	s := a.sources[i].source
+	if s.scalarEnd > uint64(len(a.boundaries)) {
+		return false
+	}
+	for j := s.scalarStart; j < s.scalarEnd; j++ {
+		if a.boundaries[j].softHyphen {
+			return true
 		}
 	}
+	return false
 }
 
-// String joins the knots' diagnostic descriptions in logical storage order.
-func (khipu *Khipu) String() string {
-	var sb strings.Builder
-	for i := range len(khipu.Kind) {
+// String returns diagnostic knot descriptions in logical source order.
+func (k *Khipu) String() string {
+	var b strings.Builder
+	for i := 0; i < k.KnotCount(); i++ {
 		if i > 0 {
-			sb.WriteString(" ")
+			b.WriteByte(' ')
 		}
-		sb.WriteString(khipu.KnotByIndex(i).String())
+		t, _ := k.Knot(i)
+		b.WriteString(t.Core.String())
 	}
-	return sb.String()
+	return b.String()
 }
 
-func assert(cond bool, msg string) {
-	if !cond {
+// AtomicBinding combines shared immutable base material with copied advances.
+// It owns no frame width or search decisions and performs no service calls.
+type AtomicBinding struct {
+	material *Khipu
+	advances []dimen.DU
+}
+
+// BindParagraph supplies exactly one finite signed advance per atomic occurrence
+// in any order. Failure returns nil; neither inputs nor material are changed.
+func BindParagraph(k *Khipu, input []AtomicAdvance) (*AtomicBinding, error) {
+	if k == nil || k.ID().token == nil || k.KnotCount() == 0 || len(input) != len(k.atomicIDs) {
+		return nil, ErrIllegalArguments
+	}
+	values := make(map[contracts.AtomicID]dimen.DU, len(input))
+	for _, v := range input {
+		if _, ok := values[v.ID]; ok || v.ID == 0 || v.Advance <= -dimen.Fil || v.Advance >= dimen.Fil {
+			return nil, ErrIllegalArguments
+		}
+		values[v.ID] = v.Advance
+	}
+	b := &AtomicBinding{material: k, advances: make([]dimen.DU, len(k.atomicIDs))}
+	for i, id := range k.atomicIDs {
+		v, ok := values[id]
+		if !ok {
+			return nil, fmt.Errorf("%w: missing atomic %d", ErrIllegalArguments, id)
+		}
+		b.advances[i] = v
+	}
+	return b, nil
+}
+
+// Incarnation returns the binding's material identity, or zero if uninitialized.
+func (b *AtomicBinding) Incarnation() IncarnationID {
+	if b == nil {
+		return IncarnationID{}
+	}
+	return b.material.ID()
+}
+
+// KnotCount includes the paragraph-final trailer; uninitialized bindings return zero.
+func (b *AtomicBinding) KnotCount() int {
+	if b == nil {
+		return 0
+	}
+	return b.material.KnotCount()
+}
+
+// Knot overlays atomic metrics on a detached base snapshot. Invalid indexes
+// return zero and false; valid bound atomics always have MinW == W == MaxW.
+func (b *AtomicBinding) Knot(i int) (KnotCore, bool) {
+	if b == nil {
+		return KnotCore{}, false
+	}
+	t, ok := b.material.Knot(i)
+	if !ok {
+		return KnotCore{}, false
+	}
+	if t.Atomic != 0 {
+		w := b.advances[b.material.atomicSlots[t.Atomic]]
+		t.Core.W, t.Core.MinW, t.Core.MaxW = w, w, w
+	}
+	return t.Core, true
+}
+
+// AtomicAdvances returns canonical copied ID/advance pairs.
+func (b *AtomicBinding) AtomicAdvances() []AtomicAdvance {
+	if b == nil || b.material == nil {
+		return nil
+	}
+	r := make([]AtomicAdvance, len(b.advances))
+	for i, w := range b.advances {
+		r[i] = AtomicAdvance{ID: b.material.atomicIDs[i], Advance: w}
+	}
+	return r
+}
+
+// HasExplicitDiscretionary delegates to immutable source metadata only.
+func (b *AtomicBinding) HasExplicitDiscretionary(i int) bool {
+	return b != nil && b.material.HasExplicitDiscretionary(i)
+}
+
+// knotPlanes is the immutable base SoA after compiler publication.
+type knotPlanes struct {
+	w, minW, maxW []dimen.DU
+	penalty       []Penalty
+	pos           []uint64
+	length        []uint16
+	kind          []KnotType
+	flags         []KnotFlags
+}
+
+func (p *knotPlanes) append(k KnotCore) {
+	p.w = append(p.w, k.W)
+	p.minW = append(p.minW, k.MinW)
+	p.maxW = append(p.maxW, k.MaxW)
+	p.penalty = append(p.penalty, k.Penalty)
+	p.pos = append(p.pos, k.Pos)
+	p.length = append(p.length, k.Len)
+	p.kind = append(p.kind, k.Kind)
+	p.flags = append(p.flags, k.Flags)
+}
+func (p *knotPlanes) knot(i int) KnotCore {
+	return KnotCore{W: p.w[i], MinW: p.minW[i], MaxW: p.maxW[i], Penalty: p.penalty[i], Pos: p.pos[i], Len: p.length[i], Kind: p.kind[i], Flags: p.flags[i]}
+}
+func assert(ok bool, msg string) {
+	if !ok {
 		panic(msg)
 	}
 }

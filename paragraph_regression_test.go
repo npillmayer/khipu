@@ -28,7 +28,7 @@ func TestEncodedParagraphTextRegressions(t *testing.T) {
 	} {
 		t.Run(tc.source, func(t *testing.T) {
 			owner := khipu.NewKhipukamayuq(khipu.Config{})
-			khp, err := owner.EncodeParagraph(encodingParagraph(t, tc.source))
+			khp, err := owner.EncodeParagraphFixture(encodingParagraph(t, tc.source))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -84,7 +84,7 @@ func TestEncodedParagraphStyleResolution(t *testing.T) {
 		}
 		return defaults, nil
 	})
-	khp, err := khipu.NewKhipukamayuq(khipu.Config{Streaming: cfg}).EncodeParagraph(para)
+	khp, err := khipu.NewKhipukamayuq(khipu.Config{Streaming: cfg}).EncodeParagraphFixture(para)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestModernBreakersParagraphRegressions(t *testing.T) {
 		for _, algorithm := range []string{"firstfit", "Knuth-Plass"} {
 			t.Run(tc.name+"/"+algorithm, func(t *testing.T) {
 				params := &khipu.Params{SpaceStretchPercent: tc.stretch}
-				khp, err := khipu.NewKhipukamayuq(khipu.Config{Params: params}).EncodeParagraph(encodingParagraph(t, tc.source))
+				khp, err := khipu.NewKhipukamayuq(khipu.Config{Params: params}).EncodeParagraphFixture(encodingParagraph(t, tc.source))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -147,12 +147,12 @@ func TestModernBreakersParagraphRegressions(t *testing.T) {
 				shape := linebreak.RectangularParShape(width)
 				var breaks []int
 				if algorithm == "firstfit" {
-					breaks, err = firstfit.BreakParagraph(khp, firstfit.DefaultLayout(shape), nil)
+					breaks, err = firstfitFixture(khp, firstfit.DefaultLayout(shape), nil)
 				} else {
 					params := knuthplass.NewDefaultParameters()
 					layout := knuthplass.DefaultLayout(shape)
 					layout.RightSkip = khipu.KnotCore{MaxW: 5 * dimen.PT}
-					breaks, err = knuthplass.BreakParagraph(khp, layout, params)
+					breaks, err = knuthplassFixture(khp, layout, params)
 				}
 				if err != nil {
 					t.Fatal(err)

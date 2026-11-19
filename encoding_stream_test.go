@@ -35,7 +35,7 @@ func TestPublicStreamingEncodingAndBreakers(t *testing.T) {
 	owner := khipu.NewKhipukamayuq(khipu.Config{Streaming: &cfg})
 	cfg.Defaults.EmSize = 20 * dimen.PT // owner must retain its construction snapshot
 	for i := 0; i < 2; i++ {
-		khp, err := owner.EncodeParagraph(streamingParagraph(t))
+		khp, err := owner.EncodeParagraphFixture(streamingParagraph(t))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -43,18 +43,18 @@ func TestPublicStreamingEncodingAndBreakers(t *testing.T) {
 			t.Fatal("unexpected metrics", khp)
 		}
 		shape := linebreak.RectangularParShape(100 * dimen.PT)
-		greedy, err := firstfit.BreakParagraph(khp, firstfit.DefaultLayout(shape), nil)
+		greedy, err := firstfitFixture(khp, firstfit.DefaultLayout(shape), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		optimal, err := knuthplass.BreakParagraph(khp, knuthplass.DefaultLayout(shape), nil)
+		optimal, err := knuthplassFixture(khp, knuthplass.DefaultLayout(shape), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if len(greedy) != 1 || len(optimal) != 1 || greedy[0] != 3 || optimal[0] != 3 {
 			t.Fatal(greedy, optimal)
 		}
-		if c, err := owner.DiscretionaryCandidates(khp, 0); err != nil || len(c) != 0 {
+		if c, err := owner.DiscoverFixture(khp, 0); err != nil || len(c) != 0 {
 			t.Fatal("disabled hyphenation", c, err)
 		}
 	}
@@ -73,7 +73,7 @@ func TestPublicStreamingConfigurationErrors(t *testing.T) {
 		{Resolver: helpers.DefaultStyleResolver{}, NewShaper: func() (contracts.StreamingShaper, error) { return nil, failure }},
 	} {
 		owner := khipu.NewKhipukamayuq(khipu.Config{Streaming: cfg})
-		got, err := owner.EncodeParagraph(p)
+		got, err := owner.EncodeParagraphFixture(p)
 		if got != nil || err == nil {
 			t.Fatal("accepted missing config")
 		}
@@ -89,20 +89,20 @@ func TestPublicStreamingConfigurationErrors(t *testing.T) {
 func TestPublicDefaultStreamingEncoding(t *testing.T) {
 	owner := khipu.NewKhipukamayuq(khipu.Config{})
 	for range 2 {
-		k, err := owner.EncodeParagraph(streamingParagraph(t))
+		k, err := owner.EncodeParagraphFixture(streamingParagraph(t))
 		if err != nil {
 			t.Fatal(err)
 		}
 		if len(k.Kind) != 4 || k.W[0] != 25*dimen.PT || k.W[1] != 5*dimen.PT || k.MinW[1] >= k.W[1] || k.MaxW[1] <= k.W[1] {
 			t.Fatal("unexpected synthetic default metrics", k)
 		}
-		if candidates, err := owner.DiscretionaryCandidates(k, 0); err != nil || len(candidates) != 0 {
+		if candidates, err := owner.DiscoverFixture(k, 0); err != nil || len(candidates) != 0 {
 			t.Fatal("default discovery must remain disabled", candidates, err)
 		}
 	}
 	// Explicit zero parameters and fill widths must not acquire nonzero defaults.
 	owner = khipu.NewKhipukamayuq(khipu.Config{Params: &khipu.Params{}, ParFillSkip: &khipu.KnotCore{}})
-	k, err := owner.EncodeParagraph(streamingParagraph(t))
+	k, err := owner.EncodeParagraphFixture(streamingParagraph(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,14 +119,14 @@ func TestDefaultStreamingDiscretionaryReshaping(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	k, err := owner.EncodeParagraph(para)
+	k, err := owner.EncodeParagraphFixture(para)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(policy.requests) != 0 {
 		t.Fatal("eager discovery")
 	}
-	candidates, err := owner.DiscretionaryCandidates(k, 0)
+	candidates, err := owner.DiscoverFixture(k, 0)
 	if err != nil || len(candidates) != 1 || candidates[0].PreBreak.W != 15*dimen.PT || candidates[0].SourceSplit != (khipu.SourceSplit{ByteOffset: 2, Valid: true}) {
 		t.Fatal("default fragment shaping", candidates, err)
 	}
@@ -137,11 +137,11 @@ func TestStreamingAutomaticPolicyCanDecline(t *testing.T) {
 		NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(1) },
 		Resolver:  helpers.DefaultStyleResolver{}, Defaults: contracts.ResolvedRunStyle{Font: helpers.NewSyntheticFont(), EmSize: 10 * dimen.PT},
 	}})
-	k, err := owner.EncodeParagraph(streamingParagraph(t))
+	k, err := owner.EncodeParagraphFixture(streamingParagraph(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if candidates, err := owner.DiscretionaryCandidates(k, 0); err != nil || len(candidates) != 0 {
+	if candidates, err := owner.DiscoverFixture(k, 0); err != nil || len(candidates) != 0 {
 		t.Fatal("unexpected automatic streaming candidates", candidates, err)
 	}
 }
@@ -164,16 +164,16 @@ func TestPublicStreamingBoundaryRegressions(t *testing.T) {
 				Resolver: helpers.DefaultStyleResolver{}, Defaults: contracts.ResolvedRunStyle{Font: helpers.NewSyntheticFont(), EmSize: 10 * dimen.PT, Spacing: contracts.SpacingElastic},
 				NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(1) },
 			}})
-			k, err := owner.EncodeParagraph(p)
+			k, err := owner.EncodeParagraphFixture(p)
 			if err != nil {
 				t.Fatal(err)
 			}
 			shape := linebreak.RectangularParShape(100 * dimen.PT)
-			f, err := firstfit.BreakParagraph(k, firstfit.DefaultLayout(shape), nil)
+			f, err := firstfitFixture(k, firstfit.DefaultLayout(shape), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			kp, err := knuthplass.BreakParagraph(k, knuthplass.DefaultLayout(shape), nil)
+			kp, err := knuthplassFixture(k, knuthplass.DefaultLayout(shape), nil)
 			if err != nil {
 				t.Fatal(err)
 			}

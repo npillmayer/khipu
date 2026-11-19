@@ -2,6 +2,8 @@ package knuthplass
 
 import (
 	"fmt"
+	"github.com/npillmayer/khipu/internal/search"
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"testing"
 
 	"github.com/npillmayer/khipu"
@@ -34,16 +36,16 @@ type countingLoremProvider struct {
 	requests int
 }
 
-func (p *countingLoremProvider) DiscretionaryCandidates(khp *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error) {
+func (p *countingLoremProvider) DiscretionaryCandidates(khp search.Paragraph, at int) ([]khipu.DiscretionaryCandidate, error) {
 	p.requests++
-	return p.owner.DiscretionaryCandidates(khp, at)
+	return testsupport.Discover(p.owner, khp, at)
 }
 
-func hyphenatingLorem(tb testing.TB, words int) (*khipu.Khipu, *linebreaker, *countingLoremProvider, *loremHyphenator) {
+func hyphenatingLorem(tb testing.TB, words int) (*testsupport.Paragraph, *linebreaker, *countingLoremProvider, *loremHyphenator) {
 	tb.Helper()
 	policy := &loremHyphenator{}
 	owner := khipu.NewKhipukamayuq(khipu.Config{Hyphenator: policy})
-	khp, err := owner.EncodeParagraph(loremParagraph(tb, words))
+	khp, err := testsupport.Encode(owner, loremParagraph(tb, words))
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -52,7 +54,7 @@ func hyphenatingLorem(tb testing.TB, words int) (*khipu.Khipu, *linebreaker, *co
 	}
 	provider := &countingLoremProvider{owner: owner}
 	params := NewDefaultParameters()
-	params.DiscretionaryProvider = provider
+	params.discretionaryProvider = provider
 	kp, err := prepareLineBreaker(DefaultLayout(linebreak.RectangularParShape(150*dimen.PT)), params)
 	if err != nil {
 		tb.Fatal(err)

@@ -3,14 +3,9 @@ package khipu
 import (
 	"context"
 	"errors"
-	"fmt"
-
 	"github.com/npillmayer/cords/styled"
+	"github.com/npillmayer/khipu/contracts"
 )
-
-// ErrStreamingDiscretionariesUnsupported reports missing streaming configuration
-// when an alternative requires reshaping. Never fall back to metric shaping.
-var ErrStreamingDiscretionariesUnsupported = errors.New("khipu: streaming discretionary shaping is unavailable")
 
 // ErrUnrepresentableMandatoryBreak means source analysis requires a break that
 // cannot be retained without splitting a shaped cluster or representing a
@@ -18,52 +13,58 @@ var ErrStreamingDiscretionariesUnsupported = errors.New("khipu: streaming discre
 // it never downgrades a mandatory break to an optional or prohibited one.
 var ErrUnrepresentableMandatoryBreak = errors.New("khipu: mandatory break cannot be represented by shaped knots")
 
-// EncodeParagraph shapes and publishes a logical-order SOA paragraph
-// with retained textbox glyphs, cluster provenance and shaping contexts. It
-// uses Config.Streaming or the constructor's synthetic defaults, with a fresh
-// factory-created stream per call. Glue retains metrics/source metadata, not
-// glyphs. Space elasticity comes from Params and resolved spacing.
-//
-// Source text/styles must remain stable during this call and later reshaping.
-// The owner is not safe for concurrent operations. Errors return no paragraph;
-// any launched producer is cancelled and joined before returning. Synchronous
-// preparation and factory creation are not interrupted mid-call by cancellation.
-// A backend blocked in a source read retains its documented cancellation limits.
-// Freezing, visual ordering and lazy discretionary reshaping are not performed.
-// Mandatory breaks inside clusters or unsupported glyphless ranges return
-// ErrUnrepresentableMandatoryBreak. Optional opportunities inside clusters are
-// suppressed. The final source boundary is represented by the paragraph trailer.
-// U+00AD is filtered before shaping, with returned anchors restored to original
-// source coordinates. Its location is retained, but ordinary breaks there are
-// prohibited. Configure this owner as the breaker's DiscretionaryProvider to
-// prepare and select explicit replacement fragments lazily during linebreaking.
-func (kq *Khipukamayuq) EncodeParagraph(para *styled.Paragraph) (*Khipu, error) {
-	if kq == nil {
-		return nil, ErrVoidKhipukamayuq
+// EncodeParagraph constructs text-only material and its discovery facility.
+// Configured hyphenation enables automatic (including explicit) opportunities.
+func (q *Khipukamayuq) EncodeParagraph(p *styled.Paragraph) (*Khipu, *Discovery, error) {
+	mode := NoHyphenation
+	if q != nil && !nilRunService(q.env.hyphenator) {
+		mode = AutomaticHyphenation
 	}
-	if para == nil {
-		return nil, ErrIllegalArguments
-	}
+	return q.PrepareParagraph(ParagraphInput{Paragraph: p}, PrepareOptions{Hyphenation: mode})
+}
 
-	cfg := kq.env.streaming
+// PrepareParagraph shapes and compiles immutable paragraph material once.
+// Source/styles/services remain borrowed and stable. Errors publish no handles.
+func (q *Khipukamayuq) PrepareParagraph(input ParagraphInput, options PrepareOptions) (*Khipu, *Discovery, error) {
+	if q == nil {
+		return nil, nil, ErrVoidKhipukamayuq
+	}
+	if input.Paragraph == nil || options.Hyphenation > AutomaticHyphenation ||
+		(options.Hyphenation != NoHyphenation && nilRunService(q.env.hyphenator)) {
+		return nil, nil, ErrIllegalArguments
+	}
+	cfg := q.env.streaming
 	if cfg == nil || cfg.NewShaper == nil || nilRunService(cfg.Resolver) {
-		return nil, fmt.Errorf("%w: streaming configuration requires a factory and resolver", ErrIllegalArguments)
+		return nil, nil, ErrIllegalArguments
 	}
-	shaper, err := cfg.NewShaper()
+	stream, err := cfg.NewShaper()
 	if err != nil {
-		return nil, fmt.Errorf("khipu: creating streaming shaper: %w", err)
+		return nil, nil, err
 	}
-	if nilRunService(shaper) {
-		return nil, fmt.Errorf("%w: factory returned nil streaming shaper", ErrIllegalArguments)
+	if nilRunService(stream) {
+		return nil, nil, ErrIllegalArguments
 	}
-	candidates, err := streamCandidateParagraph(context.Background(), para, cfg.Resolver, cfg.Defaults, *kq.env.params, kq.env.parFillSkip, shaper, cfg.BufferOptions)
+	candidates, err := streamMixedCandidateParagraph(context.Background(), input.Paragraph, cfg.Resolver, cfg.Defaults, *q.env.params, q.env.parFillSkip, stream, cfg.BufferOptions, input.Atomics, options.AtomicBoundaries)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	k, err := kq.publishCandidateParagraph(candidates)
+	compiled, err := compileCandidateParagraph(candidates)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-
-	return k, nil
+	k := &Khipu{id: IncarnationID{new(incarnationToken)}, material: compiled, hyphenation: options.Hyphenation, atomicSlots: make(map[contracts.AtomicID]int)}
+	for _, s := range compiled.shaping.sources {
+		if s.atomic != 0 {
+			k.atomicSlots[s.atomic] = len(k.atomicIDs)
+			k.atomicIDs = append(k.atomicIDs, s.atomic)
+		}
+	}
+	// A copied recipe has no backlink to the constructor or geometry provider.
+	params := *q.env.params
+	params.LineShape = nil
+	params.LeftSkip = KnotCore{}
+	params.RightSkip = KnotCore{}
+	recipe := NewKhipukamayuq(Config{Params: &params, Streaming: cfg, Hyphenator: q.env.hyphenator, ParFillSkip: &q.env.parFillSkip})
+	d := &Discovery{material: k, recipe: recipe, batches: make(map[int]*AlternativeSet)}
+	return k, d, nil
 }

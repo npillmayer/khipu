@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/linebreak/firstfit"
 	"github.com/npillmayer/khipu/linebreak/knuthplass"
 )
@@ -44,9 +43,5 @@ func TestLegacyExportsRemainUsable(t *testing.T) {
 		uint8(knuthplass.LICContent), uint8(knuthplass.LICTrimDiscardable), uint8(knuthplass.LICRetainedNeutral),
 	}; got != [6]uint8{0, 1, 2, 0, 1, 2} {
 		t.Fatalf("legacy classification values changed: %v", got)
-	}
-	var capacity int64 = khipu.DefaultInitialKhipuCapa
-	if capacity != 20 {
-		t.Fatalf("legacy capacity changed: %d", capacity)
 	}
 }

@@ -2,6 +2,7 @@ package knuthplass
 
 import (
 	"fmt"
+	"github.com/npillmayer/khipu/internal/search"
 
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/dimen"
@@ -95,6 +96,10 @@ func (kp *linebreaker) evaluateCandidates(bp BreakRef, penalty khipu.Penalty) []
 			kp.metrics.ordinary++
 		}
 		linelen := kp.layout.LineShape.LineLength(int32(line + 1))
+		if err := search.WidthError(kp.layout.LineShape); err != nil {
+			kp.arithmeticErr = err
+			return nil
+		}
 		segwss := path.effectiveWidth(kp.layout)
 		if err := segwss.Err(); err != nil {
 			kp.arithmeticErr = err

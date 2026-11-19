@@ -41,7 +41,7 @@ func TestFirstfitFittingAndFreezing(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			k, err := owner.EncodeParagraph(para)
+			k, err := owner.EncodeParagraphFixture(para)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -51,7 +51,7 @@ func TestFirstfitFittingAndFreezing(t *testing.T) {
 			}
 			layout := firstfit.DefaultLayout(linebreak.RectangularParShape(target))
 			w, min, max := slices.Clone(k.W), slices.Clone(k.MinW), slices.Clone(k.MaxW)
-			breaks, err := firstfit.BreakParagraph(k, layout, nil)
+			breaks, err := firstfitFixture(k, layout, nil)
 			want := []int{1, 3, 5, 7}
 			if tc.pairs {
 				want = []int{3, 7}

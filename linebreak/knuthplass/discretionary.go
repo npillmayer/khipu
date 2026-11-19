@@ -2,6 +2,7 @@ package knuthplass
 
 import (
 	"fmt"
+	"github.com/npillmayer/khipu/internal/search"
 
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/linebreak"
@@ -26,7 +27,7 @@ func (bc breakCandidate) lineCost() lineCost {
 	}
 }
 
-// DiscretionaryProvider supplies hyphenation alternatives for one textbox knot.
+// discretionaryProvider supplies hyphenation alternatives for one textbox knot.
 // Ownership of candidate discovery and caching stays with the provider.
 // Lazily returned PreBreak/PostBreak cores must have nonnegative minimum
 // widths. Negative fragments could rescue an already retired origin and are
@@ -36,22 +37,21 @@ func (bc breakCandidate) lineCost() lineCost {
 // remaining int32 headroom after summing original minima. This conservative
 // bound allows a post-break seed and pre-break prefix without saturating the
 // minimum-width arithmetic on which retirement relies.
-// Calls are synchronous and have no context argument. Encoding/freezing contexts
-// do not propagate here; the standard owner uses Background for lazy shaping.
-// Providers must preserve published selections even when discovery fails.
-type DiscretionaryProvider interface {
-	DiscretionaryCandidates(khp *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error)
+// Calls are synchronous; production uses the request's immutable Discovery.
+// The interface is private to the evaluator and test fixtures.
+type discretionaryProvider interface {
+	DiscretionaryCandidates(khp search.Paragraph, at int) ([]khipu.DiscretionaryCandidate, error)
 }
 
 // discretionaryCandidates is the linebreaker's single entry point for
 // textbox-local hyphenation opportunities. In production this usually delegates
 // to Khipukamayuq; tests may also satisfy it from the Khipu cache directly.
-func (kp *linebreaker) discretionaryCandidates(khp *khipu.Khipu, at kinx) ([]khipu.DiscretionaryCandidate, error) {
-	if khp == nil || at < 0 || at >= len(khp.Kind) {
+func (kp *linebreaker) discretionaryCandidates(khp search.Paragraph, at kinx) ([]khipu.DiscretionaryCandidate, error) {
+	if khp == nil || at < 0 || at >= khp.KnotCount() {
 		return nil, khipu.ErrIllegalArguments
 	}
-	if kp != nil && kp.params != nil && kp.params.DiscretionaryProvider != nil {
-		cands, err := kp.params.DiscretionaryProvider.DiscretionaryCandidates(khp, int(at))
+	if kp != nil && kp.params != nil && kp.params.discretionaryProvider != nil {
+		cands, err := kp.params.discretionaryProvider.DiscretionaryCandidates(khp, int(at))
 		if err != nil {
 			return nil, err
 		}
@@ -78,8 +78,8 @@ func isLineDiscardable(k khipu.KnotCore) bool {
 // previousContentBox and nextContentBox narrow the local scans to actual
 // textboxes. If a non-discardable non-textbox knot intervenes, the scan stops:
 // that local context is not a hyphenation candidate.
-func previousContentBox(khp *khipu.Khipu, at kinx) (kinx, bool) {
-	if khp == nil || at < 0 || at >= len(khp.Kind) {
+func previousContentBox(khp search.Paragraph, at kinx) (kinx, bool) {
+	if khp == nil || at < 0 || at >= khp.KnotCount() {
 		return noinx, false
 	}
 	for i := at; i >= 0; i-- {
@@ -95,11 +95,11 @@ func previousContentBox(khp *khipu.Khipu, at kinx) (kinx, bool) {
 	return noinx, false
 }
 
-func nextContentBox(khp *khipu.Khipu, at kinx) (kinx, bool) {
-	if khp == nil || at < 0 || at >= len(khp.Kind) {
+func nextContentBox(khp search.Paragraph, at kinx) (kinx, bool) {
+	if khp == nil || at < 0 || at >= khp.KnotCount() {
 		return noinx, false
 	}
-	for i := at; i < len(khp.Kind); i++ {
+	for i := at; i < khp.KnotCount(); i++ {
 		k := khp.KnotByIndex(i)
 		if isLineDiscardable(k) {
 			continue
@@ -127,16 +127,16 @@ func (kp *linebreaker) wantsHyphenation(ev lineEvaluation) bool {
 // loose lines ask for the next box that did not fit, tight lines ask for the
 // last box that is already on the line. Both hyphenating passes (2 and 3) use
 // this same selection rule.
-func hyphenationCandidateForLine(khp *khipu.Khipu, breakpoint kinx, ev lineEvaluation) (kinx, bool) {
-	if khp == nil || breakpoint < 0 || breakpoint >= len(khp.Kind) {
+func hyphenationCandidateForLine(khp search.Paragraph, breakpoint kinx, ev lineEvaluation) (kinx, bool) {
+	if khp == nil || breakpoint < 0 || breakpoint >= khp.KnotCount() {
 		return noinx, false
 	}
 	switch {
 	case ev.ratio > 0:
-		if khp.Penalty[breakpoint] <= InfinityMerits {
+		if khp.KnotByIndex(breakpoint).Penalty <= InfinityMerits {
 			return noinx, false // never look ahead across a mandatory boundary
 		}
-		if breakpoint+1 >= len(khp.Kind) {
+		if breakpoint+1 >= khp.KnotCount() {
 			return noinx, false
 		}
 		return nextContentBox(khp, breakpoint+1)
@@ -157,7 +157,7 @@ func hyphenationCandidateForLine(khp *khipu.Khipu, breakpoint kinx, ev lineEvalu
 // situation in pass 2 or 3. It does not decide which discretionary to use; it only
 // ensures the relevant candidates are available on the Khipu for subsequent
 // evaluation.
-func (kp *linebreaker) requestDiscretionariesForLine(khp *khipu.Khipu, breakpoint kinx, ev lineEvaluation) error {
+func (kp *linebreaker) requestDiscretionariesForLine(khp search.Paragraph, breakpoint kinx, ev lineEvaluation) error {
 	if !kp.wantsHyphenation(ev) {
 		return nil
 	}
@@ -176,7 +176,7 @@ func (kp *linebreaker) requestDiscretionariesForLine(khp *khipu.Khipu, breakpoin
 // cacheDiscretionaryCandidates merges newly returned candidates into the Khipu
 // cache while keeping existing variants stable. The Khipu remains the durable
 // store of discovered opportunities for the paragraph instance.
-func cacheDiscretionaryCandidates(khp *khipu.Khipu, at kinx, cands []khipu.DiscretionaryCandidate) {
+func cacheDiscretionaryCandidates(khp search.Paragraph, at kinx, cands []khipu.DiscretionaryCandidate) {
 	if khp == nil || at < 0 || len(cands) == 0 {
 		return
 	}
@@ -213,7 +213,7 @@ func seedBookkeepingFromKnot(k khipu.KnotCore) bookkeeping {
 // appendActualKnots replays the physical knots of the paragraph into a temporary
 // bookkeeping state. This is the key to evaluating discretionary variants
 // without mutating the live path state during candidate scoring.
-func (kp *linebreaker) appendActualKnots(book *bookkeeping, khp *khipu.Khipu, from, to kinx) {
+func (kp *linebreaker) appendActualKnots(book *bookkeeping, khp search.Paragraph, from, to kinx) {
 	if kp == nil || khp == nil || from > to {
 		return
 	}
@@ -257,22 +257,22 @@ func (kp *linebreaker) discretionaryDemerits(badness merits, penalty khipu.Penal
 // They must be consumed before requesting another discretionary evaluation.
 // Ordinary evaluations remain valid during this call: pass 2 nests this work
 // inside its loop over those results, so the two scratch buffers are separate.
-func (kp *linebreaker) evaluateDiscretionaryCandidates(khp *khipu.Khipu, from BreakRef, breakpoint, candidate kinx) []breakCandidate {
+func (kp *linebreaker) evaluateDiscretionaryCandidates(khp search.Paragraph, from BreakRef, breakpoint, candidate kinx) []breakCandidate {
 	return kp.evaluateDiscretionaryLine(khp, from, -1, breakpoint, candidate)
 }
 
 // evaluateDiscretionaryLine limits a rescue request to the originating line
 // state; line=-1 evaluates the entire bucket for cached-at-box discovery.
 // This avoids rescanning all sibling line counts once per bad line state.
-func (kp *linebreaker) evaluateDiscretionaryLine(khp *khipu.Khipu, from BreakRef, onlyLine lineNo, breakpoint, candidate kinx) []breakCandidate {
+func (kp *linebreaker) evaluateDiscretionaryLine(khp search.Paragraph, from BreakRef, onlyLine lineNo, breakpoint, candidate kinx) []breakCandidate {
 	if kp == nil {
 		return nil
 	}
 	kp.discretionaryScratch = kp.discretionaryScratch[:0]
-	if khp == nil || candidate < 0 || candidate >= len(khp.Kind) || candidate <= from.At {
+	if khp == nil || candidate < 0 || candidate >= khp.KnotCount() || candidate <= from.At {
 		return nil
 	}
-	if khp.Kind[candidate] != khipu.KTTextBox || khp.Penalty[candidate] <= InfinityMerits {
+	if khp.KnotByIndex(candidate).Kind != khipu.KTTextBox || khp.KnotByIndex(candidate).Penalty <= InfinityMerits {
 		return nil
 	}
 	cands := khp.DiscretionariesAt(int(candidate))
@@ -288,6 +288,10 @@ func (kp *linebreaker) evaluateDiscretionaryLine(khp *khipu.Khipu, from BreakRef
 			continue
 		}
 		linelen := kp.layout.LineShape.LineLength(int32(line + 1))
+		if err := search.WidthError(kp.layout.LineShape); err != nil {
+			kp.arithmeticErr = err
+			return nil
+		}
 		for _, cand := range cands {
 			lineBook := bookkeeping{}
 			nextSeed := bookkeeping{}

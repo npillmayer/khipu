@@ -22,7 +22,7 @@ func TestVisualLinesSnapshot(t *testing.T) {
 				}
 				para.Offset = 100
 				owner := NewKhipukamayuq(Config{}) // default Params direction is LTR
-				k, err := owner.EncodeParagraph(para)
+				k, err := owner.EncodeParagraphFixture(para)
 				if err != nil {
 					t.Fatal(err)
 				}

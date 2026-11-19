@@ -62,7 +62,7 @@ type shapingArena struct {
 // templates are unbound slots, never a working Khipu with fabricated advances.
 type preparedMaterial struct {
 	paragraph *styled.Paragraph
-	knots     []KnotCore
+	planes    knotPlanes
 	boxRefs   []shapedBoxID
 	shaping   shapingArena
 }
@@ -78,7 +78,7 @@ func compileCandidateParagraph(p *candidateParagraph) (*preparedMaterial, error)
 	if _, err := newGlyphClusterAssembler(p.runs, p.boundaries); err != nil {
 		return nil, err
 	}
-	k := &preparedMaterial{paragraph: p.paragraph, knots: make([]KnotCore, 0, len(p.knots)), boxRefs: make([]shapedBoxID, 0, len(p.knots))}
+	k := &preparedMaterial{paragraph: p.paragraph, boxRefs: make([]shapedBoxID, 0, len(p.knots))}
 	k.shaping.boundaries = slices.Clone(p.boundaries)
 	k.shaping.sources = make([]knotSource, 0, len(p.knots))
 	contexts := make(map[int]int)
@@ -86,7 +86,7 @@ func compileCandidateParagraph(p *candidateParagraph) (*preparedMaterial, error)
 		return nil, fmt.Errorf("%w: inconsistent candidate shaping data", contracts.ErrIllegalArguments)
 	}
 	for _, candidate := range p.knots {
-		k.knots = append(k.knots, candidate.core)
+		k.planes.append(candidate.core)
 		k.boxRefs = append(k.boxRefs, 0)
 		k.shaping.sources = append(k.shaping.sources, knotSource{atomic: candidate.atomic, source: candidate.source, breakAfter: candidate.breakAfter})
 		if candidate.core.Kind != KTTextBox {
@@ -127,22 +127,5 @@ func compileCandidateParagraph(p *candidateParagraph) (*preparedMaterial, error)
 		k.shaping.boxes = append(k.shaping.boxes, box)
 		k.boxRefs[len(k.boxRefs)-1] = shapedBoxID(len(k.shaping.boxes))
 	}
-	return k, nil
-}
-
-// publishCandidateParagraph preserves the text-only EncodeParagraph path.
-func (kq *Khipukamayuq) publishCandidateParagraph(p *candidateParagraph) (*Khipu, error) {
-	if kq == nil {
-		return nil, ErrVoidKhipukamayuq
-	}
-	material, err := compileCandidateParagraph(p)
-	if err != nil {
-		return nil, err
-	}
-	k := kq.allocKhipu(len(material.knots))
-	for _, core := range material.knots {
-		k.appendKnot(core)
-	}
-	k.paragraph, k.shaping, k.boxRefs = material.paragraph, material.shaping, material.boxRefs
 	return k, nil
 }

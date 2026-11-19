@@ -14,3 +14,6 @@ var (
 	// Use errors.Is when the error may have been wrapped.
 	ErrVoidKhipukamayuq = errors.New("khipu: void khipukamayuq")
 )
+
+// ErrStreamingDiscretionariesUnsupported reports missing replacement shaping services.
+var ErrStreamingDiscretionariesUnsupported = errors.New("khipu: streaming discretionaries unsupported")

@@ -1,6 +1,7 @@
 package knuthplass
 
 import (
+	"github.com/npillmayer/khipu/internal/search"
 	"slices"
 	"testing"
 
@@ -9,13 +10,13 @@ import (
 	"github.com/npillmayer/khipu/linebreak"
 )
 
-type testDiscretionaryProvider struct {
+type testdiscretionaryProvider struct {
 	calls       int
 	want        []khipu.DiscretionaryCandidate
 	requestedAt []int
 }
 
-func (p *testDiscretionaryProvider) DiscretionaryCandidates(khp *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error) {
+func (p *testdiscretionaryProvider) DiscretionaryCandidates(khp search.Paragraph, at int) ([]khipu.DiscretionaryCandidate, error) {
 	p.calls++
 	p.requestedAt = append(p.requestedAt, at)
 	return p.want, nil
@@ -45,7 +46,7 @@ func TestDiscretionaryCandidatesFallbackToKhipuCache(t *testing.T) {
 }
 
 func TestDiscretionaryCandidatesDelegateToProvider(t *testing.T) {
-	provider := &testDiscretionaryProvider{
+	provider := &testdiscretionaryProvider{
 		want: []khipu.DiscretionaryCandidate{{
 			Variant: 4,
 			PreBreak: khipu.KnotCore{
@@ -57,7 +58,7 @@ func TestDiscretionaryCandidatesDelegateToProvider(t *testing.T) {
 		}},
 	}
 	params := NewDefaultParameters()
-	params.DiscretionaryProvider = provider
+	params.discretionaryProvider = provider
 	khp := newKhipu([]node{
 		{w: 20, minw: 20, maxw: 20, p: InfinityDemerits, kind: khipu.KTTextBox},
 	})
@@ -133,15 +134,15 @@ func TestHyphenationCandidateForTightLine(t *testing.T) {
 }
 
 func TestPass2RequestsDiscretionariesForScreenedOutCandidate(t *testing.T) {
-	provider := &testDiscretionaryProvider{}
+	provider := &testdiscretionaryProvider{}
 	params := NewDefaultParameters()
 	params.LinePenalty = 0
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(8000)}
-	params.DiscretionaryProvider = provider
+	params.discretionaryProvider = provider
 	khp := testKhipu()
-	khp.W = append(khp.W, 7990, 7990, params.ParFillSkip.W)
-	khp.MinW = append(khp.MinW, 7990, 7990, params.ParFillSkip.MinW)
-	khp.MaxW = append(khp.MaxW, 7999, 7990, params.ParFillSkip.MaxW)
+	khp.W = append(khp.W, 7990, 7990, (khipu.KnotCore{MaxW: dimen.Fill}).W)
+	khp.MinW = append(khp.MinW, 7990, 7990, (khipu.KnotCore{MaxW: dimen.Fill}).MinW)
+	khp.MaxW = append(khp.MaxW, 7999, 7990, (khipu.KnotCore{MaxW: dimen.Fill}).MaxW)
 	khp.Penalty = append(khp.Penalty, -100, InfinityDemerits, InfinityMerits)
 	khp.Kind = append(khp.Kind, khipu.KTTextBox, khipu.KTTextBox, khipu.KTGlue)
 	khp.Pos = append(khp.Pos, 0, 0, 0)
@@ -164,7 +165,7 @@ func TestPass2RequestsDiscretionariesForScreenedOutCandidate(t *testing.T) {
 }
 
 func TestBreakParagraphSelectsDiscretionaryVariantOnSecondPass(t *testing.T) {
-	provider := &testDiscretionaryProvider{
+	provider := &testdiscretionaryProvider{
 		want: []khipu.DiscretionaryCandidate{{
 			Variant: 1,
 			PreBreak: khipu.KnotCore{
@@ -178,18 +179,18 @@ func TestBreakParagraphSelectsDiscretionaryVariantOnSecondPass(t *testing.T) {
 	params := NewDefaultParameters()
 	params.LinePenalty = 0
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(26 * dimen.BP), RightSkip: glue(0, 0, 5*dimen.BP)}
-	params.DiscretionaryProvider = provider
+	params.discretionaryProvider = provider
 	khp := testKhipu()
-	khp.W = append(khp.W, 20*dimen.BP, 1*dimen.BP, 20*dimen.BP, params.ParFillSkip.W)
-	khp.MinW = append(khp.MinW, 20*dimen.BP, 1*dimen.BP, 20*dimen.BP, params.ParFillSkip.MinW)
-	khp.MaxW = append(khp.MaxW, 20*dimen.BP, 1*dimen.BP, 20*dimen.BP, params.ParFillSkip.MaxW)
+	khp.W = append(khp.W, 20*dimen.BP, 1*dimen.BP, 20*dimen.BP, (khipu.KnotCore{MaxW: dimen.Fill}).W)
+	khp.MinW = append(khp.MinW, 20*dimen.BP, 1*dimen.BP, 20*dimen.BP, (khipu.KnotCore{MaxW: dimen.Fill}).MinW)
+	khp.MaxW = append(khp.MaxW, 20*dimen.BP, 1*dimen.BP, 20*dimen.BP, (khipu.KnotCore{MaxW: dimen.Fill}).MaxW)
 	khp.Penalty = append(khp.Penalty, -100, 0, InfinityDemerits, InfinityMerits)
 	khp.Kind = append(khp.Kind, khipu.KTTextBox, khipu.KTGlue, khipu.KTTextBox, khipu.KTGlue)
 	khp.Pos = append(khp.Pos, 0, 0, 0, 0)
 	khp.Len = append(khp.Len, 0, 0, 0, 0)
 	khp.Flags = append(khp.Flags, 0, khipu.KFDiscardable, 0, 0) // paragraph fill is retained
 
-	breakpoints, err := BreakParagraph(khp, layout, params)
+	breakpoints, err := breakFixture(khp, layout, params)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -216,9 +217,9 @@ func TestBreakParagraphClearsStaleSelectedDiscretionaries(t *testing.T) {
 	params.LinePenalty = 0
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(20 * dimen.BP)}
 	parfillnode := node{
-		params.ParFillSkip.W,
-		params.ParFillSkip.MinW,
-		params.ParFillSkip.MaxW,
+		(khipu.KnotCore{MaxW: dimen.Fill}).W,
+		(khipu.KnotCore{MaxW: dimen.Fill}).MinW,
+		(khipu.KnotCore{MaxW: dimen.Fill}).MaxW,
 		InfinityMerits,
 		khipu.KTGlue,
 	}
@@ -231,7 +232,7 @@ func TestBreakParagraphClearsStaleSelectedDiscretionaries(t *testing.T) {
 		0: {Source: 0, Variant: 9},
 	}
 
-	breakpoints, err := BreakParagraph(khp, layout, params)
+	breakpoints, err := breakFixture(khp, layout, params)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -248,9 +249,9 @@ func TestDiscretionaryCandidateUsesPreBreakPenaltyForDemerits(t *testing.T) {
 	params.LinePenalty = 0
 	layout := khipu.Params{LineShape: linebreak.RectangularParShape(26 * dimen.BP)}
 	khp := testKhipu()
-	khp.W = append(khp.W, 20*dimen.BP, 1*dimen.BP, 20*dimen.BP, params.ParFillSkip.W)
-	khp.MinW = append(khp.MinW, 20*dimen.BP, 1*dimen.BP, 20*dimen.BP, params.ParFillSkip.MinW)
-	khp.MaxW = append(khp.MaxW, 20*dimen.BP, 1*dimen.BP, 20*dimen.BP, params.ParFillSkip.MaxW)
+	khp.W = append(khp.W, 20*dimen.BP, 1*dimen.BP, 20*dimen.BP, (khipu.KnotCore{MaxW: dimen.Fill}).W)
+	khp.MinW = append(khp.MinW, 20*dimen.BP, 1*dimen.BP, 20*dimen.BP, (khipu.KnotCore{MaxW: dimen.Fill}).MinW)
+	khp.MaxW = append(khp.MaxW, 20*dimen.BP, 1*dimen.BP, 20*dimen.BP, (khipu.KnotCore{MaxW: dimen.Fill}).MaxW)
 	khp.Penalty = append(khp.Penalty, -100, 0, InfinityDemerits, InfinityMerits)
 	khp.Kind = append(khp.Kind, khipu.KTTextBox, khipu.KTGlue, khipu.KTTextBox, khipu.KTGlue)
 	khp.Pos = append(khp.Pos, 0, 0, 0, 0)

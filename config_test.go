@@ -28,7 +28,7 @@ func TestPublicConfigShaperError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create paragraph: %v", err)
 	}
-	khp, err := kq.EncodeParagraph(para)
+	khp, err := kq.EncodeParagraphFixture(para)
 	if !errors.Is(err, wantErr) || khp != nil {
 		t.Fatalf("expected shaper error without partial paragraph, got %v, %v", khp, err)
 	}
@@ -39,7 +39,7 @@ func TestPublicConfigShaperError(t *testing.T) {
 
 func TestPublicConfigWithoutHyphenator(t *testing.T) {
 	kq := khipu.NewKhipukamayuq(khipu.Config{})
-	khp := &khipu.Khipu{
+	khp := &khipu.FixtureKhipu{
 		W:       []dimen.DU{0},
 		MinW:    []dimen.DU{0},
 		MaxW:    []dimen.DU{0},
@@ -49,7 +49,7 @@ func TestPublicConfigWithoutHyphenator(t *testing.T) {
 		Kind:    []khipu.KnotType{khipu.KTTextBox},
 		Flags:   []khipu.KnotFlags{0},
 	}
-	candidates, err := kq.DiscretionaryCandidates(khp, 0)
+	candidates, err := kq.DiscoverFixture(khp, 0)
 	if err != nil || len(candidates) != 0 {
 		t.Fatalf("expected no discovery without a hyphenator, got %v, %v", candidates, err)
 	}
@@ -57,7 +57,7 @@ func TestPublicConfigWithoutHyphenator(t *testing.T) {
 	if !khp.AddDiscretionaryCandidate(0, cached) {
 		t.Fatal("cannot add cached candidate")
 	}
-	candidates, err = kq.DiscretionaryCandidates(khp, 0)
+	candidates, err = kq.DiscoverFixture(khp, 0)
 	if err != nil || len(candidates) != 1 || candidates[0] != cached {
 		t.Fatalf("expected cached candidate without a hyphenator, got %v, %v", candidates, err)
 	}

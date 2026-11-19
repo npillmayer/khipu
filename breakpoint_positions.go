@@ -11,18 +11,15 @@ import (
 // source coverage, irrespective of line-edge trimming. The final fill maps to
 // the paragraph end, including for an empty paragraph.
 //
-// Call this with the breakpoint list and selections from the same linebreaking
-// run: rerunning a breaker replaces SelectedDiscretionaries. Indices must be
-// strictly increasing; partial and empty lists are allowed. This translates
-// decisions, but does not check whether the supplied path is feasible or optimal.
-// It neither discovers candidates nor changes knots, selections or bidi state.
+// The input is the private snapshot of one immutable plan. Indices must be
+// increasing; the helper does not discover or mutate source/bidi state.
 //
 // Ordinary breaks use retained boundary provenance, which need not equal
 // Pos+Len. Selected alternatives require a valid cached SourceSplit; their
 // replacement lengths never determine source positions. Manually constructed
 // knots without retained source provenance cannot be mapped. Missing or inconsistent
 // provenance returns an error wrapping ErrIllegalArguments and no partial result.
-func (k *Khipu) BreakpointPositions(breakpoints []int) ([]uint64, error) {
+func (k *freezeInput) BreakpointPositions(breakpoints []int) ([]uint64, error) {
 	if k == nil || k.paragraph == nil || k.shaping.sources == nil || len(k.shaping.sources) != len(k.Kind) {
 		return nil, fmt.Errorf("%w: breakpoint positions require an encoded paragraph", ErrIllegalArguments)
 	}
@@ -46,7 +43,7 @@ func (k *Khipu) BreakpointPositions(breakpoints []int) ([]uint64, error) {
 
 // breakpointPosition separates selected replacement provenance from the ordinary
 // boundary. A malformed selection must not silently fall back to a plain break.
-func (k *Khipu) breakpointPosition(at int) (uint64, error) {
+func (k *freezeInput) breakpointPosition(at int) (uint64, error) {
 	if choice, selected := k.SelectedDiscretionaryAt(at); selected {
 		if choice.Source < 0 || choice.Source >= len(k.Kind) || k.Kind[choice.Source] != KTTextBox || choice.Variant == 0 {
 			return 0, fmt.Errorf("%w: invalid discretionary selection", ErrIllegalArguments)
@@ -80,7 +77,7 @@ func (k *Khipu) breakpointPosition(at int) (uint64, error) {
 }
 
 // knotSourceBytes reads retained original spans, never replacement lengths.
-func (k *Khipu) knotSourceBytes(at int) (uint64, uint64, error) {
+func (k *freezeInput) knotSourceBytes(at int) (uint64, uint64, error) {
 	if at < 0 || at >= len(k.shaping.sources) {
 		return 0, 0, fmt.Errorf("%w: missing knot provenance", ErrIllegalArguments)
 	}
@@ -93,7 +90,7 @@ func (k *Khipu) knotSourceBytes(at int) (uint64, uint64, error) {
 }
 
 // isSourceByteBoundary checks retained scalar endpoints without flattening the cord.
-func (k *Khipu) isSourceByteBoundary(pos uint64) bool {
+func (k *freezeInput) isSourceByteBoundary(pos uint64) bool {
 	length := k.paragraph.Raw().Len()
 	if pos > length {
 		return false

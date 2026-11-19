@@ -64,12 +64,12 @@ func TestWidthPlanRTLAndFillOrders(t *testing.T) {
 			t.Fatal(err)
 		}
 		owner := NewKhipukamayuq(Config{})
-		k, err := owner.EncodeParagraph(para)
+		k, err := owner.EncodeParagraphFixture(para)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, order := range []dimen.DU{dimen.Fil, dimen.Fill, dimen.Filll} {
-			g, err := owner.materializeLineGeometry(k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 25*dimen.PT + 5 }), LeftSkip: allocationItem(0, 0, order), RightSkip: KnotCore{}})
+			g, err := owner.materializeLineGeometryFixture(k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 25*dimen.PT + 5 }), LeftSkip: allocationItem(0, 0, order), RightSkip: KnotCore{}})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -34,7 +34,7 @@ func TestLogicalLinesFromBothBreakers(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				k, err := owner.EncodeParagraph(para)
+				k, err := owner.EncodeParagraphFixture(para)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -47,18 +47,18 @@ func TestLogicalLinesFromBothBreakers(t *testing.T) {
 				var layout khipu.Params
 				if engine == "firstfit" {
 					params := *firstfit.NewDefaultParameters()
-					params.DiscretionaryProvider = owner
+
 					layout = firstfit.DefaultLayout(shape)
-					breaks, err = firstfit.BreakParagraph(k, layout, &params)
+					breaks, err = firstfitFixture(k, layout, &params)
 				} else {
 					params := knuthplass.NewDefaultParameters()
 					layout = knuthplass.DefaultLayout(shape)
-					params.DiscretionaryProvider = owner
+
 					if tc.discretionary {
 						layout.RightSkip = khipu.KnotCore{MaxW: dimen.PT}
 						params.EmergencyStretch = 0
 					}
-					breaks, err = knuthplass.BreakParagraph(k, layout, params)
+					breaks, err = knuthplassFixture(k, layout, params)
 				}
 				if err != nil {
 					t.Fatal(err)

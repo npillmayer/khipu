@@ -10,8 +10,8 @@ type LogicalLineForTest struct {
 	ByteStart, ByteEnd uint64
 }
 
-func MaterializeLogicalLinesForTest(owner *Khipukamayuq, k *Khipu, breaks []int) ([]LogicalLineForTest, error) {
-	p, err := owner.materializeLogicalLines(k, breaks)
+func MaterializeLogicalLinesForTest(owner *Khipukamayuq, k *FixtureKhipu, breaks []int) ([]LogicalLineForTest, error) {
+	p, err := owner.materializeLogicalLinesFixture(k, breaks)
 	if err != nil {
 		return nil, err
 	}
@@ -27,8 +27,8 @@ func MaterializeLogicalLinesForTest(owner *Khipukamayuq, k *Khipu, breaks []int)
 
 // MaterializeVisualLinesForTest exposes intermediate geometry/source snapshots
 // before final width allocation.
-func MaterializeVisualLinesForTest(owner *Khipukamayuq, k *Khipu, breaks []int) ([]LogicalLineForTest, error) {
-	p, err := owner.materializeVisualLines(k, breaks)
+func MaterializeVisualLinesForTest(owner *Khipukamayuq, k *FixtureKhipu, breaks []int) ([]LogicalLineForTest, error) {
+	p, err := owner.materializeVisualLinesFixture(k, breaks)
 	if err != nil {
 		return nil, err
 	}
@@ -48,8 +48,8 @@ type GeometryLineForTest struct {
 	TargetWidth, NaturalWidth, Delta dimen.DU
 }
 
-func MaterializeLineGeometryForTest(owner *Khipukamayuq, k *Khipu, breaks []int, params Params) ([]GeometryLineForTest, error) {
-	p, err := owner.materializeLineGeometry(k, breaks, params)
+func MaterializeLineGeometryForTest(owner *Khipukamayuq, k *FixtureKhipu, breaks []int, params Params) ([]GeometryLineForTest, error) {
+	p, err := owner.materializeLineGeometryFixture(k, breaks, params)
 	if err != nil {
 		return nil, err
 	}
@@ -77,8 +77,8 @@ type FrozenLineForTest struct {
 
 // FreezeParagraphForTest projects public Freeze results into per-line geometry
 // and diagnostic snapshots for external integration tests.
-func FreezeParagraphForTest(owner *Khipukamayuq, k *Khipu, breaks []int, params Params) ([]FrozenLineForTest, error) {
-	p, err := owner.Freeze(k, breaks, params)
+func FreezeParagraphForTest(owner *Khipukamayuq, k *FixtureKhipu, breaks []int, params Params) ([]FrozenLineForTest, error) {
+	p, err := owner.FreezeFixture(k, breaks, params)
 	if err != nil {
 		return nil, err
 	}

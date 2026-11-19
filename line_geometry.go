@@ -35,43 +35,23 @@ type geometryLine struct {
 	delta                     dimen.DU
 }
 
-// materializeLineGeometry uses the SAME shape and skip values as the completed
-// breaker run. Callers must keep them stable: breakpoint indices do not encode
-// geometry, so we cannot detect a different but structurally valid parameter set.
-// No breaker defaults are substituted. The result is private until every stage
-// succeeds; failure does not change the elastic khipu or selected discretionaries.
-func (kq *Khipukamayuq) materializeLineGeometry(k *Khipu, breaks []int, params Params) (*geometryParagraph, error) {
-	p, err := kq.materializeVisualLines(k, breaks)
-	if err != nil {
-		return nil, err
-	}
-	return p.prepareGeometry(params)
-}
-
-// prepareGeometry snapshots one target per line in logical paragraph order,
-// independent of each line's visual direction. A caller-supplied shape must be
-// stable and side-effect free; calls already made cannot be undone on failure.
-// The result never retains the shape or aliases mutable line/knot slices.
-//
-// Finite natural widths and targets must stay below dimen.Fil. Fill orders in
-// MaxW are retained per item, never numerically summed as capacities. Oversized
-// totals and inconsistent width triples fail rather than saturate as breaker
-// summaries do. Negative finite skip widths are allowed if the total remains
-// nonnegative. Fit checks and allocation belong to the next stage.
-func (p *visualParagraph) prepareGeometry(params Params) (*geometryParagraph, error) {
+func (p *visualParagraph) prepareCapturedGeometry(lines []LineDecision) (*geometryParagraph, error) {
 	bad := func(reason string) (*geometryParagraph, error) {
 		return nil, fmt.Errorf("%w: line geometry: %s", ErrIllegalArguments, reason)
 	}
 	if p == nil || p.paragraph == nil || len(p.lines) == 0 || int64(len(p.lines)) > math.MaxInt32 {
 		return bad("missing or invalid visual paragraph/shape")
 	}
-	if err := params.ValidateGeometry(); err != nil {
-		return nil, err
+	if len(lines) != len(p.lines) {
+		return bad("missing captured geometry")
 	}
-	shape, leftSkip, rightSkip := params.LineShape, params.LeftSkip, params.RightSkip
 	result := &geometryParagraph{paragraph: p.paragraph, arena: p.arena, lines: make([]geometryLine, len(p.lines))}
 	for i, line := range p.lines {
-		target := shape.LineLength(int32(i + 1))
+		g := lines[i].Geometry
+		if !validLineGeometry(g) {
+			return bad(fmt.Sprintf("line %d has invalid captured geometry", i+1))
+		}
+		target, leftSkip, rightSkip := g.TargetWidth, widthCore(g.LeftSkip), widthCore(g.RightSkip)
 
 		if target < 0 || target >= dimen.Fil {
 			return bad(fmt.Sprintf("line %d has invalid target width", i+1))

@@ -175,7 +175,7 @@ func TestKnotOrderingMaterializedLine(t *testing.T) {
 
 func TestKnotOrderingPlacesDiscretionaries(t *testing.T) {
 	owner, k, _ := logicalTestDiscretionary(t)
-	p, err := owner.materializeLogicalLines(k, []int{0, len(k.Kind) - 1})
+	p, err := owner.materializeLogicalLinesFixture(k, []int{0, len(k.Kind) - 1})
 	if err != nil {
 		t.Fatal(err)
 	}

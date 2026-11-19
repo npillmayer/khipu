@@ -16,12 +16,12 @@ const (
 )
 
 // Parameters configures the SOA first-fit breaker.
-// Geometry lives exclusively in khipu.Params, shared with freezing.
+// Geometry is supplied in khipu.BreakRequest and captured in the Tikray.
 type Parameters struct {
 	// MinHyphenGain is the inclusive minimum natural-width gain over the last
 	// ordinary checkpoint. Zero permits zero improvement, not just positive gain.
 	MinHyphenGain         dimen.DU
-	DiscretionaryProvider DiscretionaryProvider
+	discretionaryProvider discretionaryProvider
 }
 
 // NewDefaultParameters returns independent algorithm defaults: zero minimum
@@ -34,7 +34,7 @@ func NewDefaultParameters() *Parameters { return &Parameters{} }
 // natural width. Higher-order paragraph fill still wins on the final line.
 // This is not a no-compression policy: when natural width exceeds the target,
 // the breaker may use the shrink capacity explicitly supplied by the knots.
-// Apply overrides after this call and reuse the returned Params for freezing.
+// Apply overrides and copy the shape/skips into BreakRequest.Geometry.
 // No defaults are reapplied by BreakParagraph, even for explicitly zero skips.
 func DefaultLayout(shape khipu.LineShape) khipu.Params {
 	layout := khipu.DefaultParams()

@@ -167,13 +167,13 @@ func TestLazyFacePreflightRetriesWithoutPublishingOrReshaping(t *testing.T) {
 				p := intrinsicPrepare(t, o, "ab\u00adcd", PrepareOptions{Hyphenation: ExplicitHyphenation})
 				base := *baseStreams
 				before := slices.Clone(p.shaping.glyphs)
-				prior, err := o.BindParagraph(p, nil)
+				prior, err := o.BindParagraphFixture(p, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
 				priorGlyphs := slices.Clone(prior.shaping.glyphs)
 				var streams []*acceptanceStream
-				o.env.streaming.NewShaper = func() (contracts.StreamingShaper, error) {
+				p.discovery.recipe.env.streaming.NewShaper = func() (contracts.StreamingShaper, error) {
 					s := acceptanceTestStream()
 					if len(streams)+1 == side {
 						s.check = func(contracts.FontFace) error { return contracts.ErrUnsupportedFontFace }
@@ -182,12 +182,12 @@ func TestLazyFacePreflightRetriesWithoutPublishingOrReshaping(t *testing.T) {
 					return s, nil
 				}
 				if measureFirst {
-					widths, err := o.MeasureIntrinsic(p, MeasureRequest{})
+					widths, err := o.MeasureIntrinsicFixture(p, MeasureRequest{})
 					if widths != (IntrinsicWidths{}) || !errors.Is(err, contracts.ErrUnsupportedFontFace) {
 						t.Fatal(widths, err)
 					}
 				} else {
-					c, err := o.DiscretionaryCandidates(prior, 0)
+					c, err := o.DiscoverFixture(prior, 0)
 					if len(c) != 0 || !errors.Is(err, contracts.ErrUnsupportedFontFace) {
 						t.Fatal(c, err)
 					}
@@ -197,16 +197,16 @@ func TestLazyFacePreflightRetriesWithoutPublishingOrReshaping(t *testing.T) {
 				}
 				assertAbandoned(t, streams[side-1])
 				// The next actual factory instance accepts the face; failure is retryable.
-				widths, err := o.MeasureIntrinsic(p, MeasureRequest{})
+				widths, err := o.MeasureIntrinsicFixture(p, MeasureRequest{})
 				if err != nil || widths != (IntrinsicWidths{15 * dimen.BP, 20 * dimen.BP}) {
 					t.Fatal(widths, err)
 				}
 				count := len(streams)
 				for range 2 {
-					if _, err = o.MeasureIntrinsic(p, MeasureRequest{}); err != nil {
+					if _, err = o.MeasureIntrinsicFixture(p, MeasureRequest{}); err != nil {
 						t.Fatal(err)
 					}
-					if c, e := o.DiscretionaryCandidates(prior, 0); e != nil || len(c) != 1 {
+					if c, e := o.DiscoverFixture(prior, 0); e != nil || len(c) != 1 {
 						t.Fatal(c, e)
 					}
 				}

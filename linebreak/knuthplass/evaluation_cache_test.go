@@ -2,6 +2,7 @@ package knuthplass
 
 import (
 	"errors"
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"reflect"
 	"slices"
 	"strings"
@@ -151,7 +152,7 @@ func checkBoundarySuccessors(t *testing.T, extra dimen.DU) {
 func TestBoundaryEvaluationsEndOnProviderError(t *testing.T) {
 	want := errors.New("provider failed")
 	params := NewDefaultParameters()
-	params.DiscretionaryProvider = failedRetirementProvider{want}
+	params.discretionaryProvider = failedRetirementProvider{want}
 	kp, _ := prepareLineBreaker(khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}, params)
 	kp.hyphenating, kp.final = true, true
 	khp := newKhipu([]node{
@@ -171,14 +172,14 @@ func TestBoundaryEvaluationReuseMatchesUncached(t *testing.T) {
 		for _, forced := range []bool{false, true} {
 			for _, mode := range []string{"first", "empty", "productive", "emergency-empty", "emergency-productive"} {
 				var breakers [2]*linebreaker
-				var paragraphs [2]*khipu.Khipu
+				var paragraphs [2]*testsupport.Paragraph
 				for i := range breakers {
 					config := khipu.Config{Hyphenator: &decliningHyphenator{}}
 					if strings.HasSuffix(mode, "productive") {
 						config.Hyphenator = &loremHyphenator{}
 					}
 					owner := khipu.NewKhipukamayuq(config)
-					khp, err := owner.EncodeParagraph(loremParagraph(t, 50))
+					khp, err := testsupport.Encode(owner, loremParagraph(t, 50))
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -188,7 +189,7 @@ func TestBoundaryEvaluationReuseMatchesUncached(t *testing.T) {
 						}
 					}
 					params := NewDefaultParameters()
-					params.DiscretionaryProvider = owner
+					params.discretionaryProvider = fixtureProvider{}
 					kp, err := prepareLineBreaker(DefaultLayout(shape), params)
 					if err != nil {
 						t.Fatal(err)

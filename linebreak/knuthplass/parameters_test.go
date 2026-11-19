@@ -12,7 +12,7 @@ import (
 func TestParameterProfiles(t *testing.T) {
 	standard := Parameters{
 		PreTolerance: 100, Tolerance: 200, LinePenalty: 10,
-		FinalHyphenDemerits: 10000, ParFillSkip: glue(0, 0, dimen.Fill),
+		FinalHyphenDemerits: 10000,
 	}
 	tolerant := standard
 	tolerant.Tolerance, tolerant.FinalHyphenDemerits = 5000, 50
@@ -35,7 +35,7 @@ func TestParameterProfiles(t *testing.T) {
 			if err != nil || len(passes) != tc.passes || !passes[len(passes)-1].final {
 				t.Fatalf("incorrect pass policy: %+v, %v", passes, err)
 			}
-			p.Tolerance, p.ParFillSkip.MaxW = 1, 0
+			p.Tolerance = 1
 			if !reflect.DeepEqual(*tc.makeParams(), tc.want) {
 				t.Fatal("constructor shares mutable defaults")
 			}

@@ -70,13 +70,13 @@ func TestFrozenOutcomesAcrossDirections(t *testing.T) {
 				t.Fatal(err)
 			}
 			owner := NewKhipukamayuq(Config{ParFillSkip: &KnotCore{}})
-			k, err := owner.EncodeParagraph(para)
+			k, err := owner.EncodeParagraphFixture(para)
 			if err != nil {
 				t.Fatal(err)
 			}
 			before := slices.Clone(k.W)
 			layout := Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return target })}
-			g, err := owner.materializeLineGeometry(k, []int{len(k.Kind) - 1}, layout)
+			g, err := owner.materializeLineGeometryFixture(k, []int{len(k.Kind) - 1}, layout)
 			if err != nil {
 				t.Fatal(err)
 			}

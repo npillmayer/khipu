@@ -1,6 +1,8 @@
 package firstfit
 
 import (
+	"github.com/npillmayer/khipu/internal/search"
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"slices"
 	"testing"
 
@@ -9,13 +11,13 @@ import (
 	"github.com/npillmayer/khipu/linebreak"
 )
 
-type testDiscretionaryProvider struct {
+type testdiscretionaryProvider struct {
 	calls       int
 	requestedAt []int
 	want        []khipu.DiscretionaryCandidate
 }
 
-func (p *testDiscretionaryProvider) DiscretionaryCandidates(khp *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error) {
+func (p *testdiscretionaryProvider) DiscretionaryCandidates(khp search.Paragraph, at int) ([]khipu.DiscretionaryCandidate, error) {
 	p.calls++
 	p.requestedAt = append(p.requestedAt, at)
 	return p.want, nil
@@ -27,8 +29,8 @@ type node struct {
 	kind          khipu.KnotType
 }
 
-func newKhipu(nodes []node) *khipu.Khipu {
-	khp := khipu.Khipu{
+func newKhipu(nodes []node) *testsupport.Paragraph {
+	khp := testsupport.Paragraph{
 		W:       make([]dimen.DU, 0, 16),
 		MinW:    make([]dimen.DU, 0, 16),
 		MaxW:    make([]dimen.DU, 0, 16),
@@ -57,7 +59,7 @@ func TestBreakParagraphKhipuBreaksAtFirstFitCheckpoint(t *testing.T) {
 		{w: 20, minw: 20, maxw: 20, p: -100, kind: khipu.KTTextBox},
 		{w: 0, minw: 0, maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
-	breakpoints, err := BreakParagraph(khp, DefaultLayout(linebreak.RectangularParShape(20*dimen.BP)), nil)
+	breakpoints, err := breakFixture(khp, DefaultLayout(linebreak.RectangularParShape(20*dimen.BP)), nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -78,7 +80,7 @@ func TestCarriedCandidateBecomesNextLineCheckpoint(t *testing.T) {
 		{w: 0, minw: 0, maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
 	khp.Flags[7] = 0
-	got, err := BreakParagraph(khp, DefaultLayout(linebreak.RectangularParShape(15*dimen.BP)), nil)
+	got, err := breakFixture(khp, DefaultLayout(linebreak.RectangularParShape(15*dimen.BP)), nil)
 	if err != nil || !slices.Equal(got, []kinx{1, 3, 5, 7}) {
 		t.Fatalf("got %v %v", got, err)
 	}
@@ -98,7 +100,7 @@ func TestBreakParagraphKhipuTrimsTrailingDiscardablesAtCheckpoint(t *testing.T) 
 	})
 	khp.Flags[1] = khipu.KFDiscardable
 	khp.Flags[3] = khipu.KFDiscardable
-	breakpoints, err := BreakParagraph(khp, layout, nil)
+	breakpoints, err := breakFixture(khp, layout, nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -114,7 +116,7 @@ func TestBreakParagraphKhipuRespectsForcedBreak(t *testing.T) {
 		{w: 10, minw: 10, maxw: 10, p: InfinityDemerits, kind: khipu.KTTextBox},
 		{w: 0, minw: 0, maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
-	breakpoints, err := BreakParagraph(khp, DefaultLayout(linebreak.RectangularParShape(100*dimen.BP)), nil)
+	breakpoints, err := breakFixture(khp, DefaultLayout(linebreak.RectangularParShape(100*dimen.BP)), nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -124,7 +126,7 @@ func TestBreakParagraphKhipuRespectsForcedBreak(t *testing.T) {
 }
 
 func TestBreakParagraphKhipuUsesLooseLineDiscretionary(t *testing.T) {
-	provider := &testDiscretionaryProvider{
+	provider := &testdiscretionaryProvider{
 		want: []khipu.DiscretionaryCandidate{
 			{
 				Variant: 1,
@@ -148,7 +150,7 @@ func TestBreakParagraphKhipuUsesLooseLineDiscretionary(t *testing.T) {
 	}
 	params := &Parameters{
 		MinHyphenGain:         5 * dimen.BP,
-		DiscretionaryProvider: provider,
+		discretionaryProvider: provider,
 	}
 	khp := newKhipu([]node{
 		{w: 15, minw: 15, maxw: 15, p: -100, kind: khipu.KTTextBox},
@@ -156,7 +158,7 @@ func TestBreakParagraphKhipuUsesLooseLineDiscretionary(t *testing.T) {
 		{w: 0, minw: 0, maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
 
-	breakpoints, err := BreakParagraph(khp, khipu.Params{LineShape: linebreak.RectangularParShape(24 * dimen.BP)}, params)
+	breakpoints, err := breakFixture(khp, khipu.Params{LineShape: linebreak.RectangularParShape(24 * dimen.BP)}, params)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -173,7 +175,7 @@ func TestBreakParagraphKhipuUsesLooseLineDiscretionary(t *testing.T) {
 }
 
 func TestBreakParagraphKhipuHonorsMinHyphenGain(t *testing.T) {
-	provider := &testDiscretionaryProvider{
+	provider := &testdiscretionaryProvider{
 		want: []khipu.DiscretionaryCandidate{
 			{
 				Variant: 1,
@@ -188,7 +190,7 @@ func TestBreakParagraphKhipuHonorsMinHyphenGain(t *testing.T) {
 	}
 	params := &Parameters{
 		MinHyphenGain:         5 * dimen.BP,
-		DiscretionaryProvider: provider,
+		discretionaryProvider: provider,
 	}
 	khp := newKhipu([]node{
 		{w: 15, minw: 15, maxw: 15, p: -100, kind: khipu.KTTextBox},
@@ -196,7 +198,7 @@ func TestBreakParagraphKhipuHonorsMinHyphenGain(t *testing.T) {
 		{w: 0, minw: 0, maxw: dimen.Fill, p: InfinityMerits, kind: khipu.KTGlue},
 	})
 
-	breakpoints, err := BreakParagraph(khp, khipu.Params{LineShape: linebreak.RectangularParShape(24 * dimen.BP)}, params)
+	breakpoints, err := breakFixture(khp, khipu.Params{LineShape: linebreak.RectangularParShape(24 * dimen.BP)}, params)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -218,7 +220,7 @@ func TestBreakParagraphKhipuClearsStaleSelectedDiscretionaries(t *testing.T) {
 		1: {Source: 1, Variant: 9},
 	}
 
-	breakpoints, err := BreakParagraph(khp, DefaultLayout(linebreak.RectangularParShape(24*dimen.BP)), nil)
+	breakpoints, err := breakFixture(khp, DefaultLayout(linebreak.RectangularParShape(24*dimen.BP)), nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -240,7 +242,7 @@ func TestBreakParagraphKhipuTrimsLeadingDiscardablesOnLaterLine(t *testing.T) {
 	khp.Flags[1] = khipu.KFDiscardable
 	khp.Flags[3] = khipu.KFDiscardable
 
-	breakpoints, err := BreakParagraph(khp, DefaultLayout(linebreak.RectangularParShape(20*dimen.BP)), nil)
+	breakpoints, err := breakFixture(khp, DefaultLayout(linebreak.RectangularParShape(20*dimen.BP)), nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}

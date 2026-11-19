@@ -11,12 +11,12 @@ import (
 	"github.com/npillmayer/khipu/dimen"
 )
 
-func logicalTestParagraph(t *testing.T, text string) (*Khipukamayuq, *Khipu) {
+func logicalTestParagraph(t *testing.T, text string) (*Khipukamayuq, *FixtureKhipu) {
 	t.Helper()
 	owner := NewKhipukamayuq(Config{})
 	p := preparationParagraph(t, text)
 	p.Offset = 100
-	k, err := owner.EncodeParagraph(p)
+	k, err := owner.EncodeParagraphFixture(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestLogicalLinesOrdinary(t *testing.T) {
 			for i := range cores {
 				cores[i] = k.KnotByIndex(i)
 			}
-			got, err := owner.materializeLogicalLines(k, breaks)
+			got, err := owner.materializeLogicalLinesFixture(k, breaks)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -131,7 +131,7 @@ func TestLogicalLinesSilentReplacements(t *testing.T) {
 		t.Fatal(err)
 	}
 	k.SelectDiscretionary(0, DiscretionarySelection{0, 1})
-	p, err := k.owner.materializeLogicalLines(k, []int{0, len(k.Kind) - 1})
+	p, err := k.owner.materializeLogicalLinesFixture(k, []int{0, len(k.Kind) - 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestLogicalLinesSilentReplacements(t *testing.T) {
 
 func TestLogicalLinesConsecutiveReplacements(t *testing.T) {
 	owner := NewKhipukamayuq(Config{Hyphenator: &testhyphenator{want: []HyphenationFragment{{PreBreak: "-"}}}})
-	k, err := owner.EncodeParagraph(preparationParagraph(t, "ab\u00adcd ef\u00adgh"))
+	k, err := owner.EncodeParagraphFixture(preparationParagraph(t, "ab\u00adcd ef\u00adgh"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestLogicalLinesConsecutiveReplacements(t *testing.T) {
 	var chosen []DiscretionaryCandidate
 	for i := range k.Kind {
 		if k.HasExplicitDiscretionary(i) {
-			c, err := owner.DiscretionaryCandidates(k, i)
+			c, err := owner.DiscoverFixture(k, i)
 			if err != nil || len(c) != 1 {
 				t.Fatal(c, err)
 			}
@@ -162,7 +162,7 @@ func TestLogicalLinesConsecutiveReplacements(t *testing.T) {
 		}
 	}
 	breaks = append(breaks, len(k.Kind)-1)
-	p, err := owner.materializeLogicalLines(k, breaks)
+	p, err := owner.materializeLogicalLinesFixture(k, breaks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestLogicalLinesGlyphlessSourceGap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := owner.materializeLogicalLines(k, []int{0, len(k.Kind) - 1})
+	p, err := owner.materializeLogicalLinesFixture(k, []int{0, len(k.Kind) - 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,18 +192,18 @@ func TestLogicalLinesGlyphlessSourceGap(t *testing.T) {
 	}
 }
 
-func logicalTestDiscretionary(t *testing.T) (*Khipukamayuq, *Khipu, DiscretionaryCandidate) {
+func logicalTestDiscretionary(t *testing.T) (*Khipukamayuq, *FixtureKhipu, DiscretionaryCandidate) {
 	t.Helper()
 	owner := NewKhipukamayuq(Config{Hyphenator: &testhyphenator{want: []HyphenationFragment{
 		{Variant: 4, PreBreak: "LONG-", PostBreak: "lair", SourceSplit: SourceSplit{3, true}},
 	}}})
 	p := preparationParagraph(t, "éclair")
 	p.Offset = 100
-	k, err := owner.EncodeParagraph(p)
+	k, err := owner.EncodeParagraphFixture(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidates, err := owner.DiscretionaryCandidates(k, 0)
+	candidates, err := owner.DiscoverFixture(k, 0)
 	if err != nil || len(candidates) != 1 {
 		t.Fatal(candidates, err)
 	}
@@ -217,7 +217,7 @@ func TestLogicalLinesReplacementAndLifetime(t *testing.T) {
 	selections := maps.Clone(k.SelectedDiscretionaries)
 	glyphs := slices.Clone(k.shaping.glyphs)
 	breaks := []int{0, len(k.Kind) - 1}
-	got, err := owner.materializeLogicalLines(k, breaks)
+	got, err := owner.materializeLogicalLinesFixture(k, breaks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,15 +288,15 @@ func TestLogicalLinesRejectInvalidInput(t *testing.T) {
 					k.MaxW[i] = k.W[i]
 				}
 			}
-			if got, err := owner.materializeLogicalLines(k, breaks); got != nil || !errors.Is(err, ErrIllegalArguments) {
+			if got, err := owner.materializeLogicalLinesFixture(k, breaks); got != nil || !errors.Is(err, ErrIllegalArguments) {
 				t.Fatal(got, err)
 			}
 		})
 	}
-	if got, err := (*Khipukamayuq)(nil).materializeLogicalLines(nil, nil); got != nil || !errors.Is(err, ErrVoidKhipukamayuq) {
+	if got, err := (*Khipukamayuq)(nil).materializeLogicalLinesFixture(nil, nil); got != nil || !errors.Is(err, ErrVoidKhipukamayuq) {
 		t.Fatal(got, err)
 	}
-	if got, err := NewKhipukamayuq(Config{}).materializeLogicalLines(nil, nil); got != nil || !errors.Is(err, ErrIllegalArguments) {
+	if got, err := NewKhipukamayuq(Config{}).materializeLogicalLinesFixture(nil, nil); got != nil || !errors.Is(err, ErrIllegalArguments) {
 		t.Fatal(got, err)
 	}
 }
@@ -330,7 +330,7 @@ func TestLogicalLinesRejectBrokenSelection(t *testing.T) {
 			case "moved source":
 				k.SelectedDiscretionaries[0] = DiscretionarySelection{1, 4}
 			}
-			if got, err := owner.materializeLogicalLines(k, breaks); got != nil || !errors.Is(err, ErrIllegalArguments) {
+			if got, err := owner.materializeLogicalLinesFixture(k, breaks); got != nil || !errors.Is(err, ErrIllegalArguments) {
 				t.Fatal(got, err)
 			}
 		})

@@ -24,12 +24,12 @@ func TestExplicitProviderBatchAndRetry(t *testing.T) {
 			return helpers.NewSyntheticStreamingShaper(0)
 		},
 	}})
-	k, err := owner.EncodeParagraph(preparationParagraph(t, "ab\u00adcd\u00adef"))
+	k, err := owner.EncodeParagraphFixture(preparationParagraph(t, "ab\u00adcd\u00adef"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	before := k.shaping
-	got, err := owner.DiscretionaryCandidates(k, 0)
+	got, err := owner.DiscoverFixture(k, 0)
 	if got != nil || !errors.Is(err, failure) {
 		t.Fatal(got, err)
 	}
@@ -37,7 +37,7 @@ func TestExplicitProviderBatchAndRetry(t *testing.T) {
 		t.Fatal("partial batch published")
 	}
 	fail = false
-	got, err = owner.DiscretionaryCandidates(k, 0)
+	got, err = owner.DiscoverFixture(k, 0)
 	if err != nil || len(got) != 2 {
 		t.Fatal(got, err)
 	}
@@ -56,7 +56,7 @@ func TestExplicitProviderBatchAndRetry(t *testing.T) {
 		}
 	}
 	streamCalls, policyCalls := calls, policy.calls
-	again, err := owner.DiscretionaryCandidates(k, 0)
+	again, err := owner.DiscoverFixture(k, 0)
 	if err != nil || !reflect.DeepEqual(again, got) || calls != streamCalls || policy.calls != policyCalls {
 		t.Fatal("cache miss")
 	}
@@ -68,15 +68,15 @@ func TestExplicitProviderRejectsInteriorFeatures(t *testing.T) {
 		Resolver: helpers.DefaultStyleResolver{}, Defaults: preparationDefaults(),
 		NewShaper: func() (contracts.StreamingShaper, error) { calls++; return helpers.NewSyntheticStreamingShaper(0) },
 	}})
-	k, err := owner.EncodeParagraph(preparationParagraph(t, "ab\u00adcd"))
+	k, err := owner.EncodeParagraphFixture(preparationParagraph(t, "ab\u00adcd"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Seed metadata after synthetic encoding; the synthetic backend itself
 	// deliberately rejects all feature settings.
-	k.shaping.contexts[0].params.shaping.Features = []contracts.ShapeFeature{{Start: 1, End: 2}}
+	k.material.material.shaping.contexts[0].params.shaping.Features = []contracts.ShapeFeature{{Start: 1, End: 2}}
 	before := k.shaping
-	got, err := owner.DiscretionaryCandidates(k, 0)
+	got, err := owner.DiscoverFixture(k, 0)
 	if got != nil || !errors.Is(err, contracts.ErrIllegalArguments) || calls != 1 || !reflect.DeepEqual(before, k.shaping) {
 		t.Fatal(got, err, calls)
 	}
@@ -89,11 +89,11 @@ func TestExplicitProviderDeclinesMarkerEdges(t *testing.T) {
 		NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(0) },
 	}})
 	for _, text := range []string{"ab\u00ad", "\u00adcd"} {
-		k, err := owner.EncodeParagraph(preparationParagraph(t, text))
+		k, err := owner.EncodeParagraphFixture(preparationParagraph(t, text))
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := owner.DiscretionaryCandidates(k, 0)
+		got, err := owner.DiscoverFixture(k, 0)
 		if err != nil || len(got) != 0 {
 			t.Fatal(text, got, err)
 		}
@@ -108,19 +108,19 @@ func TestExplicitProviderNormalizesWholeBoxFeatures(t *testing.T) {
 		Resolver: helpers.DefaultStyleResolver{}, Defaults: preparationDefaults(),
 		NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(0) },
 	}})
-	k, err := owner.EncodeParagraph(preparationParagraph(t, "ab\u00adcd"))
+	k, err := owner.EncodeParagraphFixture(preparationParagraph(t, "ab\u00adcd"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	original := contracts.ShapeFeature{Enabled: true, Start: 0, End: 5}
-	k.shaping.contexts[0].params.shaping.Features = []contracts.ShapeFeature{original}
+	k.material.material.shaping.contexts[0].params.shaping.Features = []contracts.ShapeFeature{original}
 	var streams []*fragmentRecordingShaper
-	owner.env.streaming.NewShaper = func() (contracts.StreamingShaper, error) {
+	k.discovery.recipe.env.streaming.NewShaper = func() (contracts.StreamingShaper, error) {
 		s := &fragmentRecordingShaper{pipelineShaper: newPipelineShaper()}
 		streams = append(streams, s)
 		return s, nil
 	}
-	got, err := owner.DiscretionaryCandidates(k, 0)
+	got, err := owner.DiscoverFixture(k, 0)
 	if err != nil || len(got) != 1 || len(streams) != 2 {
 		t.Fatal(got, err)
 	}
@@ -129,7 +129,7 @@ func TestExplicitProviderNormalizesWholeBoxFeatures(t *testing.T) {
 			t.Fatal("whole-box feature not mapped", s.params.Features)
 		}
 	}
-	if k.shaping.contexts[0].params.shaping.Features[0] != original {
+	if k.material.material.shaping.contexts[0].params.shaping.Features[0] != original {
 		t.Fatal("original context mutated")
 	}
 }

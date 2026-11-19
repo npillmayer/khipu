@@ -2,6 +2,7 @@ package knuthplass
 
 import (
 	"fmt"
+	"github.com/npillmayer/khipu/internal/search"
 
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/dimen"
@@ -59,7 +60,7 @@ func paragraphPasses(params *Parameters) ([]passConfig, error) {
 // selections. Costs from different passes are not comparable. Non-final passes
 // enforce their tolerance at every boundary; only the final pass may recover
 // with fallback. Publication belongs to the successful public-call boundary.
-func selectParagraphBreaks(khp *khipu.Khipu, layout khipu.Params, params *Parameters) (passResult, error) {
+func selectParagraphBreaks(khp search.Paragraph, layout khipu.Params, params *Parameters) (passResult, error) {
 	if params == nil {
 		params = NewDefaultParameters()
 	}
@@ -92,7 +93,7 @@ func selectParagraphBreaks(khp *khipu.Khipu, layout khipu.Params, params *Parame
 // The classifier's emergency-adjusted badness also drives lazy discovery in
 // pass 3. Overfull rescue and explicit discretionary requests remain independent
 // of that badness threshold.
-func breakParagraphPassRefs(khp *khipu.Khipu, layout khipu.Params,
+func breakParagraphPassRefs(khp search.Paragraph, layout khipu.Params,
 	params *Parameters, pass passConfig) (passResult, error) {
 	result := passResult{pass: pass}
 	kp, err := prepareLineBreaker(layout, params)

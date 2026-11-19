@@ -1,5 +1,15 @@
 # Knuth-Plass Line Breaker
 
+Reflow PR 1 (2026-11-19) replaced the mutable input/selection API described in
+older examples below. Current usage is in [reusable material](PREPARED_PARAGRAPHS.md)
+and [the executable examples](../example_test.go): prepare `Khipu` + `Discovery`,
+bind advances, break into `Tikray`, then `Freeze(plan)`. Selection state is private
+to each trial; no public mutable candidate/selection table or owner provider is
+supported. Public typesetting APIs have no context. The detailed algorithm and
+geometry derivations below remain applicable; old API sketches and benchmark
+measurements are pre-migration evidence, not current call signatures or costs.
+
+
 Reference for `linebreak/knuthplass`. It describes the contract, the algorithm,
 its parameters, the design decisions behind it and its known limits. The
 paragraph-level design is in [KHIPU_ALGORITHM.md](KHIPU_ALGORITHM.md#knuth-plass);

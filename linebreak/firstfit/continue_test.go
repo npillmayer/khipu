@@ -2,6 +2,7 @@ package firstfit
 
 import (
 	"errors"
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"maps"
 	"runtime"
 	"slices"
@@ -17,7 +18,7 @@ import (
 func TestContinueIndependentBreakpoints(t *testing.T) {
 	q, p, k := continuationFixture(t, "aa bb cc dd ee ff gg hh ii jj kk ll", bidi.LeftToRight, false)
 	layout := DefaultLayout(linebreak.RectangularParShape(40 * dimen.BP))
-	path, err := BreakParagraph(k, layout, nil)
+	path, err := breakContinuationFixture(k, layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +27,7 @@ func TestContinueIndependentBreakpoints(t *testing.T) {
 		t.Fatal(positions, err)
 	}
 	original := checkContinuationFrozen(t, q, k, path, layout)
-	c, err := q.Checkpoint(p, path, 1)
+	c, err := checkpointTrialFixture(p, path, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +43,7 @@ func TestContinueIndependentBreakpoints(t *testing.T) {
 		fresh := continuationBind(t, q, p)
 		shape := &continuationShape{prefix: []dimen.DU{40 * dimen.BP}, tail: tc.width * dimen.BP}
 		layout.LineShape = shape
-		got, err := ContinueParagraph(fresh, layout, c)
+		got, err := continueTrialFixture(fresh, layout, c)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -69,11 +70,11 @@ func TestContinueDistinctKPPrefixAndThirdWidth(t *testing.T) {
 	layout := knuthplass.DefaultLayout(linebreak.RectangularParShape(40 * dimen.BP))
 	// Use identical explicit skips for both searches and all freezes.
 	layout.LeftSkip, layout.RightSkip = khipu.KnotCore{}, khipu.KnotCore{}
-	ff, err := BreakParagraph(k, layout, nil)
+	ff, err := breakContinuationFixture(k, layout)
 	if err != nil {
 		t.Fatal(err)
 	}
-	path, err := knuthplass.BreakParagraph(k, layout, nil)
+	path, err := kpContinuationFixture(k, layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,13 +84,13 @@ func TestContinueDistinctKPPrefixAndThirdWidth(t *testing.T) {
 		t.Fatal("distinct KP oracle changed", ffpos, kppos)
 	}
 	original := checkContinuationFrozen(t, q, k, path, layout)
-	c, err := q.Checkpoint(p, path, 2)
+	c, err := checkpointTrialFixture(p, path, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	b := continuationBind(t, q, p)
 	layout.LineShape = &continuationShape{prefix: []dimen.DU{40 * dimen.BP, 40 * dimen.BP}, tail: 30 * dimen.BP}
-	continued, err := ContinueParagraph(b, layout, c)
+	continued, err := continueTrialFixture(b, layout, c)
 	if err != nil || !slices.Equal(continued[:2], path[:2]) {
 		t.Fatal(continued, err)
 	}
@@ -98,19 +99,19 @@ func TestContinueDistinctKPPrefixAndThirdWidth(t *testing.T) {
 	}
 	bf := checkContinuationFrozen(t, q, b, continued, layout)
 	checkContinuationPrefix(t, original, bf, 2)
-	next, err := q.Checkpoint(p, continued, 3)
+	next, err := checkpointTrialFixture(p, continued, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
 	third := continuationBind(t, q, p)
 	layout.LineShape = &continuationShape{prefix: []dimen.DU{40 * dimen.BP, 40 * dimen.BP, 30 * dimen.BP}, tail: 20 * dimen.BP}
-	last, err := ContinueParagraph(third, layout, next)
+	last, err := continueTrialFixture(third, layout, next)
 	if err != nil || !slices.Equal(last[:3], continued[:3]) {
 		t.Fatal(last, err)
 	}
 	checkContinuationPrefix(t, bf, checkContinuationFrozen(t, q, third, last, layout), 3)
 	// The newer checkpoint cannot mutate an earlier one.
-	old, _ := c.PrefixFor(third)
+	old, _ := prefixTrialFixture(c, third)
 	if !slices.Equal(old, path[:2]) {
 		t.Fatal(old, path)
 	}
@@ -128,13 +129,13 @@ func TestContinueForcedTrimmingBidiAndEndPrefixes(t *testing.T) {
 	} {
 		q, p, k := continuationFixture(t, tc.text, tc.dir, false)
 		layout := DefaultLayout(linebreak.RectangularParShape(40 * dimen.BP))
-		path, err := BreakParagraph(k, layout, nil)
+		path, err := breakContinuationFixture(k, layout)
 		if err != nil {
 			t.Fatal(err)
 		}
 		original := checkContinuationFrozen(t, q, k, path, layout)
 		for count := 0; count <= len(path); count++ {
-			c, err := q.Checkpoint(p, path, count)
+			c, err := checkpointTrialFixture(p, path, count)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -145,7 +146,7 @@ func TestContinueForcedTrimmingBidiAndEndPrefixes(t *testing.T) {
 			}
 			shape := &continuationShape{prefix: widths, tail: 20 * dimen.BP}
 			layout.LineShape = shape
-			got, err := ContinueParagraph(fresh, layout, c)
+			got, err := continueTrialFixture(fresh, layout, c)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -166,16 +167,16 @@ func TestContinueFrozenLifetime(t *testing.T) {
 	frozen := func() *khipu.FrozenKhipu {
 		q, p, k := continuationFixture(t, "aa bb cc dd ee ff", bidi.LeftToRight, false)
 		layout := DefaultLayout(linebreak.RectangularParShape(40 * dimen.BP))
-		path, err := BreakParagraph(k, layout, nil)
+		path, err := breakContinuationFixture(k, layout)
 		if err != nil {
 			t.Fatal(err)
 		}
-		c, err := q.Checkpoint(p, path, 1)
+		c, err := checkpointTrialFixture(p, path, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		layout.LineShape = &continuationShape{prefix: []dimen.DU{40 * dimen.BP}, tail: 20 * dimen.BP}
-		path, err = ContinueParagraph(k, layout, c)
+		path, err = continueTrialFixture(k, layout, c)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -202,13 +203,13 @@ func TestContinueFrozenLifetime(t *testing.T) {
 }
 
 func TestContinueGeometryFailureDoesNotPublish(t *testing.T) {
-	q, p, k := continuationFixture(t, "aa bb cc dd ee ff", bidi.LeftToRight, false)
+	_, p, k := continuationFixture(t, "aa bb cc dd ee ff", bidi.LeftToRight, false)
 	layout := DefaultLayout(linebreak.RectangularParShape(40 * dimen.BP))
-	path, err := BreakParagraph(k, layout, nil)
+	path, err := breakContinuationFixture(k, layout)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := q.Checkpoint(p, path, 1)
+	c, err := checkpointTrialFixture(p, path, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,39 +217,47 @@ func TestContinueGeometryFailureDoesNotPublish(t *testing.T) {
 	before := maps.Clone(k.SelectedDiscretionaries)
 	bad := layout
 	bad.LeftSkip = khipu.KnotCore{W: 0, MinW: 1, MaxW: 1}
-	if got, err := ContinueParagraph(k, bad, c); got != nil || err == nil || !maps.Equal(before, k.SelectedDiscretionaries) {
+	if got, err := continueTrialFixture(k, bad, c); got != nil || err == nil || !maps.Equal(before, k.SelectedDiscretionaries) {
 		t.Fatal(got, err)
 	}
-	if got, err := ContinueParagraph(k, layout, c); err != nil || !slices.Equal(got, path) || len(k.SelectedDiscretionaries) != 0 {
+	if got, err := continueTrialFixture(k, layout, c); err != nil || !slices.Equal(got, path) || len(k.SelectedDiscretionaries) != 0 {
 		t.Fatal("retry", got, err)
 	}
 }
 
 func TestContinueFailureAndRetry(t *testing.T) {
-	q, p, k := continuationFixture(t, "aa bb cc dd ee ff gg hh ii jj", bidi.LeftToRight, false)
+	_, p, k := continuationFixture(t, "aa bb cc dd ee ff gg hh ii jj", bidi.LeftToRight, false)
 	layout := DefaultLayout(linebreak.RectangularParShape(40 * dimen.BP))
-	path, err := BreakParagraph(k, layout, nil)
+	path, err := breakContinuationFixture(k, layout)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := q.Checkpoint(p, path, 1)
+	c, err := checkpointTrialFixture(p, path, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	k.SelectedDiscretionaries[0] = khipu.DiscretionarySelection{Source: 0, Variant: 9}
 	before := maps.Clone(k.SelectedDiscretionaries)
 	for _, seed := range []*khipu.BreakCheckpoint{nil, {}} {
-		if got, err := ContinueParagraph(k, layout, seed); got != nil || !errors.Is(err, khipu.ErrIllegalArguments) {
+		if got, err := continueTrialFixture(k, layout, seed); got != nil || !errors.Is(err, khipu.ErrIllegalArguments) {
 			t.Fatal(got, err)
 		}
 	}
-	if got, err := ContinueParagraph(k, khipu.Params{}, c); got != nil || !errors.Is(err, khipu.ErrIllegalArguments) {
+	if got, err := continueTrialFixture(k, khipu.Params{}, c); got != nil || !errors.Is(err, khipu.ErrIllegalArguments) {
 		t.Fatal(got, err)
 	}
 	if !maps.Equal(before, k.SelectedDiscretionaries) {
 		t.Fatal("failure mutated selections")
 	}
-	if got, err := ContinueParagraph(k, layout, c); err != nil || len(got) == 0 || len(k.SelectedDiscretionaries) != 0 {
+	if got, err := continueTrialFixture(k, layout, c); err != nil || len(got) == 0 || len(k.SelectedDiscretionaries) != 0 {
 		t.Fatal("retry", got, err)
 	}
+}
+
+func kpContinuationFixture(k *testsupport.Paragraph, l khipu.Params) ([]int, error) {
+	p, e := knuthplass.BreakParagraph(testsupport.Request(k, l), nil)
+	if e != nil {
+		return nil, e
+	}
+	return k.Save(p), nil
 }

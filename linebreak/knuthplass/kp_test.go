@@ -1,6 +1,7 @@
 package knuthplass
 
 import (
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"slices"
 	"testing"
 
@@ -14,11 +15,10 @@ func TestKPVoid(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "khipu.linebreak")
 	defer teardown()
 	//
-	params := NewTolerantParameters()
 	parfillnode := node{
-		params.ParFillSkip.W,
-		params.ParFillSkip.MinW,
-		params.ParFillSkip.MaxW,
+		(khipu.KnotCore{MaxW: dimen.Fill}).W,
+		(khipu.KnotCore{MaxW: dimen.Fill}).MinW,
+		(khipu.KnotCore{MaxW: dimen.Fill}).MaxW,
 		InfinityMerits,
 		khipu.KTGlue,
 	}
@@ -31,7 +31,7 @@ func TestKPVoid(t *testing.T) {
 	t.Logf("khipu of length %d", len(khp.Kind))
 	t.Logf("khipu: %v", khp)
 	parshape := linebreak.RectangularParShape(100 * dimen.BP)
-	breakpoints, err := BreakParagraph(khp, DefaultLayout(parshape), nil)
+	breakpoints, err := breakFixture(khp, DefaultLayout(parshape), nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -153,11 +153,10 @@ func TestBookkeepingAccumulatesConsecutiveDiscardables(t *testing.T) {
 }
 
 func TestBreakParagraphTrimsTrailingDiscardableAtBreakpoint(t *testing.T) {
-	params := NewTolerantParameters()
 	parfillnode := node{
-		params.ParFillSkip.W,
-		params.ParFillSkip.MinW,
-		params.ParFillSkip.MaxW,
+		(khipu.KnotCore{MaxW: dimen.Fill}).W,
+		(khipu.KnotCore{MaxW: dimen.Fill}).MinW,
+		(khipu.KnotCore{MaxW: dimen.Fill}).MaxW,
 		InfinityMerits,
 		khipu.KTGlue,
 	}
@@ -168,7 +167,7 @@ func TestBreakParagraphTrimsTrailingDiscardableAtBreakpoint(t *testing.T) {
 		parfillnode,
 	})
 
-	breakpoints, err := BreakParagraph(khp, DefaultLayout(linebreak.RectangularParShape(80*dimen.BP)), nil)
+	breakpoints, err := breakFixture(khp, DefaultLayout(linebreak.RectangularParShape(80*dimen.BP)), nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -178,11 +177,10 @@ func TestBreakParagraphTrimsTrailingDiscardableAtBreakpoint(t *testing.T) {
 }
 
 func TestBreakParagraphTrimsLeadingDiscardableOnLaterLine(t *testing.T) {
-	params := NewTolerantParameters()
 	parfillnode := node{
-		params.ParFillSkip.W,
-		params.ParFillSkip.MinW,
-		params.ParFillSkip.MaxW,
+		(khipu.KnotCore{MaxW: dimen.Fill}).W,
+		(khipu.KnotCore{MaxW: dimen.Fill}).MinW,
+		(khipu.KnotCore{MaxW: dimen.Fill}).MaxW,
 		InfinityMerits,
 		khipu.KTGlue,
 	}
@@ -193,7 +191,7 @@ func TestBreakParagraphTrimsLeadingDiscardableOnLaterLine(t *testing.T) {
 		parfillnode,
 	})
 
-	breakpoints, err := BreakParagraph(khp, DefaultLayout(linebreak.RectangularParShape(80*dimen.BP)), nil)
+	breakpoints, err := breakFixture(khp, DefaultLayout(linebreak.RectangularParShape(80*dimen.BP)), nil)
 	if err != nil {
 		t.Fatalf("BreakParagraph failed: %v", err)
 	}
@@ -221,7 +219,7 @@ type node struct {
 	kind          khipu.KnotType
 }
 
-func newKhipu(nodes []node) *khipu.Khipu {
+func newKhipu(nodes []node) *testsupport.Paragraph {
 	khp := testKhipu()
 	for i, n := range nodes {
 		khp.W = append(khp.W, n.w*dimen.BP)
@@ -244,8 +242,8 @@ func newKhipu(nodes []node) *khipu.Khipu {
 	return khp
 }
 
-func testKhipu() *khipu.Khipu {
-	khipu := khipu.Khipu{
+func testKhipu() *testsupport.Paragraph {
+	khipu := testsupport.Paragraph{
 		W:       make([]dimen.DU, 0, 50),
 		MinW:    make([]dimen.DU, 0, 50),
 		MaxW:    make([]dimen.DU, 0, 50),

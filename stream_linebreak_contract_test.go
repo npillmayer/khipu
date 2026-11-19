@@ -38,7 +38,7 @@ func TestStreamingLinebreakContractAtNarrowWidths(t *testing.T) {
 				Resolver: helpers.DefaultStyleResolver{}, Defaults: contracts.ResolvedRunStyle{Font: helpers.NewSyntheticFont(), EmSize: 10 * dimen.PT, Spacing: contracts.SpacingElastic},
 				NewShaper: func() (contracts.StreamingShaper, error) { return helpers.NewSyntheticStreamingShaper(1) },
 			}})
-			k, err := owner.EncodeParagraph(para)
+			k, err := owner.EncodeParagraphFixture(para)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -47,11 +47,11 @@ func TestStreamingLinebreakContractAtNarrowWidths(t *testing.T) {
 				before[i] = k.KnotByIndex(i)
 			}
 			shape := linebreak.RectangularParShape(tc.width)
-			f, err := firstfit.BreakParagraph(k, firstfit.DefaultLayout(shape), nil)
+			f, err := firstfitFixture(k, firstfit.DefaultLayout(shape), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			kp, err := knuthplass.BreakParagraph(k, knuthplass.DefaultLayout(shape), nil)
+			kp, err := knuthplassFixture(k, knuthplass.DefaultLayout(shape), nil)
 			if err != nil {
 				t.Fatal(err)
 			}

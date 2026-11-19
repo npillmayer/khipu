@@ -41,7 +41,7 @@ func TestDiscretionaryPenaltyAuthority(t *testing.T) {
 }
 
 func TestKhipuStoresKnotFlags(t *testing.T) {
-	k := &Khipu{
+	k := &FixtureKhipu{
 		W:       make([]dimen.DU, 0, 4),
 		MinW:    make([]dimen.DU, 0, 4),
 		MaxW:    make([]dimen.DU, 0, 4),
@@ -71,7 +71,7 @@ func TestKhipuStoresKnotFlags(t *testing.T) {
 }
 
 func TestKhipuStoresDiscretionaries(t *testing.T) {
-	k := &Khipu{
+	k := &FixtureKhipu{
 		W:       make([]dimen.DU, 0, 2),
 		MinW:    make([]dimen.DU, 0, 2),
 		MaxW:    make([]dimen.DU, 0, 2),
@@ -129,7 +129,7 @@ func TestKhipukamayuqProvidesCachedDiscretionaries(t *testing.T) {
 	if !k.AddDiscretionaryCandidate(0, cand) {
 		t.Fatalf("expected discretionary candidate to be added")
 	}
-	got, err := kq.DiscretionaryCandidates(k, 0)
+	got, err := kq.DiscoverFixture(k, 0)
 	if err != nil {
 		t.Fatalf("expected cached discretionary lookup to succeed: %v", err)
 	}
@@ -156,11 +156,11 @@ func TestKhipukamayuqShapesAndCachesHyphenatorDiscretionaries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParagraphFromText failed: %v", err)
 	}
-	k, err := kq.EncodeParagraph(para)
+	k, err := kq.EncodeParagraphFixture(para)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := kq.DiscretionaryCandidates(k, 0)
+	got, err := kq.DiscoverFixture(k, 0)
 	if err != nil {
 		t.Fatalf("expected discretionary lookup to succeed: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestKhipukamayuqShapesAndCachesHyphenatorDiscretionaries(t *testing.T) {
 	if config.Hyphenator.(*testhyphenator).calls != 1 {
 		t.Fatalf("expected hyphenator to be called once, got %d", config.Hyphenator.(*testhyphenator).calls)
 	}
-	got, err = kq.DiscretionaryCandidates(k, 0)
+	got, err = kq.DiscoverFixture(k, 0)
 	if err != nil {
 		t.Fatalf("expected cached discretionary lookup to succeed: %v", err)
 	}

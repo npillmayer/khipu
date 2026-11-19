@@ -60,7 +60,7 @@ func TestFreezeFiniteGlue(t *testing.T) {
 		// A fixed terminal makes finite interword capacity observable.
 		k.MaxW[len(k.Kind)-1] = 0
 		shape := geometryShapeFunc(func(int32) dimen.DU { return 25*dimen.PT + delta })
-		g, err := owner.materializeLineGeometry(k, []int{len(k.Kind) - 1}, Params{LineShape: shape, LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
+		g, err := owner.materializeLineGeometryFixture(k, []int{len(k.Kind) - 1}, Params{LineShape: shape, LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -162,7 +162,7 @@ func TestFreezeFailureAndRetry(t *testing.T) {
 	if got, err := (*geometryParagraph)(nil).freeze(); got != nil || !errors.Is(err, ErrIllegalArguments) {
 		t.Fatal(got, err)
 	}
-	if got, err := (*Khipukamayuq)(nil).Freeze(nil, nil, Params{LineShape: nil, LeftSkip: KnotCore{}, RightSkip: KnotCore{}}); got != nil || !errors.Is(err, ErrVoidKhipukamayuq) {
+	if got, err := (*Khipukamayuq)(nil).FreezeFixture(nil, nil, Params{LineShape: nil, LeftSkip: KnotCore{}, RightSkip: KnotCore{}}); got != nil || !errors.Is(err, ErrVoidKhipukamayuq) {
 		t.Fatal(got, err)
 	}
 }
@@ -175,7 +175,7 @@ func TestFreezeSelectedReplacementLifetime(t *testing.T) {
 	widths := slices.Clone(k.W)
 	shape := geometryShapeFunc(func(int32) dimen.DU { return 30 * dimen.PT })
 	right := KnotCore{MaxW: dimen.Fil}
-	got, err := owner.Freeze(k, []int{0, len(k.Kind) - 1}, Params{LineShape: shape, LeftSkip: KnotCore{}, RightSkip: right})
+	got, err := owner.FreezeFixture(k, []int{0, len(k.Kind) - 1}, Params{LineShape: shape, LeftSkip: KnotCore{}, RightSkip: right})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestFreezeSilentReplacements(t *testing.T) {
 		t.Fatal(err)
 	}
 	k.SelectDiscretionary(0, DiscretionarySelection{0, 1})
-	got, err := k.owner.Freeze(k, []int{0, len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{MaxW: dimen.Fil}})
+	got, err := k.owner.FreezeFixture(k, []int{0, len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 10 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{MaxW: dimen.Fil}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestFreezeSilentReplacements(t *testing.T) {
 func TestFreezeEmptyAndTrimmed(t *testing.T) {
 	for _, text := range []string{"", "   ", "  aa  "} {
 		owner, k := logicalTestParagraph(t, text)
-		got, err := owner.Freeze(k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 20 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
+		got, err := owner.FreezeFixture(k, []int{len(k.Kind) - 1}, Params{LineShape: geometryShapeFunc(func(int32) dimen.DU { return 20 * dimen.PT }), LeftSkip: KnotCore{}, RightSkip: KnotCore{}})
 		if err != nil {
 			t.Fatal(err)
 		}

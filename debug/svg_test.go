@@ -25,16 +25,20 @@ func fixture(t *testing.T) *khipu.FrozenKhipu {
 		t.Fatal(err)
 	}
 	o := khipu.NewKhipukamayuq(khipu.Config{})
-	k, err := o.EncodeParagraph(p)
+	k, d, err := o.EncodeParagraph(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	l := firstfit.DefaultLayout(linebreak.RectangularParShape(100 * dimen.BP))
-	b, err := firstfit.BreakParagraph(k, l, nil)
+	binding, err := khipu.BindParagraph(k, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err := o.Freeze(k, b, l)
+	b, err := firstfit.BreakParagraph(khipu.BreakRequest{Binding: binding, Discovery: d, Geometry: khipu.GeometryRequest{Shape: l.LineShape, LeftSkip: l.LeftSkip, RightSkip: l.RightSkip}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := khipu.Freeze(b)
 	if err != nil {
 		t.Fatal(err)
 	}

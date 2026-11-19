@@ -27,18 +27,6 @@ type visualLine struct {
 	naturalWidth       dimen.DU
 }
 
-// materializeVisualLines connects a complete breaker decision to visual content.
-// It inherits materializeLogicalLines' ownership and selection-validity contract.
-// No shaping, discretionary discovery, side-skip insertion or width allocation
-// occurs here. Errors return no partial paragraph and do not change the input.
-func (kq *Khipukamayuq) materializeVisualLines(k *Khipu, breakpoints []int) (*visualParagraph, error) {
-	p, err := kq.materializeLogicalLines(k, breakpoints)
-	if err != nil {
-		return nil, err
-	}
-	return p.visualLines()
-}
-
 // visualLines builds on the logical snapshot without consuming it. lineOrderings
 // clones the retained bidi resolution before Split/ApplyL1/Reorder. Placement
 // reads the authoritative paragraph direction, not an individual run's direction

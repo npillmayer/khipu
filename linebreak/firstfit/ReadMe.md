@@ -1,103 +1,45 @@
-# firstfit: greedy paragraph breaking
+# firstfit: Greedy paragraph breaking
 
-`github.com/npillmayer/khipu/linebreak/firstfit` remembers the latest fitting
-checkpoint and commits it when later material overflows. Use it for a simple,
-local policy, especially ragged-right layouts. For paragraph-wide cost comparison,
-see [knuthplass](../knuthplass/ReadMe.md).
-
-## Break and freeze
-
-This helper consumes an already encoded or bound paragraph. The root
-[executable example](../../example_test.go) shows construction from styled text.
+Use `BreakParagraph(request, params)` with an immutable `AtomicBinding` and its
+matching `Discovery`. Nil parameters select independent algorithm defaults.
+The complete result is an immutable `Tikray`, not a list paired with mutable
+selections. See [construction examples](../../example_test.go).
 
 ```go
-package example
-
-import (
-    "context"
-    "github.com/npillmayer/khipu"
-    "github.com/npillmayer/khipu/dimen"
-    "github.com/npillmayer/khipu/linebreak"
-    "github.com/npillmayer/khipu/linebreak/firstfit"
-)
-
-func Layout(ctx context.Context, owner *khipu.Khipukamayuq, input *khipu.Khipu) (*khipu.FrozenKhipu, error) {
-    layout := firstfit.DefaultLayout(linebreak.RectangularParShape(100 * dimen.BP))
-    breaks, err := firstfit.BreakParagraph(input, layout, nil)
-    if err != nil { return nil, err }
-    return owner.Freeze(ctx, input, breaks, layout)
+geometry := firstfit.DefaultLayout(shape)
+request := khipu.BreakRequest{
+    Binding: binding, Discovery: discovery,
+    Geometry: khipu.GeometryRequest{
+        Shape: geometry.LineShape,
+        LeftSkip: geometry.LeftSkip, RightSkip: geometry.RightSkip,
+    },
 }
+plan, err := firstfit.BreakParagraph(request, nil)
+if err != nil { return err }
+frozen, err := khipu.Freeze(plan)
 ```
 
-`DefaultLayout` gives the physical right skip `fil` stretch. Positive slack
-normally goes there, leaving ordinary interword spaces at natural width. The
-higher-order default paragraph fill wins on the final line. Fit uses trimmed
-**minimum** width including skips, so supplied shrink can still be used. To keep
-material rigid, supply equal minimum, natural and maximum widths.
+The fragment assumes prepared `binding`, `discovery`, and a one-based `shape`.
+Search memoizes each queried width. Freeze uses captured geometry without querying
+the shape again; callbacks need remain stable only during search. Later trials
+cannot alter an earlier plan. Errors return nil, while completed discovery batches
+remain reusable. All calls are synchronous and context-free.
 
-Breaks are zero-based line-ending knot indices, including the generated trailer.
-They do not contain final widths or all discretionary information. Freeze with
-the same layout before another successful breaker run replaces selections.
+Fit uses trimmed minimum width, including skips. The latest feasible endpoint
+is committed on overflow. Local hyphenation rescue uses an inclusive
+`MinHyphenGain`; zero allows zero gain. Automatic rescue needs an earlier ordinary
+checkpoint, while an explicit marker can rescue the first word. Ties retain
+provider order. `DefaultLayout` supplies a physical right skip with fil stretch.
+Overfull fallback may succeed; inspect frozen fit diagnostics.
 
-## Hyphenation and errors
+`ContinueParagraph(request, params)` requires `request.Prefix`, created by
+`khipu.Checkpoint(completePlan, acceptedLines)`. Fresh `BreakParagraph` requires a
+nil prefix. Continuation supports `NoHyphenation` and preserves a first-fit or KP
+prefix exactly, including its widths, skips and policy. It never queries prefix
+widths or searches prefix knots. Changed suffix atomic advances are permitted;
+changed consumed advances and foreign incarnations fail. Zero/full prefixes are
+valid. Drop working handles after the paragraph fully flows; retain frozen output.
 
-For lazy discovery, configure `Config.Hyphenator` on the owner, then pass:
-
-```go
-params := firstfit.NewDefaultParameters()
-params.DiscretionaryProvider = owner
-// Use params as BreakParagraph's third argument.
-```
-
-Both explicit soft-hyphen material and automatic discovery need a policy;
-`Config{}` installs none. Without a provider, the breaker can use cached
-candidates. Rescue is local to an overflowing textbox: automatic discovery needs
-an earlier ordinary checkpoint, while explicit markers can rescue the first word.
-`MinHyphenGain` is an inclusive natural-width gain threshold; default zero permits
-zero improvement. It is not a hyphen-frequency limit.
-
-Nil algorithm parameters select independent defaults. Geometry is always supplied
-explicitly. Failures return an error and preserve prior selections, although
-provider discovery may populate caches. Overfull fallback can be a successful
-break result; inspect frozen fit diagnostics. Serialize use of the input/owner.
-
-Ordinary `BreakParagraph` and provider calls are synchronous and have no context argument. The
-context in the example controls freezing; it does not cancel the preceding
-search or lazy shaping. See the [algorithm and limits](../../doc/FIRSTFIT.md),
-[hyphenation contract](../../doc/HYPHENATION.md), and [freeze guide](../../doc/FREEZE.md).
-
-## Checkpoint continuation
-
-`ContinueParagraph(ctx, binding, geometry, checkpoint)` searches only the suffix
-after an opaque `khipu.BreakCheckpoint`. Obtain the checkpoint with
-`owner.Checkpoint(ctx, prepared, completeBreakPath, acceptedLines)` after a
-successful ordinary layout. It certifies the complete legal path and copies the
-accepted prefix. A KP prefix may be retained even when first-fit would have
-chosen different boundaries. No KP optimization state is resumed.
-
-Bind the same `NoHyphenation` preparation; nil/zero checkpoints and bindings from
-another preparation are rejected. The seeded search has no discretionary provider
-or replacement carry and performs no base shaping or font acceptance. Prefix
-knots are not searched. Zero accepted lines starts from the beginning; accepting
-all lines returns the copied path without a search. Ordinary `BreakParagraph`
-behavior is unchanged.
-
-Use the original widths for every accepted line and the new width for the suffix
-in a stable one-based `LineShape`, with unchanged skips. Freeze the entire result
-using that same geometry. A new checkpoint can lock more lines on the next call.
-Errors/cancellation publish no partial path and preserve previous selections.
-Cancellation is checked between search knots, after width callbacks and before
-publication; one synchronous callback is not interruptible.
-
-Checkpoints retain preparation while flow/retry remains possible. Drop working
-handles when each paragraph finishes; frozen content stays usable. See the
-[preparation and lifecycle guide](../../doc/PREPARED_PARAGRAPHS.md#checkpoint-continuation).
-
-For source reading, start with [the sequential scan](break.go), then follow
-[segment and carry bookkeeping](segment.go) or [discretionary rescue](discretionary.go).
-[Parameters and layout defaults](parameters.go) are separate from the scan.
-
-The old `LICContent`, `LICTrimDiscardable`, and `LICRetainedNeutral` constants
-remain for source compatibility but are deprecated. For knot inspection use
-`KnotCore.IsContent()` and `KnotCore.IsDiscardable()`; discardability takes
-precedence for line-edge trimming. These constants do not configure the breaker.
+See [preparation and continuation](../../doc/PREPARED_PARAGRAPHS.md),
+[the scan](break.go), [carry bookkeeping](segment.go) and
+[discretionary rescue](discretionary.go).

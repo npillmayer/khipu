@@ -1,6 +1,7 @@
 package knuthplass
 
 import (
+	"github.com/npillmayer/khipu/internal/testsupport"
 	"maps"
 	"slices"
 	"testing"
@@ -22,7 +23,7 @@ func (f emergencyPolicyFunc) Discretionaries(word string, params *khipu.Params) 
 
 type emergencyEncoding struct {
 	owner   *khipu.Khipukamayuq
-	khp     *khipu.Khipu
+	khp     *testsupport.Paragraph
 	streams int
 }
 
@@ -46,14 +47,14 @@ func encodeEmergencyText(t *testing.T, source string, policy khipu.Hyphenator) *
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.khp, err = f.owner.EncodeParagraph(para)
+	f.khp, err = testsupport.Encode(f.owner, para)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return f
 }
 
-func emergencyKnotSnapshot(khp *khipu.Khipu) []khipu.KnotCore {
+func emergencyKnotSnapshot(khp *testsupport.Paragraph) []khipu.KnotCore {
 	knots := make([]khipu.KnotCore, len(khp.Kind))
 	for at := range knots {
 		knots[at] = khp.KnotByIndex(at)
@@ -90,12 +91,12 @@ func TestEmergencyReusesOwnerDiscoveryAcrossPasses(t *testing.T) {
 				requests := 0
 				params := NewDefaultParameters()
 				params.EmergencyStretch = 2 * dimen.PT
-				params.DiscretionaryProvider = emergencyProviderFunc(func(k *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error) {
+				params.discretionaryProvider = emergencyProviderFunc(func(k *testsupport.Paragraph, at int) ([]khipu.DiscretionaryCandidate, error) {
 					requests++
 					if at != 0 {
 						t.Fatalf("unexpected discovery at knot %d", at)
 					}
-					return f.owner.DiscretionaryCandidates(k, at)
+					return testsupport.Discover(f.owner, k, at)
 				})
 				layout := khipu.Params{LineShape: linebreak.RectangularParShape(17 * dimen.PT)}
 				passes, err := paragraphPasses(params)
@@ -146,7 +147,7 @@ func TestEmergencyReusesOwnerDiscoveryAcrossPasses(t *testing.T) {
 				if err != nil || !warm.complete || warm.pass != result.pass || warm.quality != result.quality || !slices.Equal(warm.breaks, result.breaks) {
 					t.Fatal("warm discovery changed pass, quality or selected path", warm, err)
 				}
-				breaks, err := BreakParagraph(khp, layout, params)
+				breaks, err := breakFixture(khp, layout, params)
 				selected := map[int]khipu.DiscretionarySelection{}
 				if positive {
 					selected[0] = khipu.DiscretionarySelection{Source: 0, Variant: 1}
@@ -174,9 +175,9 @@ func TestEmergencyAutomaticDiscoveryGate(t *testing.T) {
 		{"overfull rescue survives", 150, 100, 10000, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			provider := &testDiscretionaryProvider{}
+			provider := &testdiscretionaryProvider{}
 			params := NewDefaultParameters()
-			params.DiscretionaryProvider = provider
+			params.discretionaryProvider = provider
 			kp, err := prepareLineBreaker(khipu.Params{LineShape: linebreak.RectangularParShape(100 * dimen.BP)}, params)
 			if err != nil {
 				t.Fatal(err)
@@ -217,7 +218,7 @@ func TestEmergencyExplicitRequestBypassesAutomaticGate(t *testing.T) {
 		return []khipu.HyphenationFragment{{PreBreak: "-"}}, nil
 	}))
 	params := NewDefaultParameters()
-	params.DiscretionaryProvider = f.owner
+	params.discretionaryProvider = fixtureProvider{}
 	kp, err := prepareLineBreaker(khipu.Params{LineShape: linebreak.RectangularParShape(30 * dimen.PT)}, params)
 	if err != nil {
 		t.Fatal(err)

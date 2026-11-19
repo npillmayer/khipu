@@ -3,28 +3,28 @@ package firstfit
 import (
 	"github.com/npillmayer/khipu"
 	"github.com/npillmayer/khipu/dimen"
+	"github.com/npillmayer/khipu/internal/search"
 	"github.com/npillmayer/khipu/linebreak"
 )
 
-// DiscretionaryProvider supplies hyphenation alternatives for one textbox
+// discretionaryProvider supplies hyphenation alternatives for one textbox
 // knot. firstfit uses it only as a local overflow rescue for the loose-line
 // case.
-// Calls are synchronous and have no context argument. Encoding/freezing contexts
-// do not propagate here; the standard owner uses Background for lazy shaping.
-// Providers must preserve published selections even when discovery fails.
-type DiscretionaryProvider interface {
-	DiscretionaryCandidates(khp *khipu.Khipu, at int) ([]khipu.DiscretionaryCandidate, error)
+// Calls are synchronous; production uses the request's immutable Discovery.
+// The interface is private to the evaluator and test fixtures.
+type discretionaryProvider interface {
+	DiscretionaryCandidates(khp search.Paragraph, at int) ([]khipu.DiscretionaryCandidate, error)
 }
 
 // discretionaryCandidates is the local provider seam for firstfit. In
 // production this usually delegates to Khipukamayuq; tests may also satisfy it
 // directly from the Khipu cache.
-func discretionaryCandidates(khp *khipu.Khipu, at kinx, params *Parameters) ([]khipu.DiscretionaryCandidate, error) {
-	if khp == nil || at < 0 || at >= len(khp.Kind) {
+func discretionaryCandidates(khp search.Paragraph, at kinx, params *Parameters) ([]khipu.DiscretionaryCandidate, error) {
+	if khp == nil || at < 0 || at >= khp.KnotCount() {
 		return nil, khipu.ErrIllegalArguments
 	}
-	if params != nil && params.DiscretionaryProvider != nil {
-		return params.DiscretionaryProvider.DiscretionaryCandidates(khp, int(at))
+	if params != nil && params.discretionaryProvider != nil {
+		return params.discretionaryProvider.DiscretionaryCandidates(khp, int(at))
 	}
 	return khp.DiscretionariesAt(int(at)), nil
 }
@@ -45,7 +45,7 @@ func discretionaryCandidates(khp *khipu.Khipu, at kinx, params *Parameters) ([]k
 // regardless of its finite penalty. Exact width/penalty ties keep provider order.
 // Zero MinHyphenGain permits zero improvement. This is a local gain filter, not
 // a hyphen-frequency limit or a demerit model; discovery itself stays lazy.
-func tryLooseHyphenation(khp *khipu.Khipu, at kinx, base segmentState, checkpointWidth linebreak.WSS, linelen dimen.DU, layout khipu.Params, params *Parameters) (khipu.DiscretionaryCandidate, segmentState, bool, error) {
+func tryLooseHyphenation(khp search.Paragraph, at kinx, base segmentState, checkpointWidth linebreak.WSS, linelen dimen.DU, layout khipu.Params, params *Parameters) (khipu.DiscretionaryCandidate, segmentState, bool, error) {
 	cands, err := discretionaryCandidates(khp, at, params)
 	if err != nil || len(cands) == 0 {
 		return khipu.DiscretionaryCandidate{}, segmentState{}, false, err

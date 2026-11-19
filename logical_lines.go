@@ -55,24 +55,15 @@ type logicalKnot struct {
 	paragraphFill bool // identity of the validated generated trailer, not inferred from dimensions
 }
 
-// materializeLogicalLines resolves a complete result from either breaker. It
-// never discovers candidates: a selected variant must already have stored
-// fragments. Validation and construction are private and atomic; on failure
-// nothing is published or changed on k. Concurrent owner operations are not
-// supported. Call before another breaker replaces the selections. Without a
-// breaker generation token, a stale but structurally identical result cannot
-// be distinguished from the current one.
-//
-// The result preserves elasticity for later allocation; it is not FrozenKhipu.
-// Targets, side skips, fit/optimality checks and visual ordering are out of scope.
-func (kq *Khipukamayuq) materializeLogicalLines(k *Khipu, breakpoints []int) (*logicalParagraph, error) {
-	if kq == nil {
-		return nil, ErrVoidKhipukamayuq
-	}
+// materializeLogicalLines expands one plan's private freezing input. It never
+// discovers or changes selected alternatives. Original coordinates and complete
+// replacement pairs are validated before publishing any logical line snapshot.
+// Targets, visual ordering and width allocation belong to later private stages.
+func materializeLogicalLines(k *freezeInput, breakpoints []int) (*logicalParagraph, error) {
 	bad := func() (*logicalParagraph, error) {
 		return nil, fmt.Errorf("%w: inconsistent logical-line input", ErrIllegalArguments)
 	}
-	if k == nil || k.owner != kq || k.paragraph == nil {
+	if k == nil || k.paragraph == nil {
 		return bad()
 	}
 	n := len(k.Kind)
@@ -165,7 +156,7 @@ func (kq *Khipukamayuq) materializeLogicalLines(k *Khipu, breakpoints []int) (*l
 
 // logicalReplacement resolves already published glyphs; replacement spelling
 // must never be used to infer original input spans or a successor-line offset.
-func (k *Khipu) logicalReplacement(at int, c DiscretionaryCandidate, pre bool) (logicalKnot, error) {
+func (k *freezeInput) logicalReplacement(at int, c DiscretionaryCandidate, pre bool) (logicalKnot, error) {
 	item := logicalKnot{core: c.PostBreak, box: c.postBox, origin: at, variant: c.Variant, fragment: logicalPostBreak}
 	if pre {
 		item.core, item.box, item.fragment = c.PreBreak, c.preBox, logicalPreBreak
@@ -185,7 +176,7 @@ func (k *Khipu) logicalReplacement(at int, c DiscretionaryCandidate, pre bool) (
 // validateLogicalKnot checks associations at this phase boundary, not the full
 // shaping protocol already checked at publication. Silent replacement boxes are
 // valid and retain a box reference even when their glyph range is empty.
-func (k *Khipu) validateLogicalKnot(item logicalKnot) error {
+func (k *freezeInput) validateLogicalKnot(item logicalKnot) error {
 	bad := func() error { return fmt.Errorf("%w: invalid logical knot at %d", ErrIllegalArguments, item.origin) }
 	s, c := item.source, item.core
 	if (c.Kind == KTAtomic) != (item.atomic != 0) || (c.Kind == KTAtomic &&
